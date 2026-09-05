@@ -13,13 +13,16 @@
 ### Opsi A: Buka langsung di komputer Anda
 1. Extract file ZIP ke folder mana saja
 2. Double-click file `index.html`
-3. Browser terbuka → aplikasi langsung tampil ✅
+3. Browser terbuka → **muncul halaman login**
+4. Login dengan akun demo (lihat di bawah) atau akun Supabase Anda
+5. Aplikasi langsung tampil ✅
 
 ### Opsi B: Upload ke GitHub Pages
 1. Upload semua file ke repository GitHub (drag-drop via web UI juga bisa)
 2. Settings → Pages → **Source: Deploy from a branch** → pilih `main` / `/ (root)`
 3. Tunggu 1-2 menit
 4. Buka `https://USERNAME.github.io/NAMA-REPO/`
+5. **Muncul halaman login** → login dengan akun Anda
 
 **Tidak perlu**:
 - ❌ `npm install`
@@ -27,6 +30,20 @@
 - ❌ Node.js
 - ❌ Command line
 - ❌ Server lokal
+
+---
+
+## 🔐 Akun Demo (untuk testing)
+
+Saat aplikasi pertama dibuka, akan muncul **halaman login**. Klik salah satu akun demo di bawah untuk isi otomatis:
+
+| Role | Email | Password | Akses |
+|---|---|---|---|
+| **Admin Dinkes** | `dinkes@simantri.demo` | `dinkes123` | Full access — semua menu, semua aksi (add, edit, delete, download, print, verify, approve, manajemen user) |
+| **Admin Fasyankes** | `fasyankes@simantri.demo` | `fasyankes123` | Akses terbatas — bisa add & edit data, bisa print laporan. TIDAK bisa: download CSV regional, verifikasi, approve/reject, manajemen user, pengaturan sistem |
+| **Tenaga Kesehatan** | `nakes@simantri.demo` | `nakes123` | View only — lihat data saja. TIDAK bisa: add, edit, delete, download, print, verify, approve/reject, manajemen user, pengaturan sistem |
+
+> **Tip**: Klik kartu akun demo di halaman login → form terisi otomatis → klik "Masuk"
 
 ---
 

@@ -201,10 +201,10 @@
           let actionsHtml = '';
           if (showActions) {
             actionsHtml = '<div class="mt-2 pt-2 border-t border-ink-100 flex gap-1.5">'
-              + '<button class="btn btn-accent btn-sm flex-1" data-action="approve" data-id="' + utils.escapeHtml(it.id) + '">'
+              + '<button class="btn btn-accent btn-sm flex-1" data-action="approve" data-id="' + utils.escapeHtml(it.id) + '" data-role-action="approve">'
               + '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
               + 'Approve</button>'
-              + '<button class="btn btn-danger btn-sm flex-1" data-action="reject" data-id="' + utils.escapeHtml(it.id) + '">'
+              + '<button class="btn btn-danger btn-sm flex-1" data-action="reject" data-id="' + utils.escapeHtml(it.id) + '" data-role-action="reject">'
               + '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'
               + 'Reject</button>'
               + '</div>';
@@ -277,7 +277,7 @@
               </div>
               <div class="p-4 border-t border-ink-100 flex justify-end gap-2">
                 <button class="btn btn-outline btn-sm" data-modal-close>Batal</button>
-                <button class="btn btn-danger btn-sm" data-action="confirm-reject" data-id="` + utils.escapeHtml(itemId) + `">
+                <button class="btn btn-danger btn-sm" data-action="confirm-reject" data-id="` + utils.escapeHtml(itemId) + `" data-role-action="reject">
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                   Konfirmasi Tolak
                 </button>

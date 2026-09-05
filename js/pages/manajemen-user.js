@@ -16,7 +16,7 @@
               <h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Manajemen User &amp; Role</h2>
               <p class="mt-1 text-sm text-ink-500 max-w-2xl">Kelola akun pengguna, peran, dan hak akses pada SIMANTRI.</p>
             </div>
-            <button class="btn btn-primary btn-sm" data-action="add-user" type="button">
+            <button class="btn btn-primary btn-sm" data-action="add-user" type="button" data-role-action="manage-user">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
               Tambah User
             </button>
@@ -238,10 +238,10 @@
                + '<td><span class="text-xs text-ink-600">' + utils.fmtDate(u.last_login) + '</span></td>'
                + '<td><span class="badge ' + statusBadge + '">' + statusLabel + '</span></td>'
                + '<td class="text-right">'
-               + '<button class="btn btn-ghost btn-sm" data-action="edit" data-id="' + utils.escapeHtml(u.id) + '" aria-label="Edit">'
+               + '<button class="btn btn-ghost btn-sm" data-action="edit" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Edit">'
                + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
                + '</button>'
-               + '<button class="btn btn-ghost btn-sm" data-action="toggle" data-id="' + utils.escapeHtml(u.id) + '" aria-label="Aktif/Nonaktif">'
+               + '<button class="btn btn-ghost btn-sm" data-action="toggle" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Aktif/Nonaktif">'
                + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
                + '</button>'
                + '</td>'

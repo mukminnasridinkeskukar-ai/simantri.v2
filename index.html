@@ -122,9 +122,92 @@
   </div>
 
   <!-- ============================================================================
+       LOGIN BOX — tampil SEBELUM #app (independent dari app state)
+       ============================================================================ -->
+  <div id="login-screen" class="min-h-screen flex items-center justify-center p-4" style="background: linear-gradient(135deg, #F0FDFA 0%, #F7FEE7 100%); display:none;">
+    <div class="w-full max-w-md">
+      <!-- Logo & header -->
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl shadow-glow mb-4" style="background: linear-gradient(135deg, #0D9488 0%, #84CC16 100%);">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16m8-8H4"/></svg>
+        </div>
+        <h1 class="text-3xl font-extrabold text-ink-900 tracking-tight">SIMANTRI</h1>
+        <p class="text-sm text-ink-500 mt-1">Sistem Informasi & Manajemen Praktik Nakes</p>
+      </div>
+
+      <!-- Login card -->
+      <div class="card p-8">
+        <h2 class="text-xl font-bold text-ink-900 mb-1">Masuk ke Akun</h2>
+        <p class="text-sm text-ink-500 mb-6">Gunakan akun yang terdaftar untuk mengakses platform</p>
+
+        <form id="login-form" class="space-y-4">
+          <div>
+            <label class="label" for="login-email">Email</label>
+            <input type="email" id="login-email" class="input" placeholder="anda@domain.go.id" required autocomplete="email" />
+          </div>
+          <div>
+            <label class="label" for="login-password">Password</label>
+            <div class="relative">
+              <input type="password" id="login-password" class="input pr-10" placeholder="••••••••" required autocomplete="current-password" />
+              <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700" aria-label="Tampilkan password">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3"></div>
+
+          <button type="submit" id="login-submit" class="btn-primary w-full" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            Masuk
+          </button>
+        </form>
+
+        <!-- Demo credentials info -->
+        <div class="mt-6 pt-6 border-t border-ink-100">
+          <p class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Akun Demo (klik untuk isi otomatis)</p>
+          <div class="space-y-2">
+            <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-email="dinkes@simantri.demo" data-password="dinkes123">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-semibold text-sm text-ink-800">Admin Dinkes</p>
+                  <p class="text-xs text-ink-500">dinkes@simantri.demo • dinkes123</p>
+                </div>
+                <span class="badge-teal">Full Access</span>
+              </div>
+            </button>
+            <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-email="fasyankes@simantri.demo" data-password="fasyankes123">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-semibold text-sm text-ink-800">Admin Fasyankes</p>
+                  <p class="text-xs text-ink-500">fasyankes@simantri.demo • fasyankes123</p>
+                </div>
+                <span class="badge-lime">Fasyankes Only</span>
+              </div>
+            </button>
+            <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-email="nakes@simantri.demo" data-password="nakes123">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-semibold text-sm text-ink-800">Tenaga Kesehatan</p>
+                  <p class="text-xs text-ink-500">nakes@simantri.demo • nakes123</p>
+                </div>
+                <span class="badge-ink">View Only</span>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-center text-xs text-ink-400 mt-6">
+        SIMANTRI v3.0 • Sistem Informasi & Manajemen Praktik Nakes
+      </p>
+    </div>
+  </div>
+
+  <!-- ============================================================================
        App root
        ============================================================================ -->
-  <div id="app" class="min-h-full flex">
+  <div id="app" class="min-h-full flex" style="display:none;">
     <aside id="sidebar-slot" class="hidden lg:block"></aside>
 
     <div id="sidebar-drawer" class="fixed inset-0 z-50 hidden">

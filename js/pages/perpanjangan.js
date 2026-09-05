@@ -628,7 +628,7 @@
               </div>
               <div class="p-4 border-t border-ink-100 flex justify-end gap-2">
                 <button class="btn btn-outline btn-sm" data-modal-close>Tutup</button>
-                ` + (p.status === db.STATUS.PENDING ? '<button class="btn btn-danger btn-sm" data-action="cancel" data-id="' + utils.escapeHtml(p.id) + '"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>Batalkan</button>' : '') + `
+                ` + (p.status === db.STATUS.PENDING ? '<button class="btn btn-danger btn-sm" data-action="cancel" data-id="' + utils.escapeHtml(p.id) + '" data-role-action="delete"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>Batalkan</button>' : '') + `
               </div>
             </div>
           </div>
