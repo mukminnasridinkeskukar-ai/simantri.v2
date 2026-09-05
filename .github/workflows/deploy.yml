@@ -75,6 +75,37 @@ jobs:
           NODE_ENV: production
         run: npm run build
 
+      - name: Verify build output
+        run: |
+          echo "=== Verify dist/index.html exists ==="
+          if [ ! -f dist/index.html ]; then
+            echo "❌ dist/index.html NOT FOUND — build failed"
+            exit 1
+          fi
+          echo "✅ dist/index.html found"
+
+          echo ""
+          echo "=== Verify script & link tags in dist/index.html ==="
+          grep -E '<(script|link)' dist/index.html || true
+
+          echo ""
+          echo "=== Verify assets folder ==="
+          ls -la dist/assets/ | head -20
+
+          echo ""
+          echo "=== Verify 404.html & favicon.svg exist ==="
+          ls -la dist/404.html dist/favicon.svg 2>&1 || true
+
+          echo ""
+          echo "=== Verify no 'src/main.js' reference (should be bundled) ==="
+          if grep -q 'src/main.js' dist/index.html; then
+            echo "❌ Found 'src/main.js' reference — build did NOT bundle JS!"
+            echo "   This will cause MIME type error in production."
+            exit 1
+          else
+            echo "✅ No 'src/main.js' reference — JS properly bundled"
+          fi
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

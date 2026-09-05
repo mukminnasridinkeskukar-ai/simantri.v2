@@ -235,6 +235,22 @@ Lihat lengkap di [`supabase/schema.sql`](./supabase/schema.sql). Tabel utama:
 
 ## 🆘 Troubleshooting
 
+**Q: Error "Failed to load module script... MIME type of text/css"**
+
+Ini adalah error paling umum. **Penyebab**: browser mencoba memuat file CSS seolah-olah itu JavaScript. Terjadi karena:
+
+1. **Anda membuka `index.html` langsung dari folder (file:// protocol)** — ES modules tidak bisa dijalankan via `file://`. Gunakan `npm run dev` untuk dev, atau deploy ke GitHub Pages untuk production.
+2. **GitHub Pages diset "Deploy from branch" bukan "GitHub Actions"** — ini menyebabkan source code (belum di-build) yang tersaji, sehingga `main.js` masih punya `import './styles/main.css'` yang gagal di-load sebagai module.
+
+**Solusi**:
+1. Buka repo GitHub → **Settings → Pages**
+2. Pada **Build and deployment → Source**, pilih **GitHub Actions** (bukan "Deploy from a branch")
+3. Push commit ke `main` untuk trigger workflow
+4. Tunggu workflow selesai di tab **Actions** (± 1-2 menit)
+5. Buka URL `https://USERNAME.github.io/simantri-nakes-v2/` — seharusnya aplikasi tampil normal
+
+---
+
 **Q: Setelah deploy, halaman blank / asset 404**
 A: Cek `vite.config.js` base path. Untuk project page, harus `/REPO_NAME/`. GitHub Actions sudah auto-set ini — pastikan workflow berhasil (tab Actions).
 
@@ -258,6 +274,13 @@ A: Buka tab Actions → klik workflow yang gagal → lihat log. Pastikan:
 - `package-lock.json` sudah di-commit (untuk `npm ci`)
 - Repository Secrets `VITE_SUPABASE_URL` & `VITE_SUPABASE_ANON_KEY` sudah ditambahkan (atau hapus baris tersebut di `deploy.yml` untuk Demo Mode)
 - Source: **Settings → Pages → Source: GitHub Actions**
+
+**Q: Bagaimana cek apakah deployment saya benar?**
+A: Buka URL production, lalu **View Page Source** (Ctrl+U). Anda harus melihat:
+- `<script type="module" src="./assets/index-XXXX.js">` (BUKAN `src/main.js`)
+- `<link rel="stylesheet" href="./assets/index-XXXX.css">`
+
+Jika yang Anda lihat adalah `<script type="module" src="./src/main.js">`, berarti GitHub Pages menyajikan source code, BUKAN hasil build. Fix dengan langkah di Q pertama di atas.
 
 ---
 

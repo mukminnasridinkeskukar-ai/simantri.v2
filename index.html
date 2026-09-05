@@ -4,46 +4,328 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="SIMANTRI — Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
+  <meta name="theme-color" content="#0D9488" />
+  <meta name="author" content="SIMANTRI" />
+
+  <!-- Open Graph / Social -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="SIMANTRI — Platform Pengelolaan Izin Praktik Nakes" />
+  <meta property="og:description" content="Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
+
+  <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+
+  <!-- Fonts: preconnect + load -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+
   <title>SIMANTRI • Platform Pengelolaan Izin Praktik Nakes</title>
+
+  <!-- ============================================================================
+       INLINE CRITICAL CSS — supaya ada styling dasar sebelum bundle JS/CSS load.
+       Mencegah flash of unstyled content (FOUC).
+       ============================================================================ -->
+  <style>
+    /* Reset minimal */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #F8FAFC;
+      color: #1E293B;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    /* Skeleton shimmer — tampil sebelum Tailwind load */
+    @keyframes shimmer {
+      0% { background-position: -468px 0; }
+      100% { background-position: 468px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #F1F5F9 0%, #E2E8F0 50%, #F1F5F9 100%);
+      background-size: 468px 100%;
+      animation: shimmer 1.4s linear infinite;
+      border-radius: 8px;
+    }
+    /* Loading screen — tampil saat JS bundle masih dimuat */
+    #initial-loader {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: #F8FAFC;
+      z-index: 9999;
+      transition: opacity .3s ease;
+    }
+    #initial-loader.hidden { opacity: 0; pointer-events: none; }
+    .loader-card {
+      text-align: center;
+      padding: 2rem;
+    }
+    .loader-logo {
+      width: 56px; height: 56px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #0D9488 0%, #84CC16 100%);
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 1rem;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(0.95); opacity: 0.8; }
+    }
+    .loader-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #0F172A;
+      margin: 0 0 0.25rem;
+    }
+    .loader-subtitle {
+      font-size: 0.875rem;
+      color: #64748B;
+      margin: 0;
+    }
+    .loader-bar {
+      width: 200px; height: 3px;
+      background: #E2E8F0;
+      border-radius: 9999px;
+      margin: 1.5rem auto 0;
+      overflow: hidden;
+      position: relative;
+    }
+    .loader-bar::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, #0D9488, transparent);
+      animation: loader-bar 1.5s linear infinite;
+    }
+    @keyframes loader-bar {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    /* Error screen — tampil jika JS gagal load */
+    #load-error {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: #F8FAFC;
+      padding: 1rem;
+      z-index: 10000;
+    }
+    #load-error.show { display: flex; }
+    .error-card {
+      max-width: 540px;
+      width: 100%;
+      background: white;
+      border-radius: 16px;
+      border: 1px solid #FECDD3;
+      box-shadow: 0 10px 40px -10px rgba(244, 63, 94, 0.2);
+      padding: 2rem;
+    }
+    .error-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      background: #FFF1F2;
+      color: #F43F5E;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 1rem;
+    }
+    .error-title {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #0F172A;
+      margin: 0 0 0.5rem;
+    }
+    .error-message {
+      font-size: 0.875rem;
+      color: #475569;
+      line-height: 1.5;
+      margin: 0 0 1rem;
+    }
+    .error-code {
+      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+      font-size: 0.75rem;
+      background: #F1F5F9;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      color: #475569;
+      margin: 1rem 0;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .error-action {
+      display: inline-flex;
+      align-items: center; gap: 0.5rem;
+      padding: 0.625rem 1.25rem;
+      background: #0D9488;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .error-action:hover { background: #0F766E; }
+  </style>
 </head>
-<body class="h-full bg-ink-50 text-ink-800 font-sans antialiased">
-  <div id="app" class="min-h-full flex">
-    <!-- Sidebar slot -->
+<body class="h-full">
+  <!-- ============================================================================
+       Loading screen awal — disembunyikan setelah app.js selesai init
+       ============================================================================ -->
+  <div id="initial-loader" aria-label="Memuat aplikasi">
+    <div class="loader-card">
+      <div class="loader-logo">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 4v16m8-8H4"/>
+        </svg>
+      </div>
+      <p class="loader-title">SIMANTRI</p>
+      <p class="loader-subtitle">Memuat platform pengelolaan izin praktik...</p>
+      <div class="loader-bar"></div>
+    </div>
+  </div>
+
+  <!-- ============================================================================
+       Error screen — tampil jika modul JS gagal dimuat
+       ============================================================================ -->
+  <div id="load-error" role="alert">
+    <div class="error-card">
+      <div class="error-icon">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <p class="error-title">Aplikasi gagal dimuat</p>
+      <p class="error-message" id="error-message-text">
+        Terjadi kesalahan saat memuat berkas JavaScript. Ini biasanya terjadi karena:
+      </p>
+      <ul style="font-size: 0.875rem; color: #475569; padding-left: 1.25rem; margin: 0 0 1rem; line-height: 1.7;">
+        <li>Anda membuka file <code>index.html</code> langsung dari folder (protokol <code>file://</code>) — aplikasi harus diakses via web server</li>
+        <li>Anda meng-upload source code ke GitHub Pages tanpa melalui proses <code>npm run build</code> terlebih dahulu</li>
+        <li>Konfigurasi base path di <code>vite.config.js</code> tidak sesuai dengan URL deployment</li>
+      </ul>
+      <p class="error-message"><strong>Solusi:</strong></p>
+      <ul style="font-size: 0.875rem; color: #475569; padding-left: 1.25rem; margin: 0 0 1rem; line-height: 1.7;">
+        <li>Pastikan GitHub Pages menggunakan <strong>Source: GitHub Actions</strong> (bukan <em>Deploy from branch</em>)</li>
+        <li>Pastikan workflow <code>.github/workflows/deploy.yml</code> berhasil dijalankan (cek tab <strong>Actions</strong>)</li>
+        <li>Untuk testing lokal, jalankan <code>npm run dev</code> jangan buka file langsung</li>
+      </ul>
+      <div class="error-code" id="error-detail">Klik tombol di bawah untuk melihat detail teknis error.</div>
+      <button class="error-action" onclick="location.reload()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Coba muat ulang
+      </button>
+    </div>
+  </div>
+
+  <!-- ============================================================================
+       App root — diisi oleh JavaScript setelah load
+       ============================================================================ -->
+  <div id="app" class="min-h-full flex" aria-hidden="true">
     <aside id="sidebar-slot" class="hidden lg:block"></aside>
 
-    <!-- Mobile sidebar drawer -->
     <div id="sidebar-drawer" class="fixed inset-0 z-50 hidden">
       <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-drawer-close></div>
       <div class="absolute inset-y-0 left-0 w-72 max-w-[80vw]" id="sidebar-drawer-content"></div>
     </div>
 
-    <!-- Main column -->
     <div class="flex-1 min-w-0 flex flex-col">
       <header id="header-slot"></header>
-      <main id="view-slot" class="flex-1 p-4 sm:p-6 lg:p-8 animate-fade-in">
-        <!-- Skeleton awal sebelum komponen dimuat -->
+      <main id="view-slot" class="flex-1 p-4 sm:p-6 lg:p-8">
+        <!-- Skeleton awal — diganti setelah komponen dimuat -->
         <div class="space-y-4">
-          <div class="skeleton h-8 w-64"></div>
-          <div class="skeleton h-4 w-full max-w-2xl"></div>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div class="skeleton h-32"></div>
-            <div class="skeleton h-32"></div>
-            <div class="skeleton h-32"></div>
+          <div class="skeleton" style="height: 2rem; width: 16rem;"></div>
+          <div class="skeleton" style="height: 1rem; width: 100%; max-width: 32rem;"></div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+            <div class="skeleton" style="height: 8rem;"></div>
+            <div class="skeleton" style="height: 8rem;"></div>
+            <div class="skeleton" style="height: 8rem;"></div>
           </div>
         </div>
       </main>
     </div>
   </div>
 
-  <!-- Modal portal -->
   <div id="modal-portal"></div>
-  <!-- Toast portal -->
   <div id="toast-portal" class="fixed bottom-4 right-4 z-[100] space-y-2"></div>
 
+  <!-- ============================================================================
+       Noscript fallback
+       ============================================================================ -->
+  <noscript>
+    <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #F8FAFC; padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
+      <div style="max-width: 480px;">
+        <h1 style="font-size: 1.5rem; font-weight: 700; color: #0F172A; margin: 0 0 0.5rem;">JavaScript Diperlukan</h1>
+        <p style="color: #64748B; line-height: 1.6;">Aplikasi SIMANTRI memerlukan JavaScript untuk berjalan. Mohon aktifkan JavaScript di browser Anda.</p>
+      </div>
+    </div>
+  </noscript>
+
+  <!-- ============================================================================
+       Module load error handler — tangkap error sebelum app.js load
+       ============================================================================ -->
+  <script>
+    // Sembunyikan loader & tampilkan error jika modul utama gagal load
+    window.addEventListener('error', function (e) {
+      // Hanya tangkap error dari script loading (bukan runtime error app)
+      if (e.target && e.target.tagName === 'SCRIPT') {
+        console.error('[SIMANTRI] Module script gagal dimuat:', e.target.src);
+
+        var loader = document.getElementById('initial-loader');
+        if (loader) loader.classList.add('hidden');
+
+        var errBox = document.getElementById('load-error');
+        var detail = document.getElementById('error-detail');
+
+        if (errBox) errBox.classList.add('show');
+        if (detail) {
+          detail.textContent =
+            'URL yang gagal: ' + (e.target.src || '(unknown)') + '\n\n' +
+            'Kemungkinan penyebab:\n' +
+            '1. File ' + (e.target.src || 'JS') + ' tidak ditemukan di server\n' +
+            '2. Server mengembalikan file dengan MIME type yang salah (bukan application/javascript)\n' +
+            '3. Anda mengakses via file:// protocol (tidak support ES modules)\n' +
+            '4. Source code belum di-build (npm run build) sebelum di-deploy';
+        }
+      }
+    }, true); // useCapture: true — supaya tangkap error resource loading
+
+    // Helper: sembunyikan loader setelah app siap
+    window.SIMANTRI_HIDE_LOADER = function () {
+      var loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('hidden');
+        setTimeout(function () { loader.remove(); }, 350);
+      }
+    };
+
+    // Safety timeout: jika 15 detik app belum siap, tampilkan error
+    setTimeout(function () {
+      if (document.getElementById('initial-loader') &&
+          !document.getElementById('initial-loader').classList.contains('hidden')) {
+        console.warn('[SIMANTRI] App tidak siap dalam 15 detik — mungkin gagal load');
+        var loader = document.getElementById('initial-loader');
+        if (loader) loader.classList.add('hidden');
+        var errBox = document.getElementById('load-error');
+        var detail = document.getElementById('error-detail');
+        if (errBox) errBox.classList.add('show');
+        if (detail) {
+          detail.textContent =
+            'Aplikasi tidak merespon dalam 15 detik.\n\n' +
+            'Kemungkinan penyebab:\n' +
+            '1. Koneksi internet lambat\n' +
+            '2. Supabase tidak dapat dijangkau\n' +
+            '3. Browser tidak mendukung ES modules (gunakan Chrome/Edge/Firefox modern)';
+        }
+      }
+    }, 15000);
+  </script>
+
+  <!-- ============================================================================
+       Entry point — Vite akan rewrite src ini saat build
+       ============================================================================ -->
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
