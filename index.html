@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="id" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SIMANTRI — Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <title>SIMANTRI • Platform Pengelolaan Izin Praktik Nakes</title>
+</head>
+<body class="h-full bg-ink-50 text-ink-800 font-sans antialiased">
+  <div id="app" class="min-h-full flex">
+    <!-- Sidebar slot -->
+    <aside id="sidebar-slot" class="hidden lg:block"></aside>
+
+    <!-- Mobile sidebar drawer -->
+    <div id="sidebar-drawer" class="fixed inset-0 z-50 hidden">
+      <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-drawer-close></div>
+      <div class="absolute inset-y-0 left-0 w-72 max-w-[80vw]" id="sidebar-drawer-content"></div>
+    </div>
+
+    <!-- Main column -->
+    <div class="flex-1 min-w-0 flex flex-col">
+      <header id="header-slot"></header>
+      <main id="view-slot" class="flex-1 p-4 sm:p-6 lg:p-8 animate-fade-in">
+        <!-- Skeleton awal sebelum komponen dimuat -->
+        <div class="space-y-4">
+          <div class="skeleton h-8 w-64"></div>
+          <div class="skeleton h-4 w-full max-w-2xl"></div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+            <div class="skeleton h-32"></div>
+            <div class="skeleton h-32"></div>
+            <div class="skeleton h-32"></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Modal portal -->
+  <div id="modal-portal"></div>
+  <!-- Toast portal -->
+  <div id="toast-portal" class="fixed bottom-4 right-4 z-[100] space-y-2"></div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
