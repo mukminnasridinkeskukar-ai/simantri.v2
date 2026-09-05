@@ -25,8 +25,8 @@
 window.SIMANTRI_CONFIG = {
   // === SUPABASE ===
   // Dapatkan dari: Supabase Dashboard → Project Settings → API
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: '',
+  SUPABASE_URL: 'https://kyxclotcblbkzrilldru.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5eGNsb3RjYmxia3pyaWxsZHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyODIzMjcsImV4cCI6MjEwMTg1ODMyN30.aUrEK8JLCia3vkg8nxin0wmgJw_o92Kia2T5zZM7Gwo',
 
   // === APP INFO ===
   APP_NAME: 'SIMANTRI',
