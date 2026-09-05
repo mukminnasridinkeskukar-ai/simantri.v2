@@ -1,229 +1,130 @@
 <!DOCTYPE html>
-<html lang="id" class="h-full">
+<html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="SIMANTRI — Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
   <meta name="theme-color" content="#0D9488" />
-  <meta name="author" content="SIMANTRI" />
 
-  <!-- Open Graph / Social -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="SIMANTRI — Platform Pengelolaan Izin Praktik Nakes" />
-  <meta property="og:description" content="Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
+  <title>SIMANTRI • Platform Pengelolaan Izin Praktik Nakes</title>
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <!-- Favicon (inline SVG data URI — works on file:// AND web) -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230D9488'/%3E%3Cstop offset='1' stop-color='%2384CC16'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cpath d='M32 16v32M16 32h32' stroke='%230F172A' stroke-width='6' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%230F172A'/%3E%3C/svg%3E" />
 
-  <!-- Fonts: preconnect + load -->
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
 
-  <title>SIMANTRI • Platform Pengelolaan Izin Praktik Nakes</title>
-
   <!-- ============================================================================
-       INLINE CRITICAL CSS — supaya ada styling dasar sebelum bundle JS/CSS load.
-       Mencegah flash of unstyled content (FOUC).
+       Tailwind CSS via Play CDN
+       Catatan: Play CDN cocok untuk no-build setup. Untuk production scale,
+       bisa generate Tailwind via CLI build (lihat README bagian "Production Optim").
        ============================================================================ -->
-  <style>
-    /* Reset minimal */
-    *, *::before, *::after { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; }
-    body {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #F8FAFC;
-      color: #1E293B;
-      -webkit-font-smoothing: antialiased;
-      text-rendering: optimizeLegibility;
-    }
-    /* Skeleton shimmer — tampil sebelum Tailwind load */
-    @keyframes shimmer {
-      0% { background-position: -468px 0; }
-      100% { background-position: 468px 0; }
-    }
-    .skeleton {
-      background: linear-gradient(90deg, #F1F5F9 0%, #E2E8F0 50%, #F1F5F9 100%);
-      background-size: 468px 100%;
-      animation: shimmer 1.4s linear infinite;
-      border-radius: 8px;
-    }
-    /* Loading screen — tampil saat JS bundle masih dimuat */
-    #initial-loader {
-      position: fixed; inset: 0;
-      display: flex; align-items: center; justify-content: center;
-      background: #F8FAFC;
-      z-index: 9999;
-      transition: opacity .3s ease;
-    }
-    #initial-loader.hidden { opacity: 0; pointer-events: none; }
-    .loader-card {
-      text-align: center;
-      padding: 2rem;
-    }
-    .loader-logo {
-      width: 56px; height: 56px;
-      border-radius: 14px;
-      background: linear-gradient(135deg, #0D9488 0%, #84CC16 100%);
-      display: inline-flex; align-items: center; justify-content: center;
-      margin-bottom: 1rem;
-      animation: pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(0.95); opacity: 0.8; }
-    }
-    .loader-title {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #0F172A;
-      margin: 0 0 0.25rem;
-    }
-    .loader-subtitle {
-      font-size: 0.875rem;
-      color: #64748B;
-      margin: 0;
-    }
-    .loader-bar {
-      width: 200px; height: 3px;
-      background: #E2E8F0;
-      border-radius: 9999px;
-      margin: 1.5rem auto 0;
-      overflow: hidden;
-      position: relative;
-    }
-    .loader-bar::after {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(90deg, transparent, #0D9488, transparent);
-      animation: loader-bar 1.5s linear infinite;
-    }
-    @keyframes loader-bar {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-    /* Error screen — tampil jika JS gagal load */
-    #load-error {
-      position: fixed; inset: 0;
-      display: none;
-      align-items: center; justify-content: center;
-      background: #F8FAFC;
-      padding: 1rem;
-      z-index: 10000;
-    }
-    #load-error.show { display: flex; }
-    .error-card {
-      max-width: 540px;
-      width: 100%;
-      background: white;
-      border-radius: 16px;
-      border: 1px solid #FECDD3;
-      box-shadow: 0 10px 40px -10px rgba(244, 63, 94, 0.2);
-      padding: 2rem;
-    }
-    .error-icon {
-      width: 48px; height: 48px;
-      border-radius: 12px;
-      background: #FFF1F2;
-      color: #F43F5E;
-      display: inline-flex; align-items: center; justify-content: center;
-      margin-bottom: 1rem;
-    }
-    .error-title {
-      font-size: 1.125rem;
-      font-weight: 700;
-      color: #0F172A;
-      margin: 0 0 0.5rem;
-    }
-    .error-message {
-      font-size: 0.875rem;
-      color: #475569;
-      line-height: 1.5;
-      margin: 0 0 1rem;
-    }
-    .error-code {
-      font-family: ui-monospace, 'SF Mono', Menlo, monospace;
-      font-size: 0.75rem;
-      background: #F1F5F9;
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      color: #475569;
-      margin: 1rem 0;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    .error-action {
-      display: inline-flex;
-      align-items: center; gap: 0.5rem;
-      padding: 0.625rem 1.25rem;
-      background: #0D9488;
-      color: white;
-      border: none;
-      border-radius: 10px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background .2s;
-    }
-    .error-action:hover { background: #0F766E; }
-  </style>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Tailwind config — palette SIMANTRI (Teal + Lime + Amber + Rose)
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            base: '#FFFFFF',
+            ink: {
+              50: '#F8FAFC', 100: '#F1F5F9', 200: '#E2E8F0', 300: '#CBD5E1',
+              400: '#94A3B8', 500: '#64748B', 600: '#475569', 700: '#334155',
+              800: '#1E293B', 900: '#0F172A',
+            },
+            teal: {
+              50:'#F0FDFA',100:'#CCFBF1',200:'#99F6E4',300:'#5EEAD4',400:'#2DD4BF',
+              500:'#14B8A6',600:'#0D9488',700:'#0F766E',800:'#115E59',900:'#134E4A',
+            },
+            lime: {
+              50:'#F7FEE7',100:'#ECFCCB',200:'#D9F99D',300:'#BEF264',400:'#A3E635',
+              500:'#84CC16',600:'#65A30D',700:'#4D7C0F',
+            },
+            amber: {
+              50:'#FFFBEB',100:'#FEF3C7',200:'#FDE68A',300:'#FCD34D',400:'#FBBF24',
+              500:'#F59E0B',600:'#D97706',700:'#B45309',
+            },
+            rose: {
+              50:'#FFF1F2',100:'#FFE4E6',200:'#FECDD3',300:'#FDA4AF',400:'#FB7185',
+              500:'#F43F5E',600:'#E11D48',700:'#BE123C',
+            },
+          },
+          fontFamily: {
+            sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+          },
+          boxShadow: {
+            'soft': '0 1px 2px 0 rgba(15,23,42,0.04), 0 4px 16px -2px rgba(15,23,42,0.06)',
+            'card': '0 1px 3px 0 rgba(15,23,42,0.05), 0 10px 30px -10px rgba(15,23,42,0.10)',
+            'glow': '0 0 0 3px rgba(13,148,136,0.18), 0 8px 24px -8px rgba(13,148,136,0.35)',
+            'lime': '0 0 0 3px rgba(132,204,22,0.20), 0 8px 24px -8px rgba(132,204,22,0.35)',
+          },
+          borderRadius: { 'xl2': '1.25rem' },
+          transitionTimingFunction: { 'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)' },
+          keyframes: {
+            'fade-in': { '0%': { opacity: 0, transform: 'translateY(6px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
+            'shimmer': { '0%': { backgroundPosition: '-468px 0' }, '100%': { backgroundPosition: '468px 0' } },
+            'pulse-dot': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.4 } },
+          },
+          animation: {
+            'fade-in': 'fade-in 0.4s cubic-bezier(0.16,1,0.3,1) both',
+            'shimmer': 'shimmer 1.4s linear infinite',
+            'pulse-dot': 'pulse-dot 1.4s ease-in-out infinite',
+          },
+        },
+      },
+    };
+  </script>
+
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="./css/style.css" />
 </head>
-<body class="h-full">
+<body class="h-full bg-ink-50 text-ink-800 font-sans antialiased">
+
   <!-- ============================================================================
        Loading screen awal — disembunyikan setelah app.js selesai init
        ============================================================================ -->
-  <div id="initial-loader" aria-label="Memuat aplikasi">
-    <div class="loader-card">
-      <div class="loader-logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 4v16m8-8H4"/>
-        </svg>
+  <div id="initial-loader" aria-label="Memuat aplikasi" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F8FAFC;z-index:9999;transition:opacity .3s ease;">
+    <div style="text-align:center;padding:2rem;">
+      <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;animation:sim-pulse 2s ease-in-out infinite;">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16m8-8H4"/></svg>
       </div>
-      <p class="loader-title">SIMANTRI</p>
-      <p class="loader-subtitle">Memuat platform pengelolaan izin praktik...</p>
-      <div class="loader-bar"></div>
+      <p style="font-size:1.25rem;font-weight:700;color:#0F172A;margin:0 0 0.25rem;">SIMANTRI</p>
+      <p style="font-size:0.875rem;color:#64748B;margin:0;">Memuat platform pengelolaan izin praktik...</p>
+      <div style="width:200px;height:3px;background:#E2E8F0;border-radius:9999px;margin:1.5rem auto 0;overflow:hidden;position:relative;">
+        <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,#0D9488,transparent);animation:sim-bar 1.5s linear infinite;"></div>
+      </div>
     </div>
   </div>
+  <style>
+    @keyframes sim-pulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(0.95);opacity:0.8;} }
+    @keyframes sim-bar { 0%{transform:translateX(-100%);} 100%{transform:translateX(100%);} }
+  </style>
 
   <!-- ============================================================================
-       Error screen — tampil jika modul JS gagal dimuat
+       Error screen — tampil jika JS gagal load
        ============================================================================ -->
-  <div id="load-error" role="alert">
-    <div class="error-card">
-      <div class="error-icon">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-        </svg>
+  <div id="load-error" role="alert" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#F8FAFC;padding:1rem;z-index:10000;">
+    <div style="max-width:540px;width:100%;background:white;border-radius:16px;border:1px solid #FECDD3;box-shadow:0 10px 40px -10px rgba(244,63,94,0.2);padding:2rem;">
+      <div style="width:48px;height:48px;border-radius:12px;background:#FFF1F2;color:#F43F5E;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
       </div>
-      <p class="error-title">Aplikasi gagal dimuat</p>
-      <p class="error-message" id="error-message-text">
-        Terjadi kesalahan saat memuat berkas JavaScript. Ini biasanya terjadi karena:
-      </p>
-      <ul style="font-size: 0.875rem; color: #475569; padding-left: 1.25rem; margin: 0 0 1rem; line-height: 1.7;">
-        <li>Anda membuka file <code>index.html</code> langsung dari folder (protokol <code>file://</code>) — aplikasi harus diakses via web server</li>
-        <li>Anda meng-upload source code ke GitHub Pages tanpa melalui proses <code>npm run build</code> terlebih dahulu</li>
-        <li>Konfigurasi base path di <code>vite.config.js</code> tidak sesuai dengan URL deployment</li>
-      </ul>
-      <p class="error-message"><strong>Solusi:</strong></p>
-      <ul style="font-size: 0.875rem; color: #475569; padding-left: 1.25rem; margin: 0 0 1rem; line-height: 1.7;">
-        <li>Pastikan GitHub Pages menggunakan <strong>Source: GitHub Actions</strong> (bukan <em>Deploy from branch</em>)</li>
-        <li>Pastikan workflow <code>.github/workflows/deploy.yml</code> berhasil dijalankan (cek tab <strong>Actions</strong>)</li>
-        <li>Untuk testing lokal, jalankan <code>npm run dev</code> jangan buka file langsung</li>
-      </ul>
-      <div class="error-code" id="error-detail">Klik tombol di bawah untuk melihat detail teknis error.</div>
-      <button class="error-action" onclick="location.reload()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-        </svg>
+      <p style="font-size:1.125rem;font-weight:700;color:#0F172A;margin:0 0 0.5rem;">Aplikasi gagal dimuat</p>
+      <p style="font-size:0.875rem;color:#475569;line-height:1.5;margin:0 0 1rem;" id="error-message-text">Terjadi kesalahan saat memuat aplikasi.</p>
+      <pre id="error-detail" style="font-family:ui-monospace,monospace;font-size:0.75rem;background:#F1F5F9;padding:0.75rem 1rem;border-radius:8px;color:#475569;margin:1rem 0;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto;"></pre>
+      <button onclick="location.reload()" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.625rem 1.25rem;background:#0D9488;color:white;border:none;border-radius:10px;font-size:0.875rem;font-weight:600;cursor:pointer;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
         Coba muat ulang
       </button>
     </div>
   </div>
 
   <!-- ============================================================================
-       App root — diisi oleh JavaScript setelah load
+       App root
        ============================================================================ -->
-  <div id="app" class="min-h-full flex" aria-hidden="true">
+  <div id="app" class="min-h-full flex">
     <aside id="sidebar-slot" class="hidden lg:block"></aside>
 
     <div id="sidebar-drawer" class="fixed inset-0 z-50 hidden">
@@ -234,14 +135,14 @@
     <div class="flex-1 min-w-0 flex flex-col">
       <header id="header-slot"></header>
       <main id="view-slot" class="flex-1 p-4 sm:p-6 lg:p-8">
-        <!-- Skeleton awal — diganti setelah komponen dimuat -->
+        <!-- Skeleton awal -->
         <div class="space-y-4">
-          <div class="skeleton" style="height: 2rem; width: 16rem;"></div>
-          <div class="skeleton" style="height: 1rem; width: 100%; max-width: 32rem;"></div>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; margin-top: 1.5rem;">
-            <div class="skeleton" style="height: 8rem;"></div>
-            <div class="skeleton" style="height: 8rem;"></div>
-            <div class="skeleton" style="height: 8rem;"></div>
+          <div class="skeleton" style="height:2rem;width:16rem;"></div>
+          <div class="skeleton" style="height:1rem;width:100%;max-width:32rem;"></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;margin-top:1.5rem;">
+            <div class="skeleton" style="height:8rem;"></div>
+            <div class="skeleton" style="height:8rem;"></div>
+            <div class="skeleton" style="height:8rem;"></div>
           </div>
         </div>
       </main>
@@ -251,81 +152,86 @@
   <div id="modal-portal"></div>
   <div id="toast-portal" class="fixed bottom-4 right-4 z-[100] space-y-2"></div>
 
-  <!-- ============================================================================
-       Noscript fallback
-       ============================================================================ -->
   <noscript>
-    <div style="position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #F8FAFC; padding: 2rem; text-align: center; font-family: system-ui, sans-serif;">
-      <div style="max-width: 480px;">
-        <h1 style="font-size: 1.5rem; font-weight: 700; color: #0F172A; margin: 0 0 0.5rem;">JavaScript Diperlukan</h1>
-        <p style="color: #64748B; line-height: 1.6;">Aplikasi SIMANTRI memerlukan JavaScript untuk berjalan. Mohon aktifkan JavaScript di browser Anda.</p>
+    <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F8FAFC;padding:2rem;text-align:center;font-family:system-ui,sans-serif;">
+      <div style="max-width:480px;">
+        <h1 style="font-size:1.5rem;font-weight:700;color:#0F172A;margin:0 0 0.5rem;">JavaScript Diperlukan</h1>
+        <p style="color:#64748B;line-height:1.6;">Aplikasi SIMANTRI memerlukan JavaScript. Mohon aktifkan JavaScript di browser Anda.</p>
       </div>
     </div>
   </noscript>
 
   <!-- ============================================================================
-       Module load error handler — tangkap error sebelum app.js load
+       Error handler — tangkap error script loading
        ============================================================================ -->
   <script>
-    // Sembunyikan loader & tampilkan error jika modul utama gagal load
     window.addEventListener('error', function (e) {
-      // Hanya tangkap error dari script loading (bukan runtime error app)
-      if (e.target && e.target.tagName === 'SCRIPT') {
-        console.error('[SIMANTRI] Module script gagal dimuat:', e.target.src);
-
+      if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
+        console.error('[SIMANTRI] Resource gagal dimuat:', e.target.src || e.target.href);
         var loader = document.getElementById('initial-loader');
-        if (loader) loader.classList.add('hidden');
-
+        if (loader) loader.style.display = 'none';
         var errBox = document.getElementById('load-error');
         var detail = document.getElementById('error-detail');
-
-        if (errBox) errBox.classList.add('show');
-        if (detail) {
-          detail.textContent =
-            'URL yang gagal: ' + (e.target.src || '(unknown)') + '\n\n' +
-            'Kemungkinan penyebab:\n' +
-            '1. File ' + (e.target.src || 'JS') + ' tidak ditemukan di server\n' +
-            '2. Server mengembalikan file dengan MIME type yang salah (bukan application/javascript)\n' +
-            '3. Anda mengakses via file:// protocol (tidak support ES modules)\n' +
-            '4. Source code belum di-build (npm run build) sebelum di-deploy';
-        }
+        var msg = document.getElementById('error-message-text');
+        if (errBox) errBox.style.display = 'flex';
+        if (msg) msg.textContent = 'File JavaScript/CSS gagal dimuat. Pastikan semua file ada di folder yang benar.';
+        if (detail) detail.textContent = 'URL: ' + (e.target.src || e.target.href) + '\n\nPastikan file ini ada di lokasi yang benar relatif terhadap index.html';
       }
-    }, true); // useCapture: true — supaya tangkap error resource loading
+    }, true);
 
-    // Helper: sembunyikan loader setelah app siap
     window.SIMANTRI_HIDE_LOADER = function () {
       var loader = document.getElementById('initial-loader');
-      if (loader) {
-        loader.classList.add('hidden');
-        setTimeout(function () { loader.remove(); }, 350);
-      }
+      if (loader) { loader.style.opacity = '0'; setTimeout(function(){ loader.remove(); }, 350); }
     };
 
-    // Safety timeout: jika 15 detik app belum siap, tampilkan error
+    // Safety timeout
     setTimeout(function () {
-      if (document.getElementById('initial-loader') &&
-          !document.getElementById('initial-loader').classList.contains('hidden')) {
-        console.warn('[SIMANTRI] App tidak siap dalam 15 detik — mungkin gagal load');
-        var loader = document.getElementById('initial-loader');
-        if (loader) loader.classList.add('hidden');
+      var loader = document.getElementById('initial-loader');
+      if (loader && loader.style.display !== 'none') {
+        console.warn('[SIMANTRI] App tidak siap dalam 20 detik');
+        loader.style.display = 'none';
         var errBox = document.getElementById('load-error');
+        if (errBox) errBox.style.display = 'flex';
         var detail = document.getElementById('error-detail');
-        if (errBox) errBox.classList.add('show');
-        if (detail) {
-          detail.textContent =
-            'Aplikasi tidak merespon dalam 15 detik.\n\n' +
-            'Kemungkinan penyebab:\n' +
-            '1. Koneksi internet lambat\n' +
-            '2. Supabase tidak dapat dijangkau\n' +
-            '3. Browser tidak mendukung ES modules (gunakan Chrome/Edge/Firefox modern)';
-        }
+        if (detail) detail.textContent = 'Aplikasi tidak merespon dalam 20 detik. Periksa koneksi internet atau buka Console (F12) untuk detail.';
       }
-    }, 15000);
+    }, 20000);
   </script>
 
   <!-- ============================================================================
-       Entry point — Vite akan rewrite src ini saat build
+       Library CDN — load BEFORE app scripts
        ============================================================================ -->
-  <script type="module" src="./src/main.js"></script>
+  <!-- Supabase JS client (UMD build — exposes window.supabase) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <!-- Chart.js (UMD build — exposes window.Chart) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+
+  <!-- ============================================================================
+       App scripts — plain JS (NOT type="module"), load berurutan
+       Order PENTING: config → utils → supabase → auth → demo-data → components → pages → app
+       ============================================================================ -->
+  <script src="./config.js"></script>
+  <script src="./js/utils.js"></script>
+  <script src="./js/supabase.js"></script>
+  <script src="./js/auth.js"></script>
+  <script src="./js/demo-data.js"></script>
+  <script src="./js/components.js"></script>
+
+  <!-- Pages (12) — each attaches to window.SIMANTRI_PAGES -->
+  <script src="./js/pages/dashboard.js"></script>
+  <script src="./js/pages/peta-sebaran.js"></script>
+  <script src="./js/pages/notifikasi-expired.js"></script>
+  <script src="./js/pages/data-nakes.js"></script>
+  <script src="./js/pages/data-tenaga-kesehatan.js"></script>
+  <script src="./js/pages/data-fasyankes.js"></script>
+  <script src="./js/pages/jadwal-praktik.js"></script>
+  <script src="./js/pages/verifikasi.js"></script>
+  <script src="./js/pages/perpanjangan.js"></script>
+  <script src="./js/pages/laporan.js"></script>
+  <script src="./js/pages/manajemen-user.js"></script>
+  <script src="./js/pages/pengaturan.js"></script>
+
+  <!-- App bootstrap — MUST load last -->
+  <script src="./js/app.js"></script>
 </body>
 </html>

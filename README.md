@@ -1,143 +1,205 @@
-# SIMANTRI v2 — Sistem Informasi & Manajemen Praktik Nakes
+# SIMANTRI v3 — Sistem Informasi & Manajemen Praktik Nakes
 
 > **SIMANTRI** = Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri.
 >
 > Platform digital untuk **Dinas Kesehatan**, **Admin Fasyankes** (RS / Puskesmas / Klinik / Apotek / Praktik Mandiri), dan **Tenaga Kesehatan** untuk mendata, memverifikasi, dan memonitoring legalitas praktik.
 
-Dibangun dengan **Vite + Tailwind CSS + Supabase**. Dirancang untuk **deploy statis di GitHub Pages** — pengguna cukup membuka URL di browser, **tidak perlu install Node.js atau menjalankan server lokal**.
+**Versi 3** — No-build, plain HTML/CSS/JS. **Bisa langsung dibuka di browser dengan double-click** tanpa `npm install`, tanpa Vite, tanpa server lokal.
 
 ---
 
-## 🚀 Cara Pakai untuk Pengguna Akhir (End User)
+## ✨ Cara Pakai Paling Sederhana
 
-Pengguna **TIDAK perlu** melakukan setup teknis. Cukup:
+### Opsi A: Buka langsung di komputer Anda
+1. Extract file ZIP ke folder mana saja
+2. Double-click file `index.html`
+3. Browser terbuka → aplikasi langsung tampil ✅
 
-1. Buka URL GitHub Pages di browser (Chrome / Edge / Firefox):
-   ```
-   https://USERNAME.github.io/simantri-nakes-v2/
-   ```
-2. Aplikasi langsung tampil dan siap dipakai.
+### Opsi B: Upload ke GitHub Pages
+1. Upload semua file ke repository GitHub (drag-drop via web UI juga bisa)
+2. Settings → Pages → **Source: Deploy from a branch** → pilih `main` / `/ (root)`
+3. Tunggu 1-2 menit
+4. Buka `https://USERNAME.github.io/NAMA-REPO/`
 
-> Jika Supabase belum dikonfigurasi oleh admin, aplikasi otomatis masuk **Demo Mode** dengan data contoh — tetap bisa dijelajahi tanpa error.
+**Tidak perlu**:
+- ❌ `npm install`
+- ❌ `npm run dev` / `npm run build`
+- ❌ Node.js
+- ❌ Command line
+- ❌ Server lokal
 
 ---
 
-## 🛠️ Setup untuk Developer / Admin (sekali saja)
+## 🎯 Kenapa v3 Berbeda dari v2?
 
-Berikut langkah-langkah untuk deploy aplikasi ke GitHub Pages. Dilakukan **sekali** oleh developer/admin, setelah itu pengguna cukup buka URL.
-
-### Langkah 1: Upload Project ke GitHub
-
-```bash
-# Inisialisasi repo lokal
-cd simantri-v2
-git init
-git add .
-git commit -m "feat: SIMANTRI v2 — initial deploy"
-
-# Buat repo di GitHub bernama "simantri-nakes-v2" (atau nama lain)
-# Lalu push
-git branch -M main
-git remote add origin https://github.com/USERNAME/simantri-nakes-v2.git
-git push -u origin main
-```
-
-> 💡 Anda juga bisa upload via GitHub web UI (drag-drop folder) jika belum terbiasa dengan git.
-
-### Langkah 2: Aktifkan GitHub Pages
-
-1. Buka repo di GitHub → **Settings** → **Pages**
-2. Pada bagian **Build and deployment → Source**, pilih **GitHub Actions**
-3. Selesai. Workflow akan otomatis jalan setiap Anda push ke branch `main`.
-
-### Langkah 3: Tambahkan Supabase Credentials (opsional)
-
-Jika ingin menggunakan backend Supabase asli (bukan Demo Mode):
-
-1. Buat project gratis di [supabase.com](https://supabase.com)
-2. Buka **Project Settings → API** → copy **Project URL** dan **anon public key**
-3. Di repo GitHub → **Settings → Secrets and variables → Actions → New repository secret**:
-   - Name: `VITE_SUPABASE_URL` → Value: URL Supabase Anda
-   - Name: `VITE_SUPABASE_ANON_KEY` → Value: anon key Supabase Anda
-4. Setup database: buka **Supabase Dashboard → SQL Editor** → paste isi [`supabase/schema.sql`](./supabase/schema.sql) → klik **Run**
-5. Buat akun admin: di **Authentication → Users → Add user** (centang "Auto Confirm"), lalu jalankan SQL:
-   ```sql
-   update public.profiles
-   set role = 'dinkes', full_name = 'Admin Dinkes'
-   where email = 'email-anda@domain.go.id';
-   ```
-
-> ⚠️ **PENTING**: Jangan pernah tambahkan `service_role` key ke Repository Secrets frontend. Hanya `anon key` yang aman — keamanan data dijamin oleh **Row Level Security (RLS)** yang sudah dikonfigurasi di `schema.sql`.
-
-### Langkah 4: Tunggu GitHub Actions Selesai
-
-1. Buka repo → tab **Actions**
-2. Tunggu workflow **"Deploy to GitHub Pages"** selesai (± 1-2 menit)
-3. Lihat URL production di: **Settings → Pages** atau pada output workflow
-
-### Langkah 5: Buka URL di Browser
-
-```
-https://USERNAME.github.io/simantri-nakes-v2/
-```
-
-Selesai. Aplikasi live dan bisa diakses siapa pun.
+| Aspek | v2 (lama) | v3 (baru) |
+|---|---|---|
+| Build tool | Vite + Tailwind CLI | **Tidak ada** (no-build) |
+| Module system | ES Modules (`import/export`) | **Plain JS** (`window.*` globals) |
+| Tailwind | Build-time compile | **Play CDN** (runtime) |
+| Supabase client | npm package | **CDN UMD** |
+| Buka via `file://` | ❌ Tidak bisa | ✅ **Bisa** |
+| Double-click index.html | ❌ Error MIME | ✅ **Langsung jalan** |
+| GitHub Pages setup | GitHub Actions | **Deploy from branch** (lebih simpel) |
+| Edit cepat | Perlu build ulang | **Save & refresh** browser |
 
 ---
 
 ## 📁 Struktur Proyek
 
 ```
-simantri-nakes-v2/
-├── index.html                          # Shell utama
-├── package.json                        # Dependencies + scripts
-├── vite.config.js                      # Vite config (base path dinamis untuk GitHub Pages)
-├── tailwind.config.js
-├── postcss.config.js
-├── .env.example                        # Template env vars
-├── .gitignore
-├── README.md
+simantri-v3/
+├── index.html                  # Shell utama — TINGGAL DIBUKA di browser
+├── config.js                   # Konfigurasi Supabase (edit di sini)
+├── .nojekyll                   # Disable Jekyll di GitHub Pages
 │
-├── .github/workflows/
-│   └── deploy.yml                      # Auto build + deploy ke GitHub Pages
+├── css/
+│   └── style.css               # Custom styles (components, badges, table)
 │
-├── public/
-│   ├── favicon.svg
-│   └── 404.html                        # SPA fallback (menghindari 404 saat refresh)
+├── js/
+│   ├── utils.js                # Helper: fmtDate, escapeHtml, toast, dll
+│   ├── supabase.js             # Supabase client & helpers
+│   ├── auth.js                 # Auth (sign in/out/signup + role check)
+│   ├── demo-data.js            # Mock data + loaders (demo & prod)
+│   ├── components.js           # Sidebar, Header, StatCard
+│   ├── app.js                  # Router & bootstrap (load terakhir)
+│   └── pages/                  # 12 halaman modular
+│       ├── dashboard.js
+│       ├── peta-sebaran.js
+│       ├── notifikasi-expired.js
+│       ├── data-nakes.js
+│       ├── data-tenaga-kesehatan.js
+│       ├── data-fasyankes.js
+│       ├── jadwal-praktik.js
+│       ├── verifikasi.js
+│       ├── perpanjangan.js
+│       ├── laporan.js
+│       ├── manajemen-user.js
+│       └── pengaturan.js
 │
-├── supabase/
-│   └── schema.sql                      # Database schema + RLS policies
-│
-└── src/
-    ├── main.js                         # Entry point
-    ├── styles/main.css                 # Tailwind + custom components
-    ├── components/layout/              # Sidebar, Header, StatCard
-    ├── pages/                          # 12 halaman modular (HTML + JS)
-    └── assets/js/
-        ├── supabase.js                 # Supabase client (anon key dari env)
-        ├── auth.js                     # Auth helper
-        ├── app.js                      # Router + loadComponent
-        ├── pages-bootstrap.js
-        ├── demo-data.js                # Fallback mock data (Demo Mode)
-        └── utils.js
+└── supabase/
+    └── schema.sql              # Database schema + RLS (jalankan di Supabase)
 ```
+
+---
+
+## 🚀 Setup Production (Opsional — untuk pakai Supabase asli)
+
+Aplikasi sudah jalan di **Demo Mode** tanpa setup apapun. Untuk pakai backend Supabase asli:
+
+### 1. Buat project Supabase
+- Daftar gratis di [supabase.com](https://supabase.com)
+- Buat project baru, tunggu ± 2 menit
+
+### 2. Setup database
+- Buka **SQL Editor** di dashboard Supabase
+- Paste seluruh isi `supabase/schema.sql`
+- Klik **Run** — semua tabel, RLS, trigger ter-create
+
+### 3. Edit `config.js`
+Buka file `config.js` dengan text editor (Notepad / VS Code), isi:
+
+```javascript
+window.SIMANTRI_CONFIG = {
+  SUPABASE_URL: 'https://abcd1234.supabase.co',           // ← ganti
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6...',   // ← ganti
+  // ...lainnya biarkan default
+};
+```
+
+Ambil URL & anon key dari: **Supabase Dashboard → Project Settings → API**
+
+### 4. Buat akun admin Dinkes
+- Di Supabase → **Authentication → Users → Add user**
+- Isi email + password, centang "Auto Confirm User"
+- Jalankan SQL:
+  ```sql
+  update public.profiles
+  set role = 'dinkes', full_name = 'Admin Dinkes'
+  where email = 'email-anda@domain.go.id';
+  ```
+
+### 5. Save & refresh
+- Save `config.js`
+- Refresh browser — aplikasi otomatis pakai Supabase (bukan demo lagi)
+
+---
+
+## 🌐 Deploy ke GitHub Pages
+
+### Cara cepat (2 menit)
+
+1. **Buat repo baru** di GitHub (nama bebas, mis. `simantri-nakes-v3`)
+2. **Upload semua file**:
+   - Via web: klik "uploading an existing file" → drag-drop semua file dari ZIP
+   - Atau via git:
+     ```bash
+     git init
+     git add .
+     git commit -m "SIMANTRI v3"
+     git remote add origin https://github.com/USERNAME/simantri-nakes-v3.git
+     git push -u origin main
+     ```
+3. **Aktifkan Pages**:
+   - Repo → **Settings → Pages**
+   - Source: **Deploy from a branch**
+   - Branch: `main` / `(root)`
+   - Save
+4. **Tunggu 1-2 menit**, lalu buka:
+   ```
+   https://USERNAME.github.io/simantri-nakes-v3/
+   ```
+
+### Catatan tentang file `.nojekyll`
+
+File `.nojekyll` (kosong, tanpa ekstensi) **WAJIB ada** di root repo. Fungsinya:
+- Memberitahu GitHub Pages: "Jangan proses dengan Jekyll"
+- Mencegah file dengan underscore (`_`) atau nama aneh di-drop
+- Pastikan semua file JS/CSS tersaji apa adanya
+
+Sudah include di project ini ✅
+
+---
+
+## 🔒 Keamanan
+
+### Yang AMAN di frontend:
+- ✅ **Anon key** Supabase — dirancang untuk di-expose. Data dilindungi oleh RLS.
+- ✅ Konfigurasi Tailwind via Play CDN
+- ✅ Library Supabase JS & Chart.js via CDN
+
+### Yang TIDAK boleh di frontend:
+- ❌ **Service role key** Supabase — hanya untuk server/Edge Functions
+- ❌ Password database
+- ❌ Token rahasia lainnya
+
+### Row Level Security (RLS)
+Sudah dikonfigurasi di `supabase/schema.sql`:
+
+| Role | Lihat Semua | Lihat Fasyankes Sendiri | Lihat Diri Sendiri | Manajemen User |
+|---|---|---|---|---|
+| `dinkes`     | ✅ | ✅ | ✅ | ✅ |
+| `fasyankes`  | ❌ | ✅ | ✅ | ❌ |
+| `nakes`      | ❌ | ❌ | ✅ | ❌ |
 
 ---
 
 ## ✨ Fitur Aplikasi
 
-- **Dashboard Monitoring** — ringkasan real-time: total nakes, fasyankes, status STR/SIP
-- **Peta Sebaran Praktik** — visualisasi geografis lokasi fasyankes
-- **Notifikasi Expired** — peringatan dini STR/SIP H-90 (warna amber)
-- **Data Tenaga Medis** — Dokter, Dokter Gigi, Dokter Spesialis + modal detail + timeline perizinan
-- **Data Tenaga Kesehatan** — Perawat, Bidan, Apoteker, TTK, ATLM, Gizi, Kesling
-- **Data Fasyankes** — RS, Puskesmas, Klinik, Apotek, Praktik Mandiri
-- **Jadwal Praktik** — tampilan mingguan
-- **Verifikasi STR & SIP** — kanban board approve/reject
-- **Perpanjangan & Rekomendasi** — form dengan validasi + dropzone file
-- **Laporan & Rekap Dinkes** — chart 6 bulan + insight + export
-- **Manajemen User & Role** — Dinkes-only, dengan matrix permission
-- **Pengaturan & Audit Log** — preferensi notifikasi + log audit
+12 halaman modular:
+
+1. **Dashboard Monitoring** — ringkasan real-time: total nakes, fasyankes, status STR/SIP
+2. **Peta Sebaran Praktik** — visualisasi geografis lokasi fasyankes
+3. **Notifikasi Expired** — peringatan dini STR/SIP H-90 (warna amber)
+4. **Data Tenaga Medis** — Dokter, Dokter Gigi, Dokter Spesialis + modal detail + timeline
+5. **Data Tenaga Kesehatan** — Perawat, Bidan, Apoteker, TTK, ATLM, Gizi, Kesling
+6. **Data Fasyankes** — RS, Puskesmas, Klinik, Apotek, Praktik Mandiri (grid view)
+7. **Jadwal Praktik** — tampilan mingguan
+8. **Verifikasi STR & SIP** — kanban board approve/reject
+9. **Perpanjangan & Rekomendasi** — form dengan validasi + dropzone file
+10. **Laporan & Rekap Dinkes** — chart 6 bulan + insight + export CSV
+11. **Manajemen User & Role** — Dinkes-only, dengan matrix permission
+12. **Pengaturan & Audit Log** — preferensi notifikasi + log audit
 
 ---
 
@@ -147,140 +209,74 @@ simantri-nakes-v2/
 
 | Token | Warna | Penggunaan |
 |---|---|---|
-| `teal-600`  | `#0D9488` | Primary |
-| `lime-500`  | `#84CC16` | Accent |
-| `amber-500` | `#F59E0B` | Alert (H-90 expired) |
-| `rose-500`  | `#F43F5E` | Danger (expired) |
-| `ink-900`   | `#0F172A` | Sidebar, body text |
-| `white`     | `#FFFFFF` | Base |
-
----
-
-## 🔒 Konfigurasi Deployment (GitHub Pages)
-
-### Base Path
-
-`vite.config.js` otomatis menyesuaikan base path:
-
-| Mode | Base | Contoh URL |
-|---|---|---|
-| Dev lokal | `/` | `http://localhost:5173/` |
-| User/Org page | `/` | `https://USERNAME.github.io/` |
-| Project page | `/REPO_NAME/` | `https://USERNAME.github.io/simantri-nakes-v2/` |
-
-GitHub Actions **otomatis detect** jenis page dari nama repo — Anda tidak perlu set manual.
-
-### SPA Routing (anti-404)
-
-- Router memakai **hash-based routing** (`#/dashboard`, `#/data-nakes`, dst.)
-- Refresh halaman manapun **tidak akan 404** karena hash tidak dikirim ke server
-- Tambahan: `public/404.html` sebagai safety net untuk URL non-hash yang ter-share
-
-### Asset Paths
-
-Semua asset (CSS, JS, SVG, favicon) dirujuk dengan **relative path** (`./favicon.svg`, `./src/main.js`) atau di-rewrite otomatis oleh Vite menggunakan `import.meta.env.BASE_URL` — kompatibel di subpath manapun.
-
----
-
-## 🧱 Arsitektur
-
-### Component Loading — `loadComponent(id, path)`
-
-`src/assets/js/app.js` menyediakan fungsi pemuat fragmen HTML modular:
-
-```js
-import { loadComponent } from '@/assets/js/app.js';
-await loadComponent('view-slot', 'pages/dashboard');
-```
-
-Implementasi: `import.meta.glob('/src/**/*.html', { query: '?raw', eager: true })` — semua HTML di-bundle ke JS saat build time. Hasil: 1 request JS, tanpa runtime fetch yang bisa gagal di GitHub Pages subpath.
-
-### Role-Based Access (RBAC)
-
-| Role | Lihat Semua | Lihat Fasyankes Sendiri | Lihat Diri Sendiri | Manajemen User |
-|---|---|---|---|---|
-| `dinkes`     | ✅ | ✅ | ✅ | ✅ |
-| `fasyankes`  | ❌ | ✅ | ✅ | ❌ |
-| `nakes`      | ❌ | ❌ | ✅ | ❌ |
-
-Diterapkan via **Supabase RLS** di `supabase/schema.sql` + helper function `is_dinkes()` & `current_user_fasyankes()`.
-
----
-
-## 🗃️ Skema Database
-
-Lihat lengkap di [`supabase/schema.sql`](./supabase/schema.sql). Tabel utama:
-
-- `profiles` — user dengan role (dinkes/fasyankes/nakes)
-- `fasyankes` — RS/Puskesmas/Klinik/Apotek/Praktik Mandiri
-- `tenaga_kesehatan` — data nakes + STR + status verifikasi
-- `praktik` — SIP/SIK/Rekomendasi + jadwal praktik
-- `notifications` — notifikasi expired
-- `audit_log` — log aktivitas user
-
----
-
-## 📦 Scripts
-
-| Command | Description |
-|---|---|
-| `npm run dev`     | Dev server lokal (hot reload) |
-| `npm run build`   | Build production ke `dist/` |
-| `npm run preview` | Preview build production |
-| `npm run deploy:gh` | Build + deploy via gh-pages (alternatif) |
-
-> **Catatan**: Pengguna akhir **TIDAK perlu** menjalankan command di atas. Command ini hanya untuk developer. End user cukup buka URL GitHub Pages.
+| `teal-600`  | `#0D9488` | Primary — tombol, link, active state |
+| `lime-500`  | `#84CC16` | Accent — highlight, badge special |
+| `amber-500` | `#F59E0B` | Alert — H-90 expired warning |
+| `rose-500`  | `#F43F5E` | Danger — expired, error |
+| `ink-900`   | `#0F172A` | Sidebar background, body text |
+| `white`     | `#FFFFFF` | Base background, card |
 
 ---
 
 ## 🆘 Troubleshooting
 
-**Q: Error "Failed to load module script... MIME type of text/css"**
-
-Ini adalah error paling umum. **Penyebab**: browser mencoba memuat file CSS seolah-olah itu JavaScript. Terjadi karena:
-
-1. **Anda membuka `index.html` langsung dari folder (file:// protocol)** — ES modules tidak bisa dijalankan via `file://`. Gunakan `npm run dev` untuk dev, atau deploy ke GitHub Pages untuk production.
-2. **GitHub Pages diset "Deploy from branch" bukan "GitHub Actions"** — ini menyebabkan source code (belum di-build) yang tersaji, sehingga `main.js` masih punya `import './styles/main.css'` yang gagal di-load sebagai module.
-
-**Solusi**:
-1. Buka repo GitHub → **Settings → Pages**
-2. Pada **Build and deployment → Source**, pilih **GitHub Actions** (bukan "Deploy from a branch")
-3. Push commit ke `main` untuk trigger workflow
-4. Tunggu workflow selesai di tab **Actions** (± 1-2 menit)
-5. Buka URL `https://USERNAME.github.io/simantri-nakes-v2/` — seharusnya aplikasi tampil normal
-
----
-
-**Q: Setelah deploy, halaman blank / asset 404**
-A: Cek `vite.config.js` base path. Untuk project page, harus `/REPO_NAME/`. GitHub Actions sudah auto-set ini — pastikan workflow berhasil (tab Actions).
-
-**Q: Refresh halaman 404**
-A: Tidak akan terjadi — router pakai hash. Jika tetap 404, pastikan `public/404.html` ikut ter-build (cek folder `dist/`).
+**Q: Buka `index.html` tapi blank / error MIME type**
+A: Tidak akan terjadi di v3. Pastikan Anda membuka `index.html` yang ada di folder `simantri-v3/` (bukan dari v2).
 
 **Q: Aplikasi tampil tapi data kosong / "Memuat..." terus**
-A: Aplikasi jalan di **Demo Mode** karena `VITE_SUPABASE_URL` belum di-set. Tambahkan sebagai Repository Secret di GitHub (lihat Langkah 3 di atas).
+A: Aplikasi jalan di **Demo Mode** karena `SUPABASE_URL` belum di-set di `config.js`. Ini normal — Anda masih bisa menjelajahi seluruh UI dengan data contoh. Untuk pakai data asli, ikuti langkah "Setup Production" di atas.
+
+**Q: Setelah edit config.js, aplikasi masih demo mode**
+A: Hard refresh browser (Ctrl+Shift+R atau Cmd+Shift+R). Cache mungkin menyimpan versi lama.
 
 **Q: Login gagal setelah Supabase dikonfigurasi**
-A: Pastikan user sudah di-create di Supabase Auth dan profile-nya ada di tabel `profiles` (auto-created via trigger saat signup). Untuk jadi Dinkes, jalankan SQL update `role = 'dinkes'`.
+A: Pastikan user sudah di-create di Supabase → Authentication → Users. Profile akan auto-create via trigger saat pertama login. Untuk jadi Dinkes, jalankan SQL update `role = 'dinkes'`.
 
 **Q: RLS memblokir akses data**
-A: Cek di Supabase Dashboard → Table Editor. Pastikan user login dan role-nya benar. Debug dengan SQL:
+A: Cek dengan SQL:
 ```sql
 select public.is_dinkes(), public.current_user_role(), public.current_user_fasyankes();
 ```
+Pastikan user login dan role-nya benar.
 
-**Q: Workflow GitHub Actions gagal**
-A: Buka tab Actions → klik workflow yang gagal → lihat log. Pastikan:
-- `package-lock.json` sudah di-commit (untuk `npm ci`)
-- Repository Secrets `VITE_SUPABASE_URL` & `VITE_SUPABASE_ANON_KEY` sudah ditambahkan (atau hapus baris tersebut di `deploy.yml` untuk Demo Mode)
-- Source: **Settings → Pages → Source: GitHub Actions**
+**Q: Tailwind warning di Console: "should not be used in production"**
+A: Ini hanya warning — Play CDN memang dirancang untuk development/prototyping. Aplikasi tetap berfungsi normal. Jika ingin optimasi production (bundle CSS lebih kecil), lihat bagian "Optimasi Production" di bawah.
 
-**Q: Bagaimana cek apakah deployment saya benar?**
-A: Buka URL production, lalu **View Page Source** (Ctrl+U). Anda harus melihat:
-- `<script type="module" src="./assets/index-XXXX.js">` (BUKAN `src/main.js`)
-- `<link rel="stylesheet" href="./assets/index-XXXX.css">`
+**Q: Setelah deploy ke GitHub Pages, halaman blank**
+A: Pastikan:
+- File `.nojekyll` ada di root repo
+- Settings → Pages → Source: **Deploy from a branch** (bukan GitHub Actions)
+- Branch: `main` (atau `master`) / folder: `/ (root)`
+- Tunggu 1-2 menit setelah upload
 
-Jika yang Anda lihat adalah `<script type="module" src="./src/main.js">`, berarti GitHub Pages menyajikan source code, BUKAN hasil build. Fix dengan langkah di Q pertama di atas.
+---
+
+## 🔧 Optimasi Production (Opsional)
+
+Setup v3 sudah cukup untuk production skala kecil-menengah. Jika ingin lebih optimal:
+
+### Bundle Tailwind CSS (kurangi ukuran dari ~3MB ke ~50KB)
+```bash
+# Install Tailwind CLI
+npm install -D tailwindcss@3
+
+# Generate CSS only dengan class yang dipakai
+npx tailwindcss -i ./input.css -o ./css/tailwind-bundle.css --minify
+
+# Hapus <script src="https://cdn.tailwindcss.com"></script> dari index.html
+# Tambahkan: <link rel="stylesheet" href="./css/tailwind-bundle.css">
+```
+
+### Self-host Supabase JS (jika ingin tanpa CDN)
+```bash
+# Download file UMD
+curl -o js/vendor/supabase.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js
+
+# Ganti tag di index.html
+<script src="./js/vendor/supabase.js"></script>
+```
+
+Tapi untuk mayoritas kasus — **setup default v3 sudah cukup**.
 
 ---
 
@@ -290,4 +286,25 @@ MIT License — bebas digunakan untuk keperluan pemerintah & non-profit.
 
 ---
 
-Dibuat untuk Pemerintah Indonesia • **SIMANTRI v2.0** • 2026
+## 🆚 Changelog v3 vs v2
+
+### v3.0.0 (versi ini)
+- ✨ No-build architecture (plain JS, no Vite, no ES modules)
+- ✨ Double-click `index.html` langsung jalan
+- ✨ Tailwind via Play CDN
+- ✨ Supabase & Chart.js via CDN UMD
+- ✨ GitHub Pages: deploy from branch (no Actions needed)
+- ✨ `.nojekyll` untuk pastikan semua file tersaji
+- ✨ Config via `config.js` (user edit langsung, no env vars)
+- ✨ Demo mode otomatis jika Supabase belum dikonfigurasi
+
+### v2.0.0 (versi lama)
+- Vite + Tailwind CLI build
+- ES Modules (`import/export`)
+- GitHub Actions deploy
+- `.env` files
+- Memerlukan `npm install` + `npm run build` sebelum deploy
+
+---
+
+Dibuat untuk Pemerintah Indonesia • **SIMANTRI v3.0** • 2026
