@@ -2,12 +2,14 @@
  * SIMANTRI v3 — Auth helpers
  * Plain JS. Pakai window.SIMANTRI_DB.getClient() untuk auth Supabase.
  *
- * SINGLE ROLE: Admin Dinkes saja (full access)
- * Demo mode: 1 user predefined (dinkes)
- * Production: pakai Supabase Auth
+ * FLOW:
+ *   - Saat aplikasi dibuka → user adalah "public viewer" (bisa lihat data,
+ *     tapi tidak bisa add/edit/delete/download/print/verify)
+ *   - User klik "Login Admin" di header → muncul modal login
+ *   - Login sukses → dapat full access (Admin Dinkes)
+ *   - Logout → kembali ke public viewer mode
  *
- * TIDAK ADA PENYIMPANAN SESSION — refresh browser = logout
- * (Sesuai kebutuhan: pakai mock data, integrasi Supabase saja)
+ * TIDAK ADA PENYIMPANAN SESSION — refresh browser = kembali ke public viewer
  * ============================================================================ */
 
 (function () {
@@ -17,7 +19,7 @@
   const utils = window.SIMANTRI_UTILS;
 
   let _session = null;
-  let _profile = null;       // In-memory only — TIDAK disimpan ke localStorage
+  let _profile = null;       // null = public viewer; set = admin (Dinkes)
   let _ready = false;
   let _readyResolvers = [];
 
@@ -34,10 +36,20 @@
     },
   ];
 
+  // === Public viewer profile (untuk display di sidebar/header saat belum login) ===
+  const PUBLIC_VIEWER_PROFILE = {
+    id: null,
+    email: null,
+    full_name: 'Pengunjung',
+    role: 'public',
+    fasyankes_id: null,
+    avatar_url: null,
+  };
+
   // === Init — subscribe auth state change (production only) ===
   function initAuth() {
     if (db.isDemoMode()) {
-      // Demo mode: tidak restore session. User harus login setiap kali buka aplikasi.
+      // Demo mode: default ke public viewer (no session restore)
       _markReady();
       return;
     }
@@ -49,13 +61,13 @@
     }
 
     // Production: Supabase auth state change
-    // Catatan: persistSession sudah diset false di supabase.js — refresh = logout
+    // persistSession: false → refresh = kembali ke public viewer
     client.auth.onAuthStateChange(async function (_event, session) {
       _session = session;
       if (session && session.user) {
         _profile = await loadProfile(session.user.id);
       } else {
-        _profile = null;
+        _profile = null; // Public viewer
       }
       _markReady();
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { session: session, profile: _profile } }));
@@ -86,7 +98,7 @@
           id: userId,
           email: (user && user.user && user.user.email) || '',
           full_name: meta.full_name || meta.name || 'Pengguna Baru',
-          role: 'dinkes', // Default ke dinkes (single-role system)
+          role: 'dinkes',
           fasyankes_id: meta.fasyankes_id || null,
           avatar_url: meta.avatar_url || null,
         };
@@ -104,14 +116,12 @@
   // === Sign in ===
   async function signIn(email, password) {
     if (db.isDemoMode()) {
-      // Demo mode: cari user di DEMO_USERS
       const user = DEMO_USERS.find(function (u) {
         return u.email.toLowerCase() === (email || '').toLowerCase() && u.password === password;
       });
       if (!user) {
         throw new Error('Email atau password salah. Gunakan akun demo: dinkes@simantri.demo / dinkes123');
       }
-      // Set profile in-memory (TIDAK disimpan ke localStorage)
       _profile = {
         id: user.id,
         email: user.email,
@@ -123,7 +133,6 @@
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: _profile } }));
       return _profile;
     }
-    // Production: Supabase Auth
     const client = db.getClient();
     const { data, error } = await client.auth.signInWithPassword({ email: email, password: password });
     if (error) throw error;
@@ -131,7 +140,7 @@
   }
 
   async function signUp(opts) {
-    if (db.isDemoMode()) throw new Error('Sign-up tidak tersedia di mode demo. Hubungi admin Dinkes untuk dibuatkan akun.');
+    if (db.isDemoMode()) throw new Error('Sign-up tidak tersedia di mode demo.');
     const client = db.getClient();
     const { data, error } = await client.auth.signUp({
       email: opts.email,
@@ -144,8 +153,7 @@
 
   async function signOut() {
     if (db.isDemoMode()) {
-      // Demo mode: clear in-memory only (tidak ada localStorage untuk dihapus)
-      _profile = null;
+      _profile = null; // Kembali ke public viewer
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: null } }));
       return;
     }
@@ -157,22 +165,44 @@
 
   // === Getters ===
   function getSession() { return _session; }
-  function getProfile() { return _profile; }
+
+  /**
+   * Get profile — return real profile if admin, atau PUBLIC_VIEWER_PROFILE jika public
+   */
+  function getProfile() {
+    return _profile || PUBLIC_VIEWER_PROFILE;
+  }
+
+  /**
+   * isAuthenticated — true hanya jika sudah login sebagai admin
+   * Public viewer = false
+   */
   function isAuthenticated() {
     if (db.isDemoMode()) return !!_profile;
     return !!_session;
   }
-  function getRole() { return _profile ? _profile.role : null; }
+
+  /**
+   * isPublicViewer — true jika belum login (bisa lihat data tapi tidak bisa aksi)
+   */
+  function isPublicViewer() {
+    return !isAuthenticated();
+  }
+
+  function getRole() {
+    if (!isAuthenticated()) return 'public';
+    return _profile ? _profile.role : null;
+  }
   function getFasyankesId() { return _profile ? _profile.fasyankes_id : null; }
 
-  // === ROLE CHECKS — semua user adalah Dinkes (single-role) ===
-  // Dipertahankan untuk kompatibilitas dengan kode existing, tapi selalu sama
-  function isDinkes()     { return isAuthenticated(); }
-  function isFasyankes()  { return false; } // Role ini sudah dihapus
-  function isNakes()      { return false; } // Role ini sudah dihapus
-  function canViewAll()   { return isAuthenticated(); }
+  // === ROLE CHECKS ===
+  function isDinkes()     { return isAuthenticated() && _profile && _profile.role === 'dinkes'; }
+  function isFasyankes()  { return false; } // Role dihapus
+  function isNakes()      { return false; } // Role dihapus
+  function canViewAll()   { return true; } // Public viewer & admin bisa lihat semua data
 
-  // === PERMISSION HELPERS — semua user (Dinkes) punya full access ===
+  // === PERMISSION HELPERS — hanya admin (Dinkes) yang bisa aksi ===
+  // Public viewer: TIDAK bisa add/edit/delete/download/print/verify/approve/manage-user
   function canAdd()       { return isAuthenticated(); }
   function canEdit()      { return isAuthenticated(); }
   function canDelete()    { return isAuthenticated(); }
@@ -186,7 +216,8 @@
 
   /**
    * Cek apakah user boleh melakukan aksi tertentu.
-   * Single-role: semua user adalah Dinkes → semua aksi diizinkan jika login.
+   * Public viewer = false untuk semua aksi.
+   * Admin (Dinkes) = true untuk semua aksi.
    */
   function can(action) {
     if (!isAuthenticated()) return false;
@@ -210,6 +241,7 @@
     getSession: getSession,
     getProfile: getProfile,
     isAuthenticated: isAuthenticated,
+    isPublicViewer: isPublicViewer,
     getRole: getRole,
     getFasyankesId: getFasyankesId,
     isDinkes: isDinkes,
@@ -229,5 +261,6 @@
     canManageUser: canManageUser,
     canExport: canExport,
     DEMO_USERS: DEMO_USERS,
+    PUBLIC_VIEWER_PROFILE: PUBLIC_VIEWER_PROFILE,
   };
 })();

@@ -13,16 +13,14 @@
 ### Opsi A: Buka langsung di komputer Anda
 1. Extract file ZIP ke folder mana saja
 2. Double-click file `index.html`
-3. Browser terbuka → **muncul halaman login**
-4. Login dengan akun demo (lihat di bawah) atau akun Supabase Anda
-5. Aplikasi langsung tampil ✅
+3. Browser terbuka → **langsung tampil beranda** dengan semua data visible ✅
+4. (Opsional) Klik tombol **"Login Admin"** di header untuk akses penuh (add/edit/delete/download)
 
 ### Opsi B: Upload ke GitHub Pages
 1. Upload semua file ke repository GitHub (drag-drop via web UI juga bisa)
 2. Settings → Pages → **Source: Deploy from a branch** → pilih `main` / `/ (root)`
 3. Tunggu 1-2 menit
-4. Buka `https://USERNAME.github.io/NAMA-REPO/`
-5. **Muncul halaman login** → login dengan akun Anda
+4. Buka `https://USERNAME.github.io/NAMA-REPO/` → **langsung tampil beranda**
 
 **Tidak perlu**:
 - ❌ `npm install`
@@ -30,26 +28,50 @@
 - ❌ Node.js
 - ❌ Command line
 - ❌ Server lokal
+- ❌ Login wajib (cukup login jika ingin akses admin)
 
 ---
 
-## 🔐 Akun Demo (untuk testing)
+## 👥 Dua Mode Akses
 
-Saat aplikasi pertama dibuka, akan muncul **halaman login**. Klik kartu akun demo di bawah untuk isi otomatis:
+### 1. Mode Pengunjung (Public Viewer) — DEFAULT saat buka aplikasi
+- ✅ Bisa lihat seluruh data (nakes, fasyankes, praktik, dashboard, laporan)
+- ✅ Bisa navigasi semua halaman (kecuali "Manajemen User" — admin only)
+- ✅ Bisa search & filter data
+- ❌ TIDAK bisa: tambah, edit, hapus, download CSV, print, verifikasi, approve/reject
+- ❌ Tombol-tombol aksi otomatis di-hidden
+
+### 2. Mode Admin (Login Dinkes) — setelah klik "Login Admin"
+- ✅ Semua fitur Mode Pengunjung
+- ✅ Bisa: tambah, edit, hapus, download CSV, print, verifikasi, approve/reject
+- ✅ Bisa akses halaman "Manajemen User & Role"
+
+### Cara Login sebagai Admin
+1. Klik tombol **"Login Admin"** di pojok kanan header
+2. Muncul modal login
+3. Klik kartu akun demo (auto-fill) atau ketik manual:
+   - Email: `dinkes@simantri.demo`
+   - Password: `dinkes123`
+4. Klik **"Masuk"** → mendapat full access
+5. Untuk logout: klik icon logout di header (sebelah nama user)
+
+---
+
+## 🔐 Akun Demo Admin
 
 | Role | Email | Password | Akses |
 |---|---|---|---|
 | **Admin Dinkes** | `dinkes@simantri.demo` | `dinkes123` | Full access — semua menu & semua aksi |
 
-> **Catatan**: Aplikasi ini menggunakan **single-role system** (Admin Dinkes saja). Semua user yang login otomatis memiliki akses penuh ke seluruh fitur.
+> **Catatan**: Hanya ada 1 role admin (Dinkes). Mode pengunjung tidak perlu login.
 
 ### Session tidak persisten
-Sesuai kebutuhan, aplikasi **TIDAK menyimpan session** di localStorage. Setiap kali browser ditutup atau di-refresh, user harus login kembali. Ini berlaku baik di mode demo maupun production (Supabase).
+Sesuai kebutuhan, aplikasi **TIDAK menyimpan session** di localStorage. Setiap kali browser ditutup atau di-refresh, user kembali ke **Mode Pengunjung**. Untuk akses admin, klik "Login Admin" lagi.
 
 - ❌ Tidak ada localStorage untuk session
 - ❌ Tidak ada cookie session
-- ✅ Refresh browser = logout otomatis
-- ✅ Tutup browser = logout otomatis
+- ✅ Refresh browser = kembali ke Mode Pengunjung
+- ✅ Tutup browser = kembali ke Mode Pengunjung
 
 ---
 

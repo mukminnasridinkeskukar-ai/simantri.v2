@@ -2,12 +2,15 @@
  * SIMANTRI v3 — App router & bootstrap
  * Plain JS. Load LAST (after all pages).
  *
- * Flow:
- *   1. Init auth (subscribe state)
- *   2. Cek isAuthenticated()
- *      - Belum login → tampilkan #login-screen, sembunyikan #app
- *      - Sudah login → tampilkan #app, sembunyikan #login-screen, render app
- *   3. Setiap page render → applyRolePermissions() untuk hide/show tombol
+ * FLOW:
+ *   1. Saat aplikasi dibuka → user adalah "public viewer"
+ *      - Bisa lihat seluruh data & navigasi semua halaman
+ *      - TIDAK bisa add/edit/delete/download/print/verify (tombol di-hide)
+ *   2. User klik "Login Admin" di header → muncul modal login
+ *   3. Login sukses → dapat full access (Admin Dinkes)
+ *   4. Logout → kembali ke public viewer mode
+ *
+ * TIDAK ADA PENYIMPANAN SESSION — refresh browser = kembali ke public viewer
  * ============================================================================ */
 
 (function () {
@@ -27,27 +30,24 @@
       console.warn('[navigateTo] route "' + routeId + '" tidak ditemukan');
       return;
     }
-    // Permission check
-    if (route.dinkesOnly && !auth.isDinkes()) {
-      utils.toast('Akses ditolak: halaman ini hanya untuk Dinkes', 'error');
+    // Permission check: manajemen-user hanya untuk admin yang sudah login
+    if (route.dinkesOnly && !auth.isAuthenticated()) {
+      utils.toast('Akses ditolak: halaman ini hanya untuk Admin Dinkes. Silakan login terlebih dahulu.', 'warning');
+      openLoginModal();
       return;
     }
 
     _currentRouteId = routeId;
 
-    // Update URL hash
     if (window.location.hash !== '#/' + routeId) {
       history.replaceState(null, '', '#/' + routeId);
     }
 
-    // Update sidebar active state
     components.setActiveRoute(routeId);
 
-    // Update header title
     const titleEl = document.getElementById('header-title');
     if (titleEl) titleEl.textContent = route.label;
 
-    // Render page
     const viewSlot = document.getElementById('view-slot');
     if (!viewSlot) return;
 
@@ -57,7 +57,6 @@
       return;
     }
 
-    // Inject HTML
     if (typeof page.html === 'function') {
       viewSlot.innerHTML = page.html();
     } else if (typeof page.html === 'string') {
@@ -70,18 +69,15 @@
     viewSlot.classList.add('animate-fade-in');
     setTimeout(function () { viewSlot.classList.remove('animate-fade-in'); }, 500);
 
-    // Apply role-based permissions (hide/show tombol berdasarkan role)
+    // Apply role-based permissions (hide/show tombol berdasarkan status login)
     applyRolePermissions(viewSlot);
 
-    // Scroll to top
     viewSlot.scrollTo({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    // Close mobile drawer
     const drawer = document.getElementById('sidebar-drawer');
     if (drawer) drawer.classList.add('hidden');
 
-    // Init page logic
     if (typeof page.init === 'function') {
       try {
         await page.init();
@@ -97,8 +93,6 @@
   }
 
   // === ROLE PERMISSIONS — sembunyikan tombol yang tidak diizinkan ===
-  // Tombol dengan data-role-action="add" akan di-hide jika !auth.can('add')
-  // Action yang didukung: add, edit, delete, download, print, verify, approve, reject, manage-user, export
   function applyRolePermissions(scope) {
     scope = scope || document;
     const buttons = scope.querySelectorAll('[data-role-action]');
@@ -113,28 +107,36 @@
       } else {
         el.style.display = 'none';
         el.setAttribute('aria-hidden', 'true');
-        // Disable juga untuk safety (kalau display:none tidak cukup)
         if (el.tagName === 'BUTTON') el.setAttribute('disabled', 'disabled');
       }
     });
 
-    // Sembunyikan juga elemen dengan class role-dinkes-only / role-admin-only
     const dinkesOnlyEls = scope.querySelectorAll('.role-dinkes-only');
     dinkesOnlyEls.forEach(function (el) {
-      el.style.display = auth.isDinkes() ? '' : 'none';
+      el.style.display = auth.isAuthenticated() ? '' : 'none';
     });
     const adminOnlyEls = scope.querySelectorAll('.role-admin-only');
     adminOnlyEls.forEach(function (el) {
-      el.style.display = (auth.isDinkes() || auth.isFasyankes()) ? '' : 'none';
+      el.style.display = auth.isAuthenticated() ? '' : 'none';
     });
   }
 
-  // === LOGIN SCREEN — tampilkan/sembunyikan ===
-  function showLoginScreen() {
-    const app = document.getElementById('app');
-    const loginScreen = document.getElementById('login-screen');
-    if (app) app.style.display = 'none';
-    if (loginScreen) loginScreen.style.display = 'flex';
+  // === LOGIN MODAL ===
+  function openLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) {
+      modal.classList.remove('hidden');
+      // Focus ke email input setelah render
+      setTimeout(function () {
+        const emailInput = document.getElementById('login-email');
+        if (emailInput) emailInput.focus();
+      }, 100);
+    }
+  }
+
+  function closeLoginModal() {
+    const modal = document.getElementById('login-modal');
+    if (modal) modal.classList.add('hidden');
     // Reset form
     const emailInput = document.getElementById('login-email');
     const pwdInput = document.getElementById('login-password');
@@ -142,18 +144,9 @@
     if (emailInput) emailInput.value = '';
     if (pwdInput) pwdInput.value = '';
     if (errBox) errBox.classList.add('hidden');
-    bindLoginHandlers();
-  }
-
-  function showApp() {
-    const app = document.getElementById('app');
-    const loginScreen = document.getElementById('login-screen');
-    if (loginScreen) loginScreen.style.display = 'none';
-    if (app) app.style.display = 'flex';
   }
 
   function bindLoginHandlers() {
-    // Cek apakah sudah pernah bind (hindari double-bind)
     if (document.body.getAttribute('data-login-bound')) return;
     document.body.setAttribute('data-login-bound', '1');
 
@@ -180,11 +173,13 @@
         }
         try {
           await auth.signIn(email, password);
-          utils.toast('Selamat datang, ' + (auth.getProfile().full_name || 'User'), 'success');
-          // Show app
-          showApp();
-          // Init app
-          await initAppAfterLogin();
+          utils.toast('Selamat datang, ' + (auth.getProfile().full_name || 'Admin'), 'success');
+          closeLoginModal();
+          // Re-render sidebar & header untuk update UI (ganti tombol "Login Admin" jadi user info)
+          components.renderSidebar('sidebar-slot');
+          components.renderHeader('header-slot', components.ROUTES.find(function (r) { return r.id === _currentRouteId; }) || components.ROUTES[0]);
+          // Re-navigate untuk apply permissions
+          await navigateTo(_currentRouteId || 'dashboard');
         } catch (err) {
           if (errBox) {
             errBox.textContent = err.message;
@@ -200,14 +195,12 @@
       });
     }
 
-    // Toggle password visibility
+    // Toggle password
     const toggleBtn = document.getElementById('toggle-password');
     if (toggleBtn) {
       toggleBtn.addEventListener('click', function () {
         const input = document.getElementById('login-password');
-        if (input) {
-          input.type = input.type === 'password' ? 'text' : 'password';
-        }
+        if (input) input.type = input.type === 'password' ? 'text' : 'password';
       });
     }
 
@@ -221,15 +214,40 @@
         if (emailInput) emailInput.value = email;
         if (pwdInput) pwdInput.value = password;
         if (errBox) errBox.classList.add('hidden');
-        // Auto-submit
         if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
       });
     });
+
+    // Close modal handlers
+    document.querySelectorAll('[data-login-close]').forEach(function (el) {
+      el.addEventListener('click', closeLoginModal);
+    });
+
+    // ESC to close
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        const modal = document.getElementById('login-modal');
+        if (modal && !modal.classList.contains('hidden')) {
+          closeLoginModal();
+        }
+      }
+    });
   }
 
-  // === Init app AFTER login (or session restore) ===
-  async function initAppAfterLogin() {
-    // Render sidebar & header
+  // === Init app — main entry ===
+  async function initApp() {
+    auth.initAuth();
+    await auth.onAuthReady();
+
+    // Hide initial loader
+    if (typeof window.SIMANTRI_HIDE_LOADER === 'function') {
+      window.SIMANTRI_HIDE_LOADER();
+    }
+
+    // Bind login handlers (sekali saja)
+    bindLoginHandlers();
+
+    // Render sidebar & header (langsung tampil — public viewer mode)
     components.renderSidebar('sidebar-slot');
     components.renderHeader('header-slot', components.ROUTES[0]);
 
@@ -243,45 +261,27 @@
       const h = window.location.hash.replace(/^#\//, '');
       if (h && h !== _currentRouteId) navigateTo(h);
     });
-  }
 
-  // === Init app — main entry ===
-  async function initApp() {
-    // Init auth (subscribe state)
-    auth.initAuth();
-    await auth.onAuthReady();
-
-    // Hide initial loader
-    if (typeof window.SIMANTRI_HIDE_LOADER === 'function') {
-      window.SIMANTRI_HIDE_LOADER();
-    }
-
-    // Check auth state
-    if (auth.isAuthenticated()) {
-      // Sudah login → render app
-      showApp();
-      await initAppAfterLogin();
-      console.log('%c[SIMANTRI] App ready ✓', 'color:#0D9488;font-weight:bold;');
-      if (db.isDemoMode()) {
-        console.info('%c[SIMANTRI] DEMO MODE — login sebagai: ' + auth.getRole(), 'color:#F59E0B;font-weight:bold;');
-      }
-    } else {
-      // Belum login → tampilkan login screen
-      showLoginScreen();
-      console.log('%c[SIMANTRI] Belum login — menampilkan login screen', 'color:#0D9488;font-weight:bold;');
-    }
-
-    // Listen for auth state changes (e.g., logout)
+    // Listen for auth state changes (login / logout)
     document.addEventListener('simantri:auth-change', function (e) {
       const profile = e.detail && e.detail.profile;
-      if (!profile) {
-        // Logout → show login screen
-        showLoginScreen();
-        // Clear view
-        const viewSlot = document.getElementById('view-slot');
-        if (viewSlot) viewSlot.innerHTML = '';
+      // Re-render sidebar & header untuk update UI
+      components.renderSidebar('sidebar-slot');
+      components.renderHeader('header-slot', components.ROUTES.find(function (r) { return r.id === _currentRouteId; }) || components.ROUTES[0]);
+      // Re-apply permissions
+      applyRolePermissions(document);
+      if (profile) {
+        console.log('%c[SIMANTRI] Login berhasil sebagai: ' + profile.full_name, 'color:#0D9488;font-weight:bold;');
+      } else {
+        console.log('%c[SIMANTRI] Logout → kembali ke public viewer', 'color:#64748B;font-weight:bold;');
       }
     });
+
+    console.log('%c[SIMANTRI] App ready ✓ — Public viewer mode', 'color:#0D9488;font-weight:bold;');
+    if (db.isDemoMode()) {
+      console.info('%c[SIMANTRI] DEMO MODE — pakai data mock', 'color:#F59E0B;font-weight:bold;');
+    }
+    console.info('[SIMANTRI] Klik "Login Admin" di header untuk akses penuh');
   }
 
   // === Bootstrap ===
@@ -304,5 +304,7 @@
     navigateTo: navigateTo,
     getCurrentRouteId: function () { return _currentRouteId; },
     applyRolePermissions: applyRolePermissions,
+    openLoginModal: openLoginModal,
+    closeLoginModal: closeLoginModal,
   };
 })();

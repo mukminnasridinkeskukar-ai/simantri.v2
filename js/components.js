@@ -109,32 +109,48 @@
     });
     nav.innerHTML = html;
 
-    // User card
+    // User card — dinamis berdasarkan auth state
     const p = auth.getProfile();
-    if (p) {
-      const nameEl = slot.querySelector('#sidebar-user-name');
-      const roleEl = slot.querySelector('#sidebar-user-role');
-      const avatarEl = slot.querySelector('#sidebar-avatar');
-      if (nameEl) nameEl.textContent = p.full_name || 'Pengguna';
-      if (roleEl) {
-        const roleText = ({ dinkes: 'Admin Dinkes', fasyankes: 'Admin Fasyankes', nakes: 'Tenaga Kesehatan' })[p.role] || p.role;
-        roleEl.textContent = roleText;
-      }
-      if (avatarEl) {
+    const isAuth = auth.isAuthenticated();
+    const nameEl = slot.querySelector('#sidebar-user-name');
+    const roleEl = slot.querySelector('#sidebar-user-role');
+    const avatarEl = slot.querySelector('#sidebar-avatar');
+    const logoutBtn = slot.querySelector('[data-action="logout"]');
+
+    if (nameEl) nameEl.textContent = p.full_name || 'Pengunjung';
+    if (roleEl) {
+      const roleText = isAuth
+        ? ((p.role === 'dinkes') ? 'Admin Dinkes' : (p.role || 'User'))
+        : 'Mode Pengunjung';
+      roleEl.textContent = roleText;
+    }
+    if (avatarEl) {
+      if (isAuth) {
         avatarEl.textContent = utils.initials(p.full_name || p.email || '?');
+        avatarEl.style.background = 'linear-gradient(135deg,#0D9488 0%,#84CC16 100%)';
+        avatarEl.style.color = 'white';
+      } else {
+        avatarEl.innerHTML = '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>';
+        avatarEl.style.background = 'rgba(255,255,255,0.1)';
+        avatarEl.style.color = 'rgba(255,255,255,0.6)';
       }
     }
 
-    // Logout
-    const logoutBtn = slot.querySelector('[data-action="logout"]');
+    // Logout button — hanya tampil jika sudah login
     if (logoutBtn) {
-      logoutBtn.addEventListener('click', async function (e) {
-        e.stopPropagation();
-        if (confirm('Anda yakin ingin keluar?')) {
-          await auth.signOut();
-          location.reload();
-        }
-      });
+      logoutBtn.style.display = isAuth ? '' : 'none';
+      if (isAuth) {
+        // Re-bind click handler (hindari double-bind)
+        const newBtn = logoutBtn.cloneNode(true);
+        logoutBtn.parentNode.replaceChild(newBtn, logoutBtn);
+        newBtn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          if (confirm('Anda yakin ingin keluar dari mode admin? Anda akan kembali ke mode pengunjung.')) {
+            await auth.signOut();
+            utils.toast('Anda telah logout. Kembali ke mode pengunjung.', 'info');
+          }
+        });
+      }
     }
   }
 
@@ -163,11 +179,7 @@
           </button>
           <div class="hidden sm:block w-px h-6 bg-ink-200"></div>
           <div class="flex items-center gap-2.5" id="header-user">
-            <div id="header-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-ink-900 font-bold text-sm" style="background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);">?</div>
-            <div class="hidden sm:block leading-tight">
-              <p id="header-user-name" class="text-sm font-semibold text-ink-800 max-w-[140px] truncate">—</p>
-              <p id="header-user-role" class="text-[11px] text-ink-500 capitalize">—</p>
-            </div>
+            <!-- Diisi dinamis oleh JS di bawah -->
           </div>
         </div>
         <div id="search-dropdown" class="hidden absolute right-4 sm:right-6 lg:right-8 top-14 card p-2 z-40" style="width:min(640px,calc(100vw - 2rem));">
@@ -177,18 +189,50 @@
       </header>
     `;
 
-    // User info
-    const p = auth.getProfile();
-    if (p) {
-      const nameEl = slot.querySelector('#header-user-name');
-      const roleEl = slot.querySelector('#header-user-role');
-      const avatarEl = slot.querySelector('#header-avatar');
-      if (nameEl) nameEl.textContent = p.full_name || 'Pengguna';
-      if (roleEl) {
-        const roleText = ({ dinkes: 'Admin Dinkes', fasyankes: 'Admin Fasyankes', nakes: 'Tenaga Kesehatan' })[p.role] || p.role;
-        roleEl.textContent = roleText;
+    // User info — dinamis berdasarkan auth state
+    const userContainer = slot.querySelector('#header-user');
+    if (userContainer) {
+      if (auth.isAuthenticated()) {
+        // Sudah login → tampilkan user info + tombol logout
+        const p = auth.getProfile();
+        const roleText = (p.role === 'dinkes') ? 'Admin Dinkes' : (p.role || 'User');
+        userContainer.innerHTML = `
+          <div id="header-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm" style="background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);">${utils.escapeHtml(utils.initials(p.full_name || p.email || '?'))}</div>
+          <div class="hidden sm:block leading-tight">
+            <p id="header-user-name" class="text-sm font-semibold text-ink-800 max-w-[140px] truncate">${utils.escapeHtml(p.full_name || 'User')}</p>
+            <p id="header-user-role" class="text-[11px] text-teal-600 font-semibold">${utils.escapeHtml(roleText)}</p>
+          </div>
+          <button id="header-logout" class="btn-ghost" style="padding:0.5rem;" aria-label="Logout" title="Logout">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          </button>
+        `;
+        const logoutBtn = userContainer.querySelector('#header-logout');
+        if (logoutBtn) {
+          logoutBtn.addEventListener('click', async function () {
+            if (confirm('Anda yakin ingin keluar dari mode admin? Anda akan kembali ke mode pengunjung.')) {
+              await auth.signOut();
+              utils.toast('Anda telah logout. Kembali ke mode pengunjung.', 'info');
+            }
+          });
+        }
+      } else {
+        // Belum login → tampilkan tombol "Login Admin"
+        userContainer.innerHTML = `
+          <button id="header-login-btn" class="btn-primary btn-sm">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+            <span class="hidden sm:inline">Login Admin</span>
+            <span class="sm:hidden">Login</span>
+          </button>
+        `;
+        const loginBtn = userContainer.querySelector('#header-login-btn');
+        if (loginBtn) {
+          loginBtn.addEventListener('click', function () {
+            if (window.SIMANTRI && typeof window.SIMANTRI.openLoginModal === 'function') {
+              window.SIMANTRI.openLoginModal();
+            }
+          });
+        }
       }
-      if (avatarEl) avatarEl.textContent = utils.initials(p.full_name || p.email || '?');
     }
 
     // Bell → notifikasi page
