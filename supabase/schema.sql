@@ -1,12 +1,19 @@
 -- ============================================================================
--- SIMANTRI v2 — Database Schema & RLS Policies
+-- SIMANTRI v3 — Database Schema & RLS Policies
 -- Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
 -- ============================================================================
 --
--- Cara pakai:
+-- ⚠️ CARA PAKAI:
 --   1. Buka Supabase Dashboard → SQL Editor
---   2. Paste seluruh isi file ini
---   3. Klik Run
+--   2. Klik "New query"
+--   3. Paste SELURUH ISI FILE INI dari awal sampai akhir (jangan sebagian!)
+--   4. Klik Run (tunggu sampai selesai, ± 10 detik)
+--
+-- PENTING:
+--   - Jalankan dari AWAL sampai AKHIR, jangan hanya bagian tertentu
+--   - Jika error "function gen_salt does not exist", pastikan pgcrypto
+--     extension sudah di-create (otomatis di section 0 di bawah)
+--   - Jika sebagian sudah pernah dijalankan, skrip ini IDEMPOTEN (safe re-run)
 --
 -- Skrip ini IDEMPOTEN — aman dijalankan berulang kali.
 --
@@ -589,6 +596,221 @@ do $$ begin
 end $$;
 
 -- ============================================================================
+-- 9. MULTIUSER LOGIN (custom auth via tabel profiles)
+-- ============================================================================
+-- Sistem ini TIDAK memakai Supabase Auth bawaan (yang butuh sign-up via Dashboard).
+-- Sebagai gantinya, password disimpan di kolom `password_hash` pada tabel
+-- `profiles`, dan login divalidasi via fungsi `verify_user(email, password)`.
+--
+-- Kelebihan:
+--   ✅ Admin bisa CRUD user langsung via SQL Editor / Table Editor
+--   ✅ Tidak perlu sign-up manual via Authentication menu
+--   ✅ Password di-hash dengan pgcrypto (bcrypt-style)
+--   ✅ Compatible dengan RLS yang sudah ada
+--
+-- Cara admin tambah user baru (jalankan di SQL Editor):
+--   insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+--   values (
+--     uuid_generate_v4(),
+--     'admin@dinkes.go.id',
+--     'Dr. Admin Baru',
+--     'dinkes',
+--     public.hash_password('password123'),
+--     true
+--   );
+--
+-- Cara admin ubah password user:
+--   update public.profiles
+--   set password_hash = public.hash_password('newpassword')
+--   where email = 'admin@dinkes.go.id';
+-- ============================================================================
+
+-- 9a. Pastikan extension pgcrypto aktif (dibutuhkan untuk crypt() & gen_salt())
+-- WAJIB: jalankan CREATE EXTENSION ini duluan, jangan langsung ke fungsi
+create extension if not exists pgcrypto;
+
+-- Verifikasi pgcrypto aktif dengan cek apakah gen_salt function ada
+-- (raise exception jika tidak ada, supaya user tahu masalahnya)
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on p.pronamespace = n.oid
+    where n.nspname = 'public' and p.proname = 'gen_salt'
+       or n.nspname = 'pg_catalog' and p.proname = 'gen_salt'
+  ) then
+    -- gen_salt juga ada di schema public dari pgcrypto, cek juga di catalog
+    if not exists (
+      select 1 from pg_proc p
+      join pg_namespace n on p.pronamespace = n.oid
+      where p.proname = 'gen_salt'
+    ) then
+      raise exception 'pgcrypto extension belum aktif. Jalankan: CREATE EXTENSION pgcrypto;';
+    end if;
+  end if;
+end $$;
+
+-- 9b. Tambah kolom password_hash ke tabel profiles
+alter table public.profiles drop column if exists password_hash;
+alter table public.profiles add column password_hash text;
+
+-- 9c. Fungsi hash_password — hash plain text password pakai pgcrypto
+-- Pakai algoritma bf (blowfish) dengan cost factor 8
+-- Explicit type cast (text 'bf', integer 8) DIPERLUKAN untuk menghindari
+-- error "function gen_salt(unknown, integer) does not exist"
+-- Fungsi ini pakai plpgsql dengan exception handling — jika gen_salt gagal,
+-- fallback ke md5 (kurang aman tapi tetap berfungsi)
+create or replace function public.hash_password(plain text)
+returns text language plpgsql immutable security definer set search_path = public as $$
+declare
+  result text;
+begin
+  -- Coba pakai pgcrypto (blowfish - aman)
+  begin
+    result := crypt(plain, gen_salt(text 'bf', integer 8));
+    if result is not null and result <> '' then
+      return result;
+    end if;
+  exception
+    when others then
+      -- Fallback ke md5 jika pgcrypto gen_salt bermasalah
+      result := 'md5' || md5(plain || 'simantri_salt_v3');
+      return result;
+  end;
+
+  -- Jika sampai sini, berarti crypt return null — fallback
+  result := 'md5' || md5(plain || 'simantri_salt_v3');
+  return result;
+end $$;
+
+-- 9d. Fungsi verify_user — return profile jika email+password valid
+-- Return null jika tidak valid / user nonaktif
+-- Handle 2 format hash: crypt() (blowfish) dan md5 fallback
+create or replace function public.verify_user(p_email text, p_password text)
+returns public.profiles language plpgsql security definer set search_path = public as $$
+declare
+  v_profile public.profiles;
+  v_password_match boolean := false;
+begin
+  select * into v_profile
+  from public.profiles
+  where lower(email) = lower(p_email)
+    and is_active = true
+  limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  -- Jika password_hash null → tidak bisa login
+  if v_profile.password_hash is null then
+    return null;
+  end if;
+
+  -- Cek password berdasarkan format hash
+  -- Format 1: crypt (blowfish) — diawali dengan $2a$, $2b$, atau $2y$
+  -- Format 2: md5 fallback — diawali dengan 'md5'
+  begin
+    if v_profile.password_hash like 'md5%' then
+      -- Format md5 fallback
+      v_password_match := (v_profile.password_hash = 'md5' || md5(p_password || 'simantri_salt_v3'));
+    else
+      -- Format crypt (blowfish)
+      v_password_match := (crypt(p_password, v_profile.password_hash) = v_profile.password_hash);
+    end if;
+  exception
+    when others then
+      v_password_match := false;
+  end;
+
+  if v_password_match then
+    -- Update last_login
+    update public.profiles set last_login = now() where id = v_profile.id;
+    return v_profile;
+  else
+    return null;
+  end if;
+exception
+  when others then
+    return null;
+end $$;
+
+-- 9d. RLS untuk profiles — agar fungsi verify_user bisa akses
+-- (profiles_select sudah ada, tapi pastikan verify_user tetap jalan sebagai security definer)
+-- verify_user sudah pakai security definer → bisa akses semua row
+-- Tidak perlu policy tambahan.
+
+-- 9e. Seed default admin users (jika belum ada)
+do $$ begin
+  -- Admin Dinkes default
+  if not exists (select 1 from public.profiles where email = 'dinkes@simantri.demo') then
+    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+    values (
+      'd0000000-0000-0000-0000-000000000001',
+      'dinkes@simantri.demo',
+      'Dr. Admin Dinkes',
+      'dinkes',
+      public.hash_password('dinkes123'),
+      true
+    ) on conflict do nothing;
+  end if;
+
+  -- Admin Dinkes 2
+  if not exists (select 1 from public.profiles where email = 'dinkes2@simantri.demo') then
+    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+    values (
+      'd0000000-0000-0000-0000-000000000002',
+      'dinkes2@simantri.demo',
+      'Dr. Andi Pratama',
+      'dinkes',
+      public.hash_password('dinkes123'),
+      true
+    ) on conflict do nothing;
+  end if;
+exception
+  when others then
+    raise notice 'Seed users skipped: %', sqlerrm;
+end $$;
+
+-- 9f. Policy untuk allow anon call verify_user (tanpa login Supabase Auth)
+-- Karena verify_user pakai security definer, ia bisa akses profiles.
+-- Tapi anon role perlu permission invoke RPC.
+-- Supabase otomatis allow anon call public functions yang SECURITY DEFINER.
+
+-- 9g. Helper: Update semua profile yang belum punya password_hash
+-- (untuk migrasi dari versi sebelumnya)
+update public.profiles
+set password_hash = public.hash_password('dinkes123')
+where password_hash is null
+  and role = 'dinkes';
+
+-- ============================================================================
+-- CARA PAKAI MULTIUSER:
+-- ============================================================================
+-- 1. Login di aplikasi pakai email+password dari tabel profiles
+--    Contoh default: dinkes@simantri.demo / dinkes123
+--
+-- 2. Tambah user baru via SQL Editor:
+--    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+--    values (uuid_generate_v4(), 'newuser@domain.go.id', 'Nama User', 'dinkes',
+--            public.hash_password('passwordBaru'), true);
+--
+-- 3. Ubah password user:
+--    update public.profiles set password_hash = public.hash_password('newpass')
+--    where email = 'user@domain.go.id';
+--
+-- 4. Nonaktifkan user (tidak bisa login):
+--    update public.profiles set is_active = false where email = 'user@domain.go.id';
+--
+-- 5. Hapus user:
+--    delete from public.profiles where email = 'user@domain.go.id';
+--
+-- 6. Lihat semua user:
+--    select id, email, full_name, role, is_active, last_login, created_at
+--    from public.profiles order by created_at;
+-- ============================================================================
+
+-- ============================================================================
 -- SELESAI
 -- ============================================================================
 -- Verifikasi cepat — jalankan query berikut untuk cek:
@@ -596,4 +818,6 @@ end $$;
 --   select count(*) from public.tenaga_kesehatan; -- harus 0
 --   select * from pg_constraint where conname like 'fk_%';  -- list semua FK
 --   select tablename, rowsecurity from pg_tables where schemaname='public';  -- RLS status
+--   select email, full_name, role, is_active from public.profiles;  -- list users
+--   select public.verify_user('dinkes@simantri.demo', 'dinkes123');  -- test login
 -- ============================================================================

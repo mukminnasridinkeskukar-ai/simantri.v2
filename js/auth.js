@@ -46,32 +46,11 @@
     avatar_url: null,
   };
 
-  // === Init — subscribe auth state change (production only) ===
+  // === Init — tidak ada session restore (refresh = public viewer) ===
   function initAuth() {
-    if (db.isDemoMode()) {
-      // Demo mode: default ke public viewer (no session restore)
-      _markReady();
-      return;
-    }
-
-    const client = db.getClient();
-    if (!client) {
-      _markReady();
-      return;
-    }
-
-    // Production: Supabase auth state change
-    // persistSession: false → refresh = kembali ke public viewer
-    client.auth.onAuthStateChange(async function (_event, session) {
-      _session = session;
-      if (session && session.user) {
-        _profile = await loadProfile(session.user.id);
-      } else {
-        _profile = null; // Public viewer
-      }
-      _markReady();
-      document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { session: session, profile: _profile } }));
-    });
+    // Baik demo maupun production: TIDAK restore session saat load
+    // User harus login setiap kali buka aplikasi
+    _markReady();
   }
 
   function _markReady() {
@@ -85,37 +64,17 @@
     return new Promise(function (res) { _readyResolvers.push(res); });
   }
 
-  // === Profile loader (production) ===
+  // === Profile loader (production) — tidak dipakai karena pakai custom auth ===
+  // Profile sudah di-set langsung dari hasil verify_user RPC
   async function loadProfile(userId) {
-    try {
-      const client = db.getClient();
-      const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle();
-      if (error) throw error;
-      if (!data) {
-        const { data: user } = await client.auth.getUser();
-        const meta = (user && user.user && user.user.user_metadata) || {};
-        const newProfile = {
-          id: userId,
-          email: (user && user.user && user.user.email) || '',
-          full_name: meta.full_name || meta.name || 'Pengguna Baru',
-          role: 'dinkes',
-          fasyankes_id: meta.fasyankes_id || null,
-          avatar_url: meta.avatar_url || null,
-        };
-        const { data: inserted, error: insErr } = await client.from('profiles').insert(newProfile).select().single();
-        if (insErr) throw insErr;
-        return inserted;
-      }
-      return data;
-    } catch (err) {
-      console.error('[SIMANTRI] loadProfile:', err);
-      return null;
-    }
+    // Tidak dipakai —保留 untuk kompatibilitas
+    return _profile;
   }
 
   // === Sign in ===
   async function signIn(email, password) {
     if (db.isDemoMode()) {
+      // Demo mode: pakai DEMO_USERS hardcoded
       const user = DEMO_USERS.find(function (u) {
         return u.email.toLowerCase() === (email || '').toLowerCase() && u.password === password;
       });
@@ -133,34 +92,54 @@
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: _profile } }));
       return _profile;
     }
+
+    // Production mode: panggil RPC verify_user di Supabase
+    // (TIDAK memakai Supabase Auth bawaan — pakai custom auth via tabel profiles)
     const client = db.getClient();
-    const { data, error } = await client.auth.signInWithPassword({ email: email, password: password });
-    if (error) throw error;
-    return data;
+    try {
+      const { data, error } = await client.rpc('verify_user', {
+        p_email: email,
+        p_password: password,
+      });
+
+      if (error) {
+        console.error('[SIMANTRI] verify_user RPC error:', error);
+        throw new Error('Gagal memverifikasi login: ' + error.message);
+      }
+
+      if (!data) {
+        throw new Error('Email atau password salah. Atau akun tidak aktif.');
+      }
+
+      // data adalah profile row dari tabel profiles
+      _profile = {
+        id: data.id,
+        email: data.email,
+        full_name: data.full_name,
+        role: data.role,
+        fasyankes_id: data.fasyankes_id,
+        avatar_url: data.avatar_url,
+      };
+      document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: _profile } }));
+      return _profile;
+    } catch (err) {
+      console.error('[SIMANTRI] signIn error:', err);
+      throw err;
+    }
   }
 
   async function signUp(opts) {
+    // Sign-up via UI tidak didukung — admin harus tambah user via SQL Editor
+    // atau via halaman Manajemen User (yang insert ke tabel profiles)
     if (db.isDemoMode()) throw new Error('Sign-up tidak tersedia di mode demo.');
-    const client = db.getClient();
-    const { data, error } = await client.auth.signUp({
-      email: opts.email,
-      password: opts.password,
-      options: { data: { full_name: opts.fullName, role: 'dinkes', fasyankes_id: opts.fasyankesId || null } },
-    });
-    if (error) throw error;
-    return data;
+    throw new Error('Sign-up tidak didukung. Admin tambah user via halaman Manajemen User atau SQL Editor Supabase.');
   }
 
   async function signOut() {
-    if (db.isDemoMode()) {
-      _profile = null; // Kembali ke public viewer
-      document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: null } }));
-      return;
-    }
-    const client = db.getClient();
-    await client.auth.signOut();
-    _session = null;
+    // Clear in-memory profile (kembali ke public viewer)
     _profile = null;
+    _session = null;
+    document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: null } }));
   }
 
   // === Getters ===

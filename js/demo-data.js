@@ -418,40 +418,101 @@
 
   async function loadUsers(opts) {
     opts = opts || {};
-    let data = DEMO_USERS_LIST.slice();
+    if (db.isDemoMode()) {
+      let data = DEMO_USERS_LIST.slice();
+      if (opts.search) {
+        const q = opts.search.toLowerCase();
+        data = data.filter(function (u) {
+          return (u.email || '').toLowerCase().indexOf(q) >= 0 ||
+                 (u.full_name || '').toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      if (opts.role) data = data.filter(function (u) { return u.role === opts.role; });
+      return data;
+    }
+    // Production: query dari tabel profiles
+    const client = db.getClient();
+    let q = client.from('profiles').select('*');
+    if (opts.role) q = q.eq('role', opts.role);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    let users = data || [];
     if (opts.search) {
-      const q = opts.search.toLowerCase();
-      data = data.filter(function (u) {
-        return (u.email || '').toLowerCase().indexOf(q) >= 0 ||
-               (u.full_name || '').toLowerCase().indexOf(q) >= 0;
+      const s = opts.search.toLowerCase();
+      users = users.filter(function (u) {
+        return (u.email || '').toLowerCase().indexOf(s) >= 0 ||
+               (u.full_name || '').toLowerCase().indexOf(s) >= 0;
       });
     }
-    if (opts.role) data = data.filter(function (u) { return u.role === opts.role; });
-    return data;
+    return users;
   }
 
   async function addUser(payload) {
-    const item = Object.assign({
-      id: genId('u'),
-      is_active: true,
-      created_at: new Date().toISOString(),
-      last_login: null,
-    }, payload);
-    DEMO_USERS_LIST.push(item);
-    return item;
+    if (db.isDemoMode()) {
+      const item = Object.assign({
+        id: genId('u'),
+        is_active: true,
+        created_at: new Date().toISOString(),
+        last_login: null,
+      }, payload);
+      DEMO_USERS_LIST.push(item);
+      return item;
+    }
+    // Production: insert ke tabel profiles
+    // Password di-hash via RPC hash_password
+    const client = db.getClient();
+    // Dapatkan hash password
+    const { data: hashData, error: hashErr } = await client.rpc('hash_password', { plain: payload.password });
+    if (hashErr) throw new Error('Gagal hash password: ' + hashErr.message);
+    const insertPayload = {
+      id: payload.id || (window.crypto && crypto.randomUUID ? crypto.randomUUID() : genId('u')),
+      email: payload.email,
+      full_name: payload.full_name,
+      role: payload.role || 'dinkes',
+      fasyankes_id: payload.fasyankes_id || null,
+      password_hash: hashData,
+      is_active: payload.is_active !== false,
+    };
+    const { data, error } = await client.from('profiles').insert(insertPayload).select().single();
+    if (error) throw new Error('Gagal tambah user: ' + error.message);
+    return data;
   }
 
   async function updateUser(id, payload) {
-    const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
-    if (idx < 0) throw new Error('User tidak ditemukan');
-    DEMO_USERS_LIST[idx] = Object.assign({}, DEMO_USERS_LIST[idx], payload);
-    return DEMO_USERS_LIST[idx];
+    if (db.isDemoMode()) {
+      const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
+      if (idx < 0) throw new Error('User tidak ditemukan');
+      DEMO_USERS_LIST[idx] = Object.assign({}, DEMO_USERS_LIST[idx], payload);
+      return DEMO_USERS_LIST[idx];
+    }
+    // Production: update tabel profiles
+    const client = db.getClient();
+    const updatePayload = Object.assign({}, payload);
+    delete updatePayload.id;
+    delete updatePayload.created_at;
+    // Jika ada password baru, hash dulu
+    if (updatePayload.password) {
+      const { data: hashData, error: hashErr } = await client.rpc('hash_password', { plain: updatePayload.password });
+      if (hashErr) throw new Error('Gagal hash password: ' + hashErr.message);
+      updatePayload.password_hash = hashData;
+      delete updatePayload.password;
+    }
+    const { data, error } = await client.from('profiles').update(updatePayload).eq('id', id).select().single();
+    if (error) throw new Error('Gagal update user: ' + error.message);
+    return data;
   }
 
   async function deleteUser(id) {
-    const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
-    if (idx < 0) throw new Error('User tidak ditemukan');
-    return DEMO_USERS_LIST.splice(idx, 1)[0];
+    if (db.isDemoMode()) {
+      const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
+      if (idx < 0) throw new Error('User tidak ditemukan');
+      return DEMO_USERS_LIST.splice(idx, 1)[0];
+    }
+    // Production: delete dari tabel profiles
+    const client = db.getClient();
+    const { error } = await client.from('profiles').delete().eq('id', id);
+    if (error) throw new Error('Gagal hapus user: ' + error.message);
+    return { id: id };
   }
 
   // === PERPANJANGAN (Pengajuan) ===

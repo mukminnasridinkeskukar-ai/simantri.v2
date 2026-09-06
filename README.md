@@ -154,19 +154,53 @@ window.SIMANTRI_CONFIG = {
 
 Ambil URL & anon key dari: **Supabase Dashboard → Project Settings → API**
 
-### 4. Buat akun admin Dinkes
-- Di Supabase → **Authentication → Users → Add user**
-- Isi email + password, centang "Auto Confirm User"
-- Jalankan SQL:
-  ```sql
-  update public.profiles
-  set role = 'dinkes', full_name = 'Admin Dinkes'
-  where email = 'email-anda@domain.go.id';
-  ```
+### 4. Setup Multiuser (Custom Auth via tabel profiles)
+
+Aplikasi ini **TIDAK memakai Supabase Auth bawaan** (yang butuh sign-up via Authentication menu). Sebagai gantinya, login divalidasi via fungsi `verify_user(email, password)` yang query tabel `profiles`.
+
+**Default admin sudah di-seed** di `schema.sql`:
+- Email: `dinkes@simantri.demo`
+- Password: `dinkes123`
+
+Anda bisa langsung login dengan akun tersebut setelah menjalankan schema.sql.
+
+**Tambah user baru** (via SQL Editor Supabase):
+```sql
+insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+values (
+  uuid_generate_v4(),
+  'admin.baru@dinkes.go.id',
+  'Dr. Admin Baru',
+  'dinkes',
+  public.hash_password('passwordBaru123'),
+  true
+);
+```
+
+**Ubah password user**:
+```sql
+update public.profiles
+set password_hash = public.hash_password('passwordBaru')
+where email = 'admin.baru@dinkes.go.id';
+```
+
+**Nonaktifkan user** (tidak bisa login):
+```sql
+update public.profiles set is_active = false where email = 'admin.baru@dinkes.go.id';
+```
+
+**Lihat semua user**:
+```sql
+select id, email, full_name, role, is_active, last_login, created_at
+from public.profiles order by created_at;
+```
+
+> 💡 Anda juga bisa CRUD user langsung via UI di halaman **Manajemen User & Role** setelah login sebagai admin.
 
 ### 5. Save & refresh
 - Save `config.js`
 - Refresh browser — aplikasi otomatis pakai Supabase (bukan demo lagi)
+- Login dengan email + password dari tabel `profiles` (default: `dinkes@simantri.demo / dinkes123`)
 
 ---
 
