@@ -911,19 +911,18 @@ let currentCrudReload = null; // fungsi reload daftar halaman aktif (dipakai mod
 const CRUD = {
   'tenaga-medis': {
     key: 'tenaga-medis', table: 'tenaga_medis', title: 'Data Tenaga Medis',
-    desc: 'Dokter & dokter gigi yang praktik di Kota Samarinda',
-    searchCols: ['nama_lengkap', 'nik', 'no_str', 'no_sip', 'spesialisasi', 'tempat_praktik'],
+    desc: 'Dokter & dokter gigi yang praktik di Kab. Kutai Kartanegara',
+    searchCols: ['nama_lengkap', 'no_str', 'no_sip', 'spesialisasi', 'tempat_praktik'],
     rowTitle: (r) => r.nama_lengkap,
     columns: [
       { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.spesialisasi || '')}</span>` },
-      { k: 'nik', label: 'NIK' },
       { k: 'no_str', label: 'STR / SIP', render: (v, r) => `${esc(v || '—')}<br><span class="text-[.68rem] text-slate-400">${esc(r.no_sip || '')}</span>` },
       { k: 'tempat_praktik', label: 'Tempat Praktik' },
       { k: 'masa_berlaku_sip', label: 'Masa Berlaku SIP', render: (v) => fmtDate(v) },
       { k: 'status', label: 'Status', render: (v) => badge(v) },
     ],
     form: [
-      { k: 'nik', label: 'NIK', required: true, max: 16 },
+     
       { k: 'nama_lengkap', label: 'Nama Lengkap', required: true },
       { k: 'no_str', label: 'No. STR' },
       { k: 'no_sip', label: 'No. SIP' },
@@ -933,7 +932,7 @@ const CRUD = {
       { k: 'status', label: 'Status', type: 'select', options: ['aktif', 'nonaktif'] },
     ],
     detail: (r) => [
-      ['NIK', esc(r.nik || '—')], ['Nama Lengkap', esc(r.nama_lengkap || '—')],
+      ['Nama Lengkap', esc(r.nama_lengkap || '—')],
       ['No. STR', esc(r.no_str || '—')], ['No. SIP', esc(r.no_sip || '—')],
       ['Spesialisasi', esc(r.spesialisasi || '—')], ['Tempat Praktik', esc(r.tempat_praktik || '—')],
       ['Masa Berlaku SIP', fmtDate(r.masa_berlaku_sip)], ['Status', badge(r.status)],
@@ -942,7 +941,7 @@ const CRUD = {
   },
   'tenaga-kesehatan': {
     key: 'tenaga-kesehatan', table: 'tenaga_kesehatan', title: 'Data Tenaga Kesehatan',
-    desc: 'Perawat, bidan, dan profesi tenaga kesehatan lainnya',
+    desc: 'Perawat, bidan, Apoteker dan profesi tenaga kesehatan lainnya',
     searchCols: ['nama_lengkap', 'nik', 'no_str', 'no_sip', 'profesi', 'tempat_praktik'],
     rowTitle: (r) => r.nama_lengkap,
     columns: [
