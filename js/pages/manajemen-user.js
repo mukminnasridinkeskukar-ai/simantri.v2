@@ -1,6 +1,5 @@
 /* ============================================================================
- * SIMANTRI v3 — Page: Manajemen User (Admin only — full CRUD on users table)
- * Schema v1.1 — users keyed by username. Role: admin / operator.
+ * SIMANTRI v3 — Page: Manajemen User & Role (Dinkes only)
  * ============================================================================ */
 
 (function () {
@@ -8,376 +7,542 @@
 
   window.SIMANTRI_PAGES = window.SIMANTRI_PAGES || {};
 
-  const ROLE_OPTS = ['admin', 'operator'];
-
-  function optionsHtml(opts, selected) {
-    return opts.map(function (o) {
-      return '<option value="' + window.SIMANTRI_UTILS.escapeHtml(o) + '"' + (selected === o ? ' selected' : '') + '>' + window.SIMANTRI_UTILS.escapeHtml(o) + '</option>';
-    }).join('');
-  }
-
-  function roleBadgeClass(r) {
-    return r === 'admin' ? 'badge-teal' : 'badge-lime';
-  }
-
   window.SIMANTRI_PAGES['manajemen-user'] = {
     html: function () {
-      return ''
-        + '<div class="space-y-6">'
-        +   '<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">'
-        +     '<div>'
-        +       '<h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Manajemen User</h2>'
-        +       '<p class="mt-1 text-sm text-ink-500 max-w-2xl">Kelola akun pengguna, peran, dan hak akses pada SIMANTRI.</p>'
-        +     '</div>'
-        +     '<button class="btn btn-primary btn-sm" data-action="add" type="button" data-role-action="manage-user">'
-        +       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>'
-        +       'Tambah User'
-        +     '</button>'
-        +   '</div>'
+      return `
+        <div class="space-y-6">
+          <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Manajemen User &amp; Role</h2>
+              <p class="mt-1 text-sm text-ink-500 max-w-2xl">Kelola akun pengguna, peran, dan hak akses pada SIMANTRI.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" data-action="add-user" type="button" data-role-action="manage-user">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              Tambah User
+            </button>
+          </div>
 
-        // Filter
-        +   '<div class="card p-4">'
-        +     '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'
-        +       '<div class="md:col-span-2">'
-        +         '<label class="label" for="mu-search">Pencarian</label>'
-        +         '<div class="relative">'
-        +           '<svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>'
-        +           '<input type="search" id="mu-search" class="input" style="padding-left:2.25rem;" placeholder="Cari username / nama lengkap..." />'
-        +         '</div>'
-        +       '</div>'
-        +       '<div>'
-        +         '<label class="label" for="mu-role">Role</label>'
-        +         '<select id="mu-role" class="select"><option value="">Semua</option>' + optionsHtml(ROLE_OPTS) + '</select>'
-        +       '</div>'
-        +     '</div>'
-        +   '</div>'
+          <!-- Role distribution cards -->
+          <div id="mu-role-cards" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="skeleton h-28"></div>
+            <div class="skeleton h-28"></div>
+            <div class="skeleton h-28"></div>
+          </div>
 
-        // Table
-        +   '<div class="card overflow-hidden">'
-        +     '<div class="overflow-x-auto">'
-        +       '<table class="data-table table-sticky">'
-        +         '<thead>'
-        +           '<tr>'
-        +             '<th>Username</th>'
-        +             '<th>Full Name</th>'
-        +             '<th>Role</th>'
-        +             '<th>Active</th>'
-        +             '<th>Created At</th>'
-        +             '<th>Updated At</th>'
-        +             '<th class="text-right">Aksi</th>'
-        +           '</tr>'
-        +         '</thead>'
-        +         '<tbody id="mu-tbody">'
-        +           '<tr><td colspan="7" class="text-center text-ink-500 py-8"><div class="skeleton h-8"></div></td></tr>'
-        +         '</tbody>'
-        +       '</table>'
-        +     '</div>'
-        +   '</div>'
-        + '</div>';
+          <!-- Filter -->
+          <div class="card p-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div class="md:col-span-2">
+                <label class="label" for="mu-search">Pencarian</label>
+                <div class="relative">
+                  <svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                  <input type="search" id="mu-search" class="input" style="padding-left:2.25rem;" placeholder="Cari nama atau email..." />
+                </div>
+              </div>
+              <div>
+                <label class="label" for="mu-role">Role</label>
+                <select id="mu-role" class="select">
+                  <option value="">Semua Role</option>
+                  <option value="dinkes">Admin Dinkes</option>
+                  <option value="fasyankes">Admin Fasyankes</option>
+                  <option value="nakes">Tenaga Kesehatan</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table -->
+          <div class="card overflow-hidden">
+            <div class="overflow-x-auto" style="max-height:520px;">
+              <table class="data-table table-sticky">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Fasyankes</th>
+                    <th>Login Terakhir</th>
+                    <th>Status</th>
+                    <th class="text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="mu-tbody">
+                  <tr><td colspan="7" class="text-center text-ink-500 py-8">Memuat data...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Permissions matrix -->
+          <div class="card p-5">
+            <div class="flex items-center gap-2 mb-4">
+              <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+              <h3 class="text-base font-bold text-ink-900">Matriks Hak Akses (Permissions)</h3>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Modul</th>
+                    <th class="text-center">Dinkes</th>
+                    <th class="text-center">Fasyankes</th>
+                    <th class="text-center">Nakes</th>
+                  </tr>
+                </thead>
+                <tbody id="mu-matrix">
+                  <tr><td colspan="4" class="text-center text-ink-500 py-4">Memuat...</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="text-xs text-ink-500 mt-3">Keterangan: <span class="badge badge-teal">Lihat</span> <span class="badge badge-lime">Edit</span> <span class="badge badge-amber">Approve</span> <span class="badge badge-rose">Tidak</span></p>
+          </div>
+        </div>
+      `;
     },
 
     init: async function () {
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
+      const components = window.SIMANTRI_COMPONENTS;
       const auth = window.SIMANTRI_AUTH;
 
-      let _filters = { search: '', role: '' };
+      // Guard: Dinkes only
+      if (!auth.isDinkes()) {
+        const viewSlot = document.getElementById('view-slot');
+        if (viewSlot) {
+          viewSlot.innerHTML = '<div class="card p-8 text-center">'
+            + '<div class="w-14 h-14 mx-auto rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-3">'
+            + '<svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>'
+            + '</div>'
+            + '<h3 class="text-lg font-bold text-ink-900">Akses Ditolak</h3>'
+            + '<p class="text-sm text-ink-500 mt-1">Halaman ini hanya untuk Admin Dinkes.</p>'
+            + '</div>';
+        }
+        return;
+      }
 
-      const addBtn = document.querySelector('[data-action="add"]');
-      if (addBtn) addBtn.addEventListener('click', function () { openFormModal(null); });
+      let _users = [];
+      let _allFasyankes = [];
+      let _search = '';
+      let _roleFilter = '';
 
       const searchInput = document.getElementById('mu-search');
       if (searchInput) {
         searchInput.addEventListener('input', utils.debounce(function (e) {
-          _filters.search = e.target.value.trim();
-          render();
-        }, 300));
+          _search = e.target.value.trim();
+          renderTable();
+        }, 250));
       }
       const roleSel = document.getElementById('mu-role');
-      if (roleSel) roleSel.addEventListener('change', function (e) { _filters.role = e.target.value; render(); });
+      if (roleSel) {
+        roleSel.addEventListener('change', function (e) {
+          _roleFilter = e.target.value;
+          renderTable();
+        });
+      }
+      const addBtn = document.querySelector('[data-action="add-user"]');
+      if (addBtn) addBtn.addEventListener('click', openAddModal);
 
-      async function render() {
-        const tbody = document.getElementById('mu-tbody');
-        if (!tbody) return;
+      async function load() {
         try {
-          const list = await data.loadUsers(_filters);
-          if (!list.length) {
-            tbody.innerHTML = '<tr><td colspan="7">' + emptyStateRow('Belum ada user. Klik "Tambah User" untuk membuat akun.') + '</td></tr>';
-            return;
-          }
-          tbody.innerHTML = list.map(function (u) {
-            const roleBadge = roleBadgeClass(u.role);
-            const activeBadge = u.is_active ? 'badge-teal' : 'badge-rose';
-            const activeLabel = u.is_active ? 'Aktif' : 'Nonaktif';
-            const currentUsername = (auth.getProfile() || {}).username;
-            const isSelf = currentUsername === u.username;
-            return '<tr>'
-                 +   '<td class="font-mono font-semibold text-ink-900">' + utils.escapeHtml(u.username || '-') + (isSelf ? ' <span class="text-xs text-teal-600">(anda)</span>' : '') + '</td>'
-                 +   '<td class="text-ink-700">' + utils.escapeHtml(u.full_name || '-') + '</td>'
-                 +   '<td><span class="badge ' + roleBadge + '">' + utils.escapeHtml(u.role || '-') + '</span></td>'
-                 +   '<td><span class="badge ' + activeBadge + '">' + activeLabel + '</span></td>'
-                 +   '<td class="whitespace-nowrap text-xs text-ink-500">' + utils.fmtDate(u.created_at) + '</td>'
-                 +   '<td class="whitespace-nowrap text-xs text-ink-500">' + utils.fmtDate(u.updated_at) + '</td>'
-                 +   '<td class="text-right whitespace-nowrap">'
-                 +     '<button class="btn btn-ghost btn-sm" data-action="edit" data-username="' + utils.escapeHtml(u.username) + '" data-role-action="manage-user" title="Edit">'
-                 +       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
-                 +       'Edit'
-                 +     '</button>'
-                 +     '<button class="btn btn-ghost btn-sm" data-action="toggle-active" data-username="' + utils.escapeHtml(u.username) + '" data-nama="' + utils.escapeHtml(u.full_name) + '" data-active="' + (u.is_active ? '1' : '0') + '" data-role-action="manage-user" title="' + (u.is_active ? 'Nonaktifkan' : 'Aktifkan') + '">'
-                 +       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18.364 5.636M5.636 18.364l12.728-12.728"/></svg>'
-                 +       (u.is_active ? 'Nonaktifkan' : 'Aktifkan')
-                 +     '</button>'
-                 +     '<button class="btn btn-ghost btn-sm text-rose-600 hover:bg-rose-50" data-action="delete" data-username="' + utils.escapeHtml(u.username) + '" data-nama="' + utils.escapeHtml(u.full_name) + '" data-role-action="manage-user" title="Hapus"' + (isSelf ? ' disabled' : '') + '>'
-                 +       '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>'
-                 +       'Hapus'
-                 +     '</button>'
-                 +   '</td>'
-                 + '</tr>';
-          }).join('');
-
-          tbody.querySelectorAll('[data-action="edit"]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-              const username = btn.getAttribute('data-username');
-              const item = list.find(function (x) { return x.username === username; });
-              if (item) openFormModal(item);
-            });
+          const [users, fasyankes] = await Promise.all([
+            data.loadUsers(),
+            data.loadFasyankes(),
+          ]);
+          _allFasyankes = fasyankes || [];
+          _users = (users || []).map(function (u) {
+            return {
+              id: u.id,
+              full_name: u.full_name,
+              email: u.email,
+              role: u.role || 'dinkes',
+              fasyankes_id: u.fasyankes_id || null,
+              fasyankes_nama: u.fasyankes_nama || null,
+              is_active: u.is_active !== false,
+              status: u.is_active === false ? 'nonaktif' : 'aktif',
+              last_login: u.last_login || null,
+              created_at: u.created_at || null
+            };
           });
-          tbody.querySelectorAll('[data-action="toggle-active"]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-              const username = btn.getAttribute('data-username');
-              const nama = btn.getAttribute('data-nama');
-              const active = btn.getAttribute('data-active') === '1';
-              handleToggleActive(username, nama, active);
-            });
-          });
-          tbody.querySelectorAll('[data-action="delete"]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-              if (btn.disabled) return;
-              const username = btn.getAttribute('data-username');
-              const nama = btn.getAttribute('data-nama');
-              handleDelete(username, nama);
-            });
-          });
+          renderRoleCards();
+          renderTable();
+          renderMatrix();
         } catch (err) {
-          utils.toast('Gagal memuat user: ' + err.message, 'error');
-          console.error('[manajemen-user] render error:', err);
-          tbody.innerHTML = '<tr><td colspan="7">' + emptyStateRow('Gagal memuat data.') + '</td></tr>';
+          utils.toast('Gagal memuat data: ' + err.message, 'error');
+          console.error(err);
         }
       }
 
-      function emptyStateRow(message) {
-        return '<div class="text-center py-8 text-sm text-ink-500">' + utils.escapeHtml(message) + '</div>';
+      function fasyankesName(id) {
+        if (!id) return '-';
+        const f = _allFasyankes.find(function (x) { return x.id === id; });
+        return f ? f.nama : '-';
       }
 
-      // === Form Modal ===
-      function openFormModal(existing) {
-        const isEdit = !!existing;
-        const u = isEdit ? existing : {
-          username: '', password: '', full_name: '', role: 'operator', is_active: true,
-        };
+      function roleLabel(role) {
+        return ({ dinkes: 'Admin Dinkes', fasyankes: 'Admin Fasyankes', nakes: 'Tenaga Kesehatan' })[role] || role;
+      }
+      function roleBadgeClass(role) {
+        return ({ dinkes: 'badge-teal', fasyankes: 'badge-lime', nakes: 'badge-ink' })[role] || 'badge-ink';
+      }
 
+      function renderRoleCards() {
+        const container = document.getElementById('mu-role-cards');
+        if (!container) return;
+        container.innerHTML = '';
+        const cards = [
+          { label: 'Admin Dinkes', value: _users.filter(function (u) { return u.role === 'dinkes'; }).length, sub: 'Akses penuh sistem', icon: 'shield-check', variant: 'teal' },
+          { label: 'Admin Fasyankes', value: _users.filter(function (u) { return u.role === 'fasyankes'; }).length, sub: 'Kelola fasyankes sendiri', icon: 'hospital', variant: 'lime' },
+          { label: 'Tenaga Kesehatan', value: _users.filter(function (u) { return u.role === 'nakes'; }).length, sub: 'Akses data pribadi', icon: 'users', variant: 'amber' },
+        ];
+        cards.forEach(function (c) {
+          const div = document.createElement('div');
+          container.appendChild(div);
+          components.renderStatCard(div, c);
+        });
+      }
+
+      function getFiltered() {
+        return _users.filter(function (u) {
+          if (_roleFilter && u.role !== _roleFilter) return false;
+          if (_search) {
+            const q = _search.toLowerCase();
+            if ((u.full_name || '').toLowerCase().indexOf(q) < 0 && (u.email || '').toLowerCase().indexOf(q) < 0) return false;
+          }
+          return true;
+        });
+      }
+
+      function renderTable() {
+        const tbody = document.getElementById('mu-tbody');
+        if (!tbody) return;
+        const filtered = getFiltered();
+        if (!filtered.length) {
+          tbody.innerHTML = '<tr><td colspan="7"><div class="text-center py-10">'
+            + '<div class="w-12 h-12 mx-auto rounded-xl bg-ink-100 text-ink-400 flex items-center justify-center mb-3">'
+            + '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-2-5.24"/></svg>'
+            + '</div>'
+            + '<p class="text-sm font-semibold text-ink-700">Tidak ada user yang cocok</p>'
+            + '<p class="text-xs text-ink-500 mt-1">Coba ubah kata kunci atau filter</p>'
+            + '</div></td></tr>';
+          return;
+        }
+        tbody.innerHTML = filtered.map(function (u) {
+          const colorAvatar = utils.avatarColor(u.full_name || u.email);
+          const statusBadge = u.status === 'aktif' ? 'badge-teal' : 'badge-rose';
+          const statusLabel = u.status === 'aktif' ? 'Aktif' : 'Nonaktif';
+          return '<tr data-user-id="' + utils.escapeHtml(u.id) + '">'
+               + '<td>'
+               + '<div class="flex items-center gap-2">'
+               + '<div class="w-8 h-8 rounded-full ' + colorAvatar + ' text-white flex items-center justify-center text-[10px] font-bold flex-shrink-0">' + utils.escapeHtml(utils.initials(u.full_name || u.email)) + '</div>'
+               + '<p class="text-sm font-semibold text-ink-900 truncate">' + utils.escapeHtml(u.full_name || '-') + '</p>'
+               + '</div>'
+               + '</td>'
+               + '<td><span class="text-xs text-ink-600">' + utils.escapeHtml(u.email || '-') + '</span></td>'
+               + '<td><span class="badge ' + roleBadgeClass(u.role) + '">' + roleLabel(u.role) + '</span></td>'
+               + '<td><span class="text-xs text-ink-600 truncate">' + utils.escapeHtml(fasyankesName(u.fasyankes_id)) + '</span></td>'
+               + '<td><span class="text-xs text-ink-600">' + utils.fmtDate(u.last_login) + '</span></td>'
+               + '<td><span class="badge ' + statusBadge + '">' + statusLabel + '</span></td>'
+               + '<td class="text-right">'
+               + '<div class="flex items-center justify-end gap-1">'
+               + '<button class="btn btn-ghost btn-sm" data-action="edit" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Edit">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
+               + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="toggle" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Aktif/Nonaktif">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
+               + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="delete" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Hapus">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>'
+               + '</button>'
+               + '</div>'
+               + '</td>'
+               + '</tr>';
+        }).join('');
+
+        tbody.querySelectorAll('[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const u = _users.find(function (x) { return x.id === btn.dataset.id; });
+            if (u) openEditModal(u);
+          });
+        });
+        tbody.querySelectorAll('[data-action="toggle"]').forEach(function (btn) {
+          btn.addEventListener('click', async function () {
+            const u = _users.find(function (x) { return x.id === btn.dataset.id; });
+            if (!u) return;
+            try {
+              await data.updateUser(u.id, { is_active: !u.is_active });
+              const profile = auth.getProfile();
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'user',
+                entity_id: u.id,
+                detail: (u.is_active ? 'Nonaktifkan' : 'Aktifkan') + ' user: ' + u.full_name
+              });
+              utils.toast('User ' + u.full_name + ' di' + (u.is_active ? 'nonaktifkan' : 'aktifkan'), 'success');
+              await load();
+            } catch (e) {
+              utils.toast('Error: ' + e.message, 'error');
+            }
+          });
+        });
+        tbody.querySelectorAll('[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const u = _users.find(function (x) { return x.id === btn.dataset.id; });
+            if (u) handleDelete(u);
+          });
+        });
+      }
+
+      function renderMatrix() {
+        const tbody = document.getElementById('mu-matrix');
+        if (!tbody) return;
+        const modules = [
+          { name: 'Dashboard Monitoring', dinkes: 'edit', fasyankes: 'lihat', nakes: 'lihat' },
+          { name: 'Data Nakes & Tenaga Kesehatan', dinkes: 'edit', fasyankes: 'edit', nakes: 'lihat' },
+          { name: 'Data Fasyankes', dinkes: 'edit', fasyankes: 'lihat', nakes: 'tidak' },
+          { name: 'Verifikasi STR & SIP', dinkes: 'approve', fasyankes: 'edit', nakes: 'tidak' },
+          { name: 'Perpanjangan & Rekomendasi', dinkes: 'approve', fasyankes: 'edit', nakes: 'edit' },
+          { name: 'Laporan & Rekap', dinkes: 'edit', fasyankes: 'lihat', nakes: 'tidak' },
+          { name: 'Manajemen User', dinkes: 'edit', fasyankes: 'tidak', nakes: 'tidak' },
+          { name: 'Pengaturan & Audit Log', dinkes: 'edit', fasyankes: 'lihat', nakes: 'lihat' },
+        ];
+        const badgeFor = function (perm) {
+          switch (perm) {
+            case 'edit': return '<span class="badge badge-lime">Edit</span>';
+            case 'approve': return '<span class="badge badge-amber">Approve</span>';
+            case 'lihat': return '<span class="badge badge-teal">Lihat</span>';
+            default: return '<span class="badge badge-rose">Tidak</span>';
+          }
+        };
+        tbody.innerHTML = modules.map(function (m) {
+          return '<tr>'
+               + '<td><span class="text-sm font-medium text-ink-800">' + utils.escapeHtml(m.name) + '</span></td>'
+               + '<td class="text-center">' + badgeFor(m.dinkes) + '</td>'
+               + '<td class="text-center">' + badgeFor(m.fasyankes) + '</td>'
+               + '<td class="text-center">' + badgeFor(m.nakes) + '</td>'
+               + '</tr>';
+        }).join('');
+      }
+
+      function openAddModal() {
+        const modalHtml = buildUserModal(null);
         const portal = document.getElementById('modal-portal');
         if (!portal) return;
-        portal.innerHTML = ''
-          + '<div class="fixed inset-0 z-[80] flex items-center justify-center p-4" data-modal-root>'
-          +   '<div class="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" data-modal-close></div>'
-          +   '<div class="card relative w-full max-w-md max-h-[90vh] overflow-y-auto" data-modal-content>'
-          +     '<div class="p-5 border-b border-ink-100 flex items-center justify-between sticky top-0 bg-white z-10">'
-          +       '<div>'
-          +         '<h3 class="text-base font-bold text-ink-900">' + (isEdit ? 'Edit User' : 'Tambah User') + '</h3>'
-          +         '<p class="text-xs text-ink-500 mt-0.5">' + (isEdit ? 'Perbarui data user' : 'Buat akun user baru') + '</p>'
-          +       '</div>'
-          +       '<button type="button" class="btn btn-ghost btn-sm" data-modal-close aria-label="Tutup">'
-          +         '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>'
-          +       '</button>'
-          +     '</div>'
-          +     '<form id="mu-form" class="p-5 space-y-4">'
-          +       '<div>'
-          +         '<label class="label" for="mu-username">Username <span class="text-rose-600">*</span></label>'
-          +         '<input type="text" id="mu-username" class="input font-mono" required maxlength="50" pattern="[a-zA-Z0-9_]+" ' + (isEdit ? 'readonly' : '') + ' value="' + utils.escapeHtml(u.username || '') + '" placeholder="huruf, angka, underscore" />'
-          +         '<p class="field-error hidden" data-error="username"></p>'
-          +         (isEdit ? '<p class="text-xs text-ink-400 mt-1">Username tidak dapat diubah.</p>' : '')
-          +       '</div>'
-          +       '<div>'
-          +         '<label class="label" for="mu-password">Password <span class="text-rose-600">*</span></label>'
-          +         '<input type="text" id="mu-password" class="input font-mono" required maxlength="100" value="' + (isEdit ? (u.password || '') : '') + '" placeholder="' + (isEdit ? 'Kosongkan jika tidak diubah' : 'Min. 6 karakter') + '" />'
-          +         '<p class="field-error hidden" data-error="password"></p>'
-          +         (isEdit ? '<p class="text-xs text-ink-400 mt-1">Isi password baru untuk mengganti.</p>' : '')
-          +       '</div>'
-          +       '<div>'
-          +         '<label class="label" for="mu-fullname">Full Name <span class="text-rose-600">*</span></label>'
-          +         '<input type="text" id="mu-fullname" class="input" required maxlength="200" value="' + utils.escapeHtml(u.full_name || '') + '" placeholder="Nama lengkap user" />'
-          +         '<p class="field-error hidden" data-error="full_name"></p>'
-          +       '</div>'
-          +       '<div>'
-          +         '<label class="label" for="mu-role-form">Role</label>'
-          +         '<select id="mu-role-form" class="select">' + optionsHtml(ROLE_OPTS, u.role) + '</select>'
-          +       '</div>'
-          +       '<label class="flex items-start gap-3 cursor-pointer p-3 rounded-xl border border-ink-200 hover:bg-teal-50/40">'
-          +         '<input type="checkbox" id="mu-is-active" class="mt-0.5 w-4 h-4 rounded text-teal-600" ' + (u.is_active ? 'checked' : '') + ' />'
-          +         '<div>'
-          +           '<p class="text-sm font-semibold text-ink-800">Akun Aktif</p>'
-          +           '<p class="text-xs text-ink-500">User nonaktif tidak dapat login ke sistem.</p>'
-          +         '</div>'
-          +       '</label>'
-          +       '<div class="flex items-center justify-end gap-2 pt-3 border-t border-ink-100">'
-          +         '<button type="button" class="btn btn-outline btn-sm" data-modal-close>Batal</button>'
-          +         '<button type="submit" class="btn btn-primary btn-sm" id="mu-submit">'
-          +           '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>'
-          +           (isEdit ? 'Simpan Perubahan' : 'Tambah User')
-          +         '</button>'
-          +       '</div>'
-          +     '</form>'
-          +   '</div>'
-          + '</div>';
+        portal.innerHTML = modalHtml;
+        bindUserModal(null);
+      }
 
+      function openEditModal(u) {
+        const modalHtml = buildUserModal(u);
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        portal.innerHTML = modalHtml;
+        bindUserModal(u);
+      }
+
+      function buildUserModal(existing) {
+        const isEdit = !!existing;
+        const u = existing || { full_name: '', email: '', role: 'dinkes', fasyankes_id: '', status: 'aktif' };
+        const fasyankesOptions = '<option value="">-- Tidak terikat --</option>'
+          + _allFasyankes.map(function (f) {
+              return '<option value="' + utils.escapeHtml(f.id) + '"' + (f.id === u.fasyankes_id ? ' selected' : '') + '>' + utils.escapeHtml(f.nama) + '</option>';
+            }).join('');
+        return `
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" data-modal>
+            <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-modal-close></div>
+            <div class="relative card w-full sm:max-w-lg max-h-[92vh] overflow-y-auto" style="border-radius:1.25rem;">
+              <div class="sticky top-0 bg-white p-5 border-b border-ink-100 flex items-center justify-between z-10">
+                <h3 class="text-base font-bold text-ink-900">` + (isEdit ? 'Edit User' : 'Tambah User Baru') + `</h3>
+                <button class="btn btn-ghost btn-sm" data-modal-close aria-label="Tutup">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <form id="mu-form" class="p-5 space-y-4" novalidate>
+                <div>
+                  <label class="label" for="mu-full-name">Nama Lengkap <span class="text-rose-500">*</span></label>
+                  <input type="text" id="mu-full-name" class="input" value="` + utils.escapeHtml(u.full_name) + `" required />
+                  <p class="field-error hidden" id="mu-full-name-err">Nama lengkap wajib diisi</p>
+                </div>
+                <div>
+                  <label class="label" for="mu-email">Email <span class="text-rose-500">*</span></label>
+                  <input type="email" id="mu-email" class="input" value="` + utils.escapeHtml(u.email) + `" ` + (isEdit ? 'readonly' : 'required') + ` />
+                  <p class="field-error hidden" id="mu-email-err">Email valid wajib diisi</p>
+                </div>
+                <div>
+                  <label class="label" for="mu-password">` + (isEdit ? 'Password Baru (opsional)' : 'Password <span class="text-rose-500">*</span>') + `</label>
+                  <input type="password" id="mu-password" class="input" placeholder="Minimal 8 karakter" ` + (isEdit ? '' : 'required') + ` />
+                  <p class="field-error hidden" id="mu-password-err">Password minimal 8 karakter</p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="label" for="mu-role-sel">Role <span class="text-rose-500">*</span></label>
+                    <select id="mu-role-sel" class="select" required>
+                      <option value="dinkes"` + (u.role === 'dinkes' ? ' selected' : '') + `>Admin Dinkes</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="label" for="mu-fasyankes-sel">Fasyankes</label>
+                    <select id="mu-fasyankes-sel" class="select">` + fasyankesOptions + `</select>
+                  </div>
+                </div>
+                ` + (isEdit ? `
+                <div>
+                  <label class="label" for="mu-status-sel">Status</label>
+                  <select id="mu-status-sel" class="select">
+                    <option value="aktif"` + (u.status === 'aktif' ? ' selected' : '') + `>Aktif</option>
+                    <option value="nonaktif"` + (u.status === 'nonaktif' ? ' selected' : '') + `>Nonaktif</option>
+                  </select>
+                </div>` : '') + `
+                <div class="rounded-xl bg-ink-50 p-3 text-xs text-ink-600 flex items-start gap-2">
+                  <svg class="w-4 h-4 text-teal-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <span>` + (isEdit ? 'Perubahan akan disimpan ke database.' : 'User baru akan menerima email aktivasi sebelum dapat login.') + `</span>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
+                  <button type="button" class="btn btn-outline btn-sm" data-modal-close>Batal</button>
+                  <button type="submit" class="btn btn-primary btn-sm">` + (isEdit ? 'Simpan Perubahan' : 'Tambah User') + `</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+      }
+
+      function bindUserModal(existing) {
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
         portal.querySelectorAll('[data-modal-close]').forEach(function (el) {
           el.addEventListener('click', closeModal);
         });
-
-        const form = document.getElementById('mu-form');
+        const form = portal.querySelector('#mu-form');
         if (form) {
-          form.addEventListener('submit', async function (e) {
+          form.addEventListener('submit', function (e) {
             e.preventDefault();
-            await handleSubmit(isEdit, existing);
+            handleSubmit(existing);
           });
         }
-
-        document.addEventListener('keydown', onEscKey);
-        setTimeout(function () {
-          const focusTarget = isEdit ? document.getElementById('mu-fullname') : document.getElementById('mu-username');
-          if (focusTarget) focusTarget.focus();
-        }, 80);
+        document.addEventListener('keydown', escClose);
       }
 
-      function onEscKey(e) {
+      function handleSubmit(existing) {
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        const fullName = portal.querySelector('#mu-full-name').value.trim();
+        const email = portal.querySelector('#mu-email').value.trim();
+        const role = portal.querySelector('#mu-role-sel').value;
+        const fasyankesId = portal.querySelector('#mu-fasyankes-sel').value;
+        const statusSel = portal.querySelector('#mu-status-sel');
+        const status = statusSel ? statusSel.value : 'aktif';
+        const password = portal.querySelector('#mu-password') ? portal.querySelector('#mu-password').value : '';
+
+        // Validate
+        let valid = true;
+        const errName = portal.querySelector('#mu-full-name-err');
+        const errEmail = portal.querySelector('#mu-email-err');
+        const errPass = portal.querySelector('#mu-password-err');
+        if (errName) errName.classList.add('hidden');
+        if (errEmail) errEmail.classList.add('hidden');
+        if (errPass) errPass.classList.add('hidden');
+        if (!fullName) { if (errName) errName.classList.remove('hidden'); valid = false; }
+        if (!email || !utils.isEmail(email)) { if (errEmail) { errEmail.textContent = !email ? 'Email wajib diisi' : 'Format email tidak valid'; errEmail.classList.remove('hidden'); } valid = false; }
+        if (!existing && (!password || password.length < 8)) { if (errPass) { errPass.textContent = !password ? 'Password wajib diisi' : 'Password minimal 8 karakter'; errPass.classList.remove('hidden'); } valid = false; }
+        if (existing && password && password.length < 8) { if (errPass) errPass.classList.remove('hidden'); valid = false; }
+
+        if (!valid) {
+          utils.toast('Periksa kembali isian form', 'error');
+          return;
+        }
+
+        // Check email uniqueness
+        const exists = _users.some(function (u) { return u.email.toLowerCase() === email.toLowerCase() && u.id !== (existing && existing.id); });
+        if (exists) {
+          if (errEmail) { errEmail.textContent = 'Email sudah terdaftar'; errEmail.classList.remove('hidden'); }
+          utils.toast('Email sudah terdaftar', 'error');
+          return;
+        }
+
+        const fasyankes = _allFasyankes.find(function (f) { return f.id === fasyankesId; });
+        const profile = auth.getProfile();
+        (async function () {
+          try {
+            if (existing) {
+              const payload = {
+                full_name: fullName,
+                email: email,
+                role: role,
+                fasyankes_id: fasyankesId || null,
+                fasyankes_nama: fasyankes ? fasyankes.nama : null,
+                is_active: status === 'aktif'
+              };
+              await data.updateUser(existing.id, payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'user',
+                entity_id: existing.id,
+                detail: 'Update user: ' + fullName
+              });
+              utils.toast('User ' + fullName + ' diperbarui', 'success');
+            } else {
+              const payload = {
+                email: email,
+                full_name: fullName,
+                role: role,
+                fasyankes_id: fasyankesId || null,
+                fasyankes_nama: fasyankes ? fasyankes.nama : null,
+                is_active: true
+              };
+              const item = await data.addUser(payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'CREATE',
+                entity: 'user',
+                entity_id: item.id,
+                detail: 'Tambah user: ' + fullName
+              });
+              utils.toast('User ' + fullName + ' ditambahkan', 'success');
+            }
+            closeModal();
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
+      }
+
+      async function handleDelete(u) {
+        if (!confirm('Hapus user "' + u.full_name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+        try {
+          await data.deleteUser(u.id);
+          const profile = auth.getProfile();
+          await data.addAuditLog({
+            user_id: profile.id,
+            user_name: profile.full_name,
+            action: 'DELETE',
+            entity: 'user',
+            entity_id: u.id,
+            detail: 'Hapus user: ' + u.full_name
+          });
+          utils.toast('User ' + u.full_name + ' dihapus', 'success');
+          await load();
+        } catch (e) {
+          utils.toast('Error: ' + e.message, 'error');
+        }
+      }
+
+      function escClose(e) {
         if (e.key === 'Escape') closeModal();
       }
-
       function closeModal() {
         const portal = document.getElementById('modal-portal');
         if (portal) portal.innerHTML = '';
-        document.removeEventListener('keydown', onEscKey);
+        document.removeEventListener('keydown', escClose);
       }
 
-      async function handleSubmit(isEdit, existing) {
-        const username = document.getElementById('mu-username').value.trim();
-        const password = document.getElementById('mu-password').value;
-        const full_name = document.getElementById('mu-fullname').value.trim();
-        const role = document.getElementById('mu-role-form').value;
-        const is_active = document.getElementById('mu-is-active').checked;
-
-        const errU = document.querySelector('[data-error="username"]');
-        const errP = document.querySelector('[data-error="password"]');
-        const errF = document.querySelector('[data-error="full_name"]');
-        [errU, errP, errF].forEach(function (el) { if (el) { el.classList.add('hidden'); el.textContent = ''; } });
-
-        if (!isEdit) {
-          if (!username) { if (errU) { errU.textContent = 'Username wajib diisi'; errU.classList.remove('hidden'); } return; }
-          if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-            if (errU) { errU.textContent = 'Username hanya boleh huruf, angka, underscore'; errU.classList.remove('hidden'); }
-            return;
-          }
-          if (!password || password.length < 6) {
-            if (errP) { errP.textContent = 'Password minimal 6 karakter'; errP.classList.remove('hidden'); }
-            return;
-          }
-        } else {
-          // Edit: password boleh kosong (=tidak diubah)
-          if (password && password.length < 6) {
-            if (errP) { errP.textContent = 'Password minimal 6 karakter'; errP.classList.remove('hidden'); }
-            return;
-          }
-        }
-        if (!full_name) { if (errF) { errF.textContent = 'Full name wajib diisi'; errF.classList.remove('hidden'); } return; }
-
-        // Unique check (demo mode): cek konflik username saat add
-        if (!isEdit) {
-          try {
-            const all = await data.loadUsers({});
-            if (all.find(function (x) { return x.username.toLowerCase() === username.toLowerCase(); })) {
-              if (errU) { errU.textContent = 'Username sudah dipakai'; errU.classList.remove('hidden'); }
-              utils.toast('Username sudah dipakai', 'warning');
-              return;
-            }
-          } catch (e) { /* ignore */ }
-        }
-
-        const profile = auth.getProfile() || {};
-        const payload = {
-          username: username,
-          password: password || (existing ? existing.password : ''),
-          full_name: full_name,
-          role: role,
-          is_active: is_active,
-        };
-
-        const submitBtn = document.getElementById('mu-submit');
-        if (submitBtn) {
-          submitBtn.disabled = true;
-          submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9"/></svg> Menyimpan...';
-        }
-
-        try {
-          if (isEdit) {
-            const updatePayload = { full_name: full_name, role: role, is_active: is_active };
-            if (password) updatePayload.password = password;
-            await data.updateUser(existing.username, updatePayload);
-            await data.addLog({ username: profile.username || 'admin', aksi: 'UPDATE_USER', detail: 'Update user: ' + username + ' (' + full_name + ')', ip_address: '127.0.0.1' });
-            utils.toast('User diperbarui', 'success');
-          } else {
-            await data.addUser(payload);
-            await data.addLog({ username: profile.username || 'admin', aksi: 'ADD_USER', detail: 'Tambah user: ' + username + ' (' + full_name + ')', ip_address: '127.0.0.1' });
-            utils.toast('User ditambahkan', 'success');
-          }
-          closeModal();
-          await render();
-        } catch (err) {
-          utils.toast('Gagal menyimpan: ' + err.message, 'error');
-          console.error('[manajemen-user] submit error:', err);
-        } finally {
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>' + (isEdit ? 'Simpan Perubahan' : 'Tambah User');
-          }
-        }
-      }
-
-      async function handleToggleActive(username, nama, currentlyActive) {
-        const action = currentlyActive ? 'Nonaktifkan' : 'Aktifkan';
-        if (!confirm(action + ' user "' + nama + '" (' + username + ')?')) return;
-        try {
-          await data.updateUser(username, { is_active: !currentlyActive });
-          const profile = auth.getProfile() || {};
-          await data.addLog({ username: profile.username || 'admin', aksi: 'UPDATE_USER', detail: action + ' user: ' + username + ' (' + nama + ')', ip_address: '127.0.0.1' });
-          utils.toast('User ' + action.toLowerCase(), 'success');
-          await render();
-        } catch (err) {
-          utils.toast('Gagal mengubah status: ' + err.message, 'error');
-          console.error('[manajemen-user] toggle error:', err);
-        }
-      }
-
-      async function handleDelete(username, nama) {
-        const currentUsername = (auth.getProfile() || {}).username;
-        if (username === currentUsername) {
-          utils.toast('Anda tidak dapat menghapus akun sendiri', 'warning');
-          return;
-        }
-        if (!confirm('Hapus user "' + nama + '" (' + username + ')? Tindakan ini tidak dapat dibatalkan.')) return;
-        try {
-          await data.deleteUser(username);
-          const profile = auth.getProfile() || {};
-          await data.addLog({ username: profile.username || 'admin', aksi: 'DELETE_USER', detail: 'Hapus user: ' + username + ' (' + nama + ')', ip_address: '127.0.0.1' });
-          utils.toast('User dihapus', 'success');
-          await render();
-        } catch (err) {
-          utils.toast('Gagal menghapus: ' + err.message, 'error');
-          console.error('[manajemen-user] delete error:', err);
-        }
-      }
-
-      await render();
+      await load();
     },
   };
 })();

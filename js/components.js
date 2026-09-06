@@ -14,7 +14,6 @@
     dashboard: 'M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z M4 9h16 M9 4v16',
     map: 'M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7',
     bell: 'M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9',
-    alert: 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z',
     doctor: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
     health: 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z',
     hospital: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6',
@@ -24,8 +23,6 @@
     report: 'M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
     users: 'M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-2-5.24',
     cog: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065zM15 12a3 3 0 11-6 0 3 3 0 016 0z',
-    'plus-circle': 'M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z',
-    document: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
   };
 
   function iconSvg(name, extraClass) {
@@ -36,27 +33,24 @@
 
   // === ROUTES (shared with app.js) ===
   const ROUTES = [
-    // ===== BAGIAN 1: OVERVIEW (public + admin) =====
     { id: 'dashboard', label: 'Dashboard Monitoring', group: 'overview', icon: 'dashboard' },
-    { id: 'pengumuman', label: 'Pengumuman', group: 'overview', icon: 'bell' },
-    { id: 'notifikasi-expired', label: 'Notifikasi Expired', group: 'overview', icon: 'alert' },
-
-    // ===== BAGIAN 2: INPUT DATA (admin/operator only) =====
-    { id: 'input-pengumuman', label: 'Input Pengumuman', group: 'input', icon: 'plus-circle' },
-    { id: 'input-profil-sdmk', label: 'Input Profil SDMK', group: 'input', icon: 'users' },
-    { id: 'input-verval-izin', label: 'Input Verval Izin Praktik', group: 'input', icon: 'shield-check' },
-    { id: 'input-verval-fasyankes', label: 'Input Verval Fasyankes', group: 'input', icon: 'hospital' },
-    { id: 'input-izin-praktik', label: 'Input Pengajuan Izin', group: 'input', icon: 'document' },
-
-    // ===== BAGIAN 3: SISTEM (admin only) =====
-    { id: 'manajemen-user', label: 'Manajemen User', group: 'sistem', icon: 'users', adminOnly: true },
-    { id: 'pengaturan', label: 'Pengaturan & Audit Log', group: 'sistem', icon: 'cog' },
+    { id: 'peta-sebaran', label: 'Peta Sebaran Praktik', group: 'overview', icon: 'map' },
+    { id: 'notifikasi-expired', label: 'Notifikasi Expired', group: 'overview', icon: 'bell' },
+    { id: 'data-nakes', label: 'Data Tenaga Medis', group: 'data', icon: 'doctor' },
+    { id: 'data-tenaga-kesehatan', label: 'Data Tenaga Kesehatan', group: 'data', icon: 'health' },
+    { id: 'data-fasyankes', label: 'Data Fasyankes & Praktik', group: 'data', icon: 'hospital' },
+    { id: 'jadwal-praktik', label: 'Jadwal Praktik', group: 'data', icon: 'calendar' },
+    { id: 'verifikasi', label: 'Verifikasi STR & SIP', group: 'izin', icon: 'shield-check' },
+    { id: 'perpanjangan', label: 'Perpanjangan & Rekomendasi', group: 'izin', icon: 'refresh' },
+    { id: 'laporan', label: 'Laporan & Rekap Dinkes', group: 'izin', icon: 'report' },
+    { id: 'manajemen-user', label: 'Manajemen User & Role', group: 'izin', icon: 'users', dinkesOnly: true },
+    { id: 'pengaturan', label: 'Pengaturan & Audit Log', group: 'izin', icon: 'cog' },
   ];
 
   const GROUP_LABELS = {
     overview: 'Overview',
-    input: 'Input Data (Admin)',
-    sistem: 'Sistem',
+    data: 'Manajemen Data Inti',
+    izin: 'Perizinan & Sistem',
   };
 
   // === SIDEBAR ===
@@ -99,21 +93,16 @@
     });
 
     let html = '';
-    const groupOrder = ['overview', 'input', 'sistem'];
-    // Filter group berdasarkan auth: input & sistem hanya untuk admin/operator
-    groupOrder.forEach(function (g) {
+    ['overview', 'data', 'izin'].forEach(function (g) {
       if (!grouped[g]) return;
-      if ((g === 'input' || g === 'sistem') && !auth.canAccessSection2()) return;
       html += '<div class="section-label">' + utils.escapeHtml(GROUP_LABELS[g] || g) + '</div>';
       html += '<div class="px-2 space-y-0.5">';
       grouped[g].forEach(function (r) {
-        // Skip admin-only routes jika bukan admin
-        if (r.adminOnly && !auth.isAdmin()) return;
-        const isDinkesOnly = r.adminOnly;
+        const isDinkesOnly = r.dinkesOnly;
         html += '<a href="#/' + r.id + '" data-route="' + r.id + '" class="nav-item" role="menuitem" aria-label="' + utils.escapeHtml(r.label) + '">'
               + iconSvg(r.icon)
               + '<span class="flex-1 truncate">' + utils.escapeHtml(r.label) + '</span>'
-              + (isDinkesOnly ? '<span class="badge-amber" style="padding:0 0.375rem;font-size:9px;">ADMIN</span>' : '')
+              + (isDinkesOnly ? '<span class="badge-amber" style="padding:0 0.375rem;font-size:9px;">DINKES</span>' : '')
               + '</a>';
       });
       html += '</div>';
@@ -131,13 +120,13 @@
     if (nameEl) nameEl.textContent = p.full_name || 'Pengunjung';
     if (roleEl) {
       const roleText = isAuth
-        ? ((p.role === 'admin') ? 'Administrator' : (p.role === 'operator' ? 'Operator Verval' : (p.role || 'User')))
+        ? ((p.role === 'dinkes') ? 'Admin Dinkes' : (p.role || 'User'))
         : 'Mode Pengunjung';
       roleEl.textContent = roleText;
     }
     if (avatarEl) {
       if (isAuth) {
-        avatarEl.textContent = utils.initials(p.full_name || p.username || '?');
+        avatarEl.textContent = utils.initials(p.full_name || p.email || '?');
         avatarEl.style.background = 'linear-gradient(135deg,#0D9488 0%,#84CC16 100%)';
         avatarEl.style.color = 'white';
       } else {
@@ -206,9 +195,9 @@
       if (auth.isAuthenticated()) {
         // Sudah login → tampilkan user info + tombol logout
         const p = auth.getProfile();
-        const roleText = (p.role === 'admin') ? 'Administrator' : (p.role === 'operator' ? 'Operator' : (p.role || 'User'));
+        const roleText = (p.role === 'dinkes') ? 'Admin Dinkes' : (p.role || 'User');
         userContainer.innerHTML = `
-          <div id="header-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm" style="background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);">${utils.escapeHtml(utils.initials(p.full_name || p.username || '?'))}</div>
+          <div id="header-avatar" class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-sm" style="background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);">${utils.escapeHtml(utils.initials(p.full_name || p.email || '?'))}</div>
           <div class="hidden sm:block leading-tight">
             <p id="header-user-name" class="text-sm font-semibold text-ink-800 max-w-[140px] truncate">${utils.escapeHtml(p.full_name || 'User')}</p>
             <p id="header-user-role" class="text-[11px] text-teal-600 font-semibold">${utils.escapeHtml(roleText)}</p>

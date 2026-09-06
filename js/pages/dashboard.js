@@ -1,7 +1,5 @@
 /* ============================================================================
  * SIMANTRI v3 — Page: Dashboard Monitoring
- * Schema v1.1: stat cards + 3 charts (per_jenis, status_izin, per_unit)
- *              + Ringkasan Verval Fasyankes + Pengumuman Terbaru.
  * ============================================================================ */
 
 (function () {
@@ -11,155 +9,178 @@
 
   window.SIMANTRI_PAGES['dashboard'] = {
     html: function () {
-      return ''
-        + '<div class="space-y-6">'
-        // Header row
-        +   '<div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">'
-        +     '<div>'
-        +       '<h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Dashboard Monitoring</h2>'
-        +       '<p class="mt-1 text-sm text-ink-500 max-w-2xl">Pantau legalitas praktik tenaga medis &amp; kesehatan secara real-time di seluruh fasyankes wilayah kerja Dinas Kesehatan Kutai Kartanegara.</p>'
-        +     '</div>'
-        +     '<div class="flex items-center gap-2">'
-        +       '<button class="btn btn-outline btn-sm" data-action="refresh" type="button">'
-        +         '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
-        +         'Refresh'
-        +       '</button>'
-        +     '</div>'
-        +   '</div>'
+      return `
+        <div class="space-y-6">
+          <!-- Header row -->
+          <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <div>
+              <h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Dashboard Monitoring</h2>
+              <p class="mt-1 text-sm text-ink-500 max-w-2xl">Pantau legalitas praktik tenaga medis &amp; kesehatan secara real-time di seluruh fasyankes wilayah kerja.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button class="btn btn-outline btn-sm" data-action="refresh" type="button">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                Refresh
+              </button>
+              <button class="btn btn-primary btn-sm" data-action="export" type="button" data-role-action="export">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Export
+              </button>
+            </div>
+          </div>
 
-        // Stat cards (5)
-        +   '<div id="stat-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">'
-        +     '<div class="skeleton h-32"></div>'
-        +     '<div class="skeleton h-32"></div>'
-        +     '<div class="skeleton h-32"></div>'
-        +     '<div class="skeleton h-32"></div>'
-        +     '<div class="skeleton h-32"></div>'
-        +   '</div>'
+          <!-- Stat cards -->
+          <div id="stat-cards" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="skeleton h-32"></div>
+            <div class="skeleton h-32"></div>
+            <div class="skeleton h-32"></div>
+            <div class="skeleton h-32"></div>
+          </div>
 
-        // Charts row (2 bar + 1 donut)
-        +   '<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">'
-        +     '<div class="card p-5 lg:col-span-2">'
-        +       '<div class="flex items-center justify-between mb-4">'
-        +         '<div>'
-        +           '<h3 class="text-base font-bold text-ink-900">SDMK per Jenis Tenaga</h3>'
-        +           '<p class="text-xs text-ink-500 mt-0.5">Sebaran profesi tenaga kesehatan</p>'
-        +         '</div>'
-        +         '<span class="badge badge-teal">Real-time</span>'
-        +       '</div>'
-        +       '<div class="relative" style="height:280px;">'
-        +         '<canvas id="chart-jenis"></canvas>'
-        +       '</div>'
-        +     '</div>'
+          <!-- Charts row -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Bar chart -->
+            <div class="card p-5 lg:col-span-2">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="text-base font-bold text-ink-900">Distribusi Nakes per Fasyankes</h3>
+                  <p class="text-xs text-ink-500 mt-0.5">Jumlah tenaga kesehatan aktif pada tiap fasyankes</p>
+                </div>
+                <span class="badge badge-teal">Real-time</span>
+              </div>
+              <div class="relative" style="height:280px;">
+                <canvas id="chart-fasyankes"></canvas>
+              </div>
+            </div>
 
-        +     '<div class="card p-5">'
-        +       '<div class="mb-4">'
-        +         '<h3 class="text-base font-bold text-ink-900">Status Izin Praktik</h3>'
-        +         '<p class="text-xs text-ink-500 mt-0.5">Distribusi status pengajuan</p>'
-        +       '</div>'
-        +       '<div class="relative" style="height:220px;">'
-        +         '<canvas id="chart-status"></canvas>'
-        +       '</div>'
-        +       '<div id="chart-status-legend" class="mt-4 space-y-1.5"></div>'
-        +     '</div>'
-        +   '</div>'
+            <!-- Donut chart -->
+            <div class="card p-5">
+              <div class="mb-4">
+                <h3 class="text-base font-bold text-ink-900">Komposisi Jenis Nakes</h3>
+                <p class="text-xs text-ink-500 mt-0.5">Sebaran profesi</p>
+              </div>
+              <div class="relative" style="height:200px;">
+                <canvas id="chart-jenis"></canvas>
+              </div>
+              <div id="chart-jenis-legend" class="mt-4 space-y-1.5"></div>
+            </div>
+          </div>
 
-        // Distribusi unit kerja
-        +   '<div class="card p-5">'
-        +     '<div class="flex items-center justify-between mb-4">'
-        +       '<div>'
-        +         '<h3 class="text-base font-bold text-ink-900">Distribusi Unit Kerja</h3>'
-        +         '<p class="text-xs text-ink-500 mt-0.5">Jumlah SDMK pada tiap unit kerja</p>'
-        +       '</div>'
-        +     '</div>'
-        +     '<div class="relative" style="height:300px;">'
-        +       '<canvas id="chart-unit"></canvas>'
-        +     '</div>'
-        +   '</div>'
+          <!-- Status + Expiring list -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Status panel -->
+            <div class="card p-5">
+              <h3 class="text-base font-bold text-ink-900 mb-1">Status Legalitas</h3>
+              <p class="text-xs text-ink-500 mb-4">Ringkasan STR &amp; SIP</p>
 
-        // Ringkasan Verval Fasyankes + Pengumuman Terbaru
-        +   '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">'
-        +     '<div class="card p-5">'
-        +       '<div class="mb-4">'
-        +         '<h3 class="text-base font-bold text-ink-900">Ringkasan Verval Fasyankes</h3>'
-        +         '<p class="text-xs text-ink-500 mt-0.5">Status verifikasi fasyankes</p>'
-        +       '</div>'
-        +       '<div class="grid grid-cols-3 gap-3">'
-        +         '<div class="rounded-xl bg-teal-50 p-4 text-center">'
-        +           '<p class="text-3xl font-extrabold text-teal-700 tabular-nums" id="vf-layak">0</p>'
-        +           '<p class="text-[11px] text-teal-700/80 font-semibold uppercase tracking-wide mt-1">Layak</p>'
-        +         '</div>'
-        +         '<div class="rounded-xl bg-rose-50 p-4 text-center">'
-        +           '<p class="text-3xl font-extrabold text-rose-700 tabular-nums" id="vf-tidak-layak">0</p>'
-        +           '<p class="text-[11px] text-rose-700/80 font-semibold uppercase tracking-wide mt-1">Tidak Layak</p>'
-        +         '</div>'
-        +         '<div class="rounded-xl bg-amber-50 p-4 text-center">'
-        +           '<p class="text-3xl font-extrabold text-amber-700 tabular-nums" id="vf-pending">0</p>'
-        +           '<p class="text-[11px] text-amber-700/80 font-semibold uppercase tracking-wide mt-1">Pending</p>'
-        +         '</div>'
-        +       '</div>'
-        +       '<div class="mt-4 pt-4 border-t border-ink-100">'
-        +         '<p class="text-xs text-ink-500">Total Verval Fasyankes: <span class="font-semibold text-ink-800" id="vf-total">0</span> dokumen</p>'
-        +       '</div>'
-        +     '</div>'
+              <div class="space-y-4">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold text-ink-700">STR (Surat Tanda Registrasi)</span>
+                    <span class="text-xs text-ink-500" id="str-total">0 total</span>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div class="rounded-xl bg-teal-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-teal-700" id="str-aktif">0</p>
+                      <p class="text-[10px] text-teal-700/80 font-semibold uppercase tracking-wide">Aktif</p>
+                    </div>
+                    <div class="rounded-xl bg-amber-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-amber-700" id="str-hampir">0</p>
+                      <p class="text-[10px] text-amber-700/80 font-semibold uppercase tracking-wide">Hampir</p>
+                    </div>
+                    <div class="rounded-xl bg-rose-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-rose-700" id="str-expired">0</p>
+                      <p class="text-[10px] text-rose-700/80 font-semibold uppercase tracking-wide">Expired</p>
+                    </div>
+                  </div>
+                </div>
 
-        +     '<div class="card p-5">'
-        +       '<div class="flex items-center justify-between mb-4">'
-        +         '<div>'
-        +           '<h3 class="text-base font-bold text-ink-900">Pengumuman Terbaru</h3>'
-        +           '<p class="text-xs text-ink-500 mt-0.5">3 pengumuman terkini</p>'
-        +         '</div>'
-        +         '<button class="btn btn-ghost btn-sm" data-action="see-all-pengumuman" type="button">Lihat semua</button>'
-        +       '</div>'
-        +       '<div id="pengumuman-terbaru" class="space-y-3">'
-        +         '<div class="skeleton h-16"></div>'
-        +         '<div class="skeleton h-16"></div>'
-        +         '<div class="skeleton h-16"></div>'
-        +       '</div>'
-        +     '</div>'
-        +   '</div>'
-        + '</div>';
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-semibold text-ink-700">SIP (Surat Izin Praktik)</span>
+                    <span class="text-xs text-ink-500" id="sip-total">0 total</span>
+                  </div>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div class="rounded-xl bg-teal-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-teal-700" id="sip-aktif">0</p>
+                      <p class="text-[10px] text-teal-700/80 font-semibold uppercase tracking-wide">Aktif</p>
+                    </div>
+                    <div class="rounded-xl bg-amber-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-amber-700" id="sip-hampir">0</p>
+                      <p class="text-[10px] text-amber-700/80 font-semibold uppercase tracking-wide">Hampir</p>
+                    </div>
+                    <div class="rounded-xl bg-rose-50 p-2.5 text-center">
+                      <p class="text-xl font-extrabold text-rose-700" id="sip-expired">0</p>
+                      <p class="text-[10px] text-rose-700/80 font-semibold uppercase tracking-wide">Expired</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Expiring list -->
+            <div class="card p-5 lg:col-span-2">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="text-base font-bold text-ink-900">Akan Expired dalam 90 Hari</h3>
+                  <p class="text-xs text-ink-500 mt-0.5">Perlu tindak lanjut segera</p>
+                </div>
+                <button class="btn btn-ghost btn-sm" data-action="see-all" type="button">Lihat semua</button>
+              </div>
+              <div id="expiring-list" class="space-y-2">
+                <div class="skeleton h-14"></div>
+                <div class="skeleton h-14"></div>
+                <div class="skeleton h-14"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
     },
 
     init: async function () {
       const utils = window.SIMANTRI_UTILS;
       const components = window.SIMANTRI_COMPONENTS;
       const data = window.SIMANTRI_DATA;
+      const db = window.SIMANTRI_DB;
 
+      let _chartFasyankes = null;
       let _chartJenis = null;
-      let _chartStatus = null;
-      let _chartUnit = null;
+      let _statsSnapshot = { str: { aktif: 0, hampir: 0, expired: 0 }, sip: { aktif: 0, hampir: 0, expired: 0 } };
 
       // Bind buttons
       const refreshBtn = document.querySelector('[data-action="refresh"]');
-      if (refreshBtn) {
-        refreshBtn.addEventListener('click', async function () {
-          utils.toast('Memuat ulang data...', 'info');
-          await render();
-        });
-      }
+      if (refreshBtn) refreshBtn.addEventListener('click', async function () {
+        utils.toast('Memuat ulang data...', 'info');
+        await render();
+      });
 
-      const seeAllBtn = document.querySelector('[data-action="see-all-pengumuman"]');
-      if (seeAllBtn) {
-        seeAllBtn.addEventListener('click', function () {
-          window.SIMANTRI.navigateTo('pengumuman');
-        });
-      }
+      const exportBtn = document.querySelector('[data-action="export"]');
+      if (exportBtn) exportBtn.addEventListener('click', function () {
+        exportCsv();
+      });
+
+      const seeAllBtn = document.querySelector('[data-action="see-all"]');
+      if (seeAllBtn) seeAllBtn.addEventListener('click', function () {
+        window.SIMANTRI.navigateTo('notifikasi-expired');
+      });
 
       async function render() {
         try {
-          const [stats, pengumumanList] = await Promise.all([
+          const [stats, nakesList, praktikList] = await Promise.all([
             data.loadDashboardStats(),
-            data.loadPengumuman({}),
+            data.loadNakes(),
+            data.loadPraktik(),
           ]);
+          _statsSnapshot = stats;
           renderStatCards(stats);
+          renderStatusPanel(stats);
+          renderFasyankesChart(stats);
           renderJenisChart(stats);
-          renderStatusChart(stats);
-          renderUnitChart(stats);
-          renderVervalSummary(stats);
-          renderPengumumanTerbaru(pengumumanList);
+          renderExpiringList(nakesList, praktikList);
         } catch (err) {
           utils.toast('Gagal memuat dashboard: ' + err.message, 'error');
-          console.error('[dashboard] render error:', err);
+          console.error(err);
         }
       }
 
@@ -167,12 +188,12 @@
         const container = document.getElementById('stat-cards');
         if (!container) return;
         container.innerHTML = '';
+        const tindakLanjut = (stats.str.hampir + stats.str.expired + stats.sip.hampir + stats.sip.expired);
         const cards = [
-          { label: 'Total Profil SDMK', value: utils.fmtNumber(stats.total_profil_sdmk), sub: 'Tenaga kesehatan terdaftar', icon: 'users', variant: 'teal' },
-          { label: 'Pengajuan Izin', value: utils.fmtNumber(stats.total_pengajuan_izin), sub: 'Total seluruh pengajuan', icon: 'document', variant: 'lime' },
-          { label: 'Izin Diproses', value: utils.fmtNumber(stats.izin_diproses), sub: 'Sedang dalam proses', icon: 'refresh', variant: 'amber' },
-          { label: 'Verval Izin', value: utils.fmtNumber(stats.total_verval_izin), sub: 'Verifikasi & validasi', icon: 'shield-check', variant: 'teal' },
-          { label: 'Verval Fasyankes', value: utils.fmtNumber(stats.total_verval_fasyankes), sub: 'Verifikasi fasyankes', icon: 'hospital', variant: 'lime' },
+          { label: 'Total Nakes', value: utils.fmtNumber(stats.totalNakes), sub: stats.tenagaMedis + ' medis / ' + stats.tenagaKesehatan + ' kesehatan', icon: 'doctor', variant: 'teal', trend: { direction: 'up', value: '+3', label: 'bulan ini' } },
+          { label: 'Total Fasyankes', value: utils.fmtNumber(stats.totalFasyankes), sub: 'Terdaftar di wilayah kerja', icon: 'hospital', variant: 'lime' },
+          { label: 'Praktik Aktif', value: utils.fmtNumber(stats.totalPraktik), sub: 'SIP terbit & aktif', icon: 'shield-check', variant: 'teal' },
+          { label: 'Perlu Tindak Lanjut', value: utils.fmtNumber(tindakLanjut), sub: 'STR/SIP hampir/expired', icon: 'bell', variant: 'amber' },
         ];
         cards.forEach(function (c) {
           const div = document.createElement('div');
@@ -181,25 +202,41 @@
         });
       }
 
-      function renderJenisChart(stats) {
-        const canvas = document.getElementById('chart-jenis');
-        if (!canvas || typeof window.Chart === 'undefined') return;
-        if (_chartJenis) _chartJenis.destroy();
+      function renderStatusPanel(stats) {
+        const set = function (id, val) {
+          const el = document.getElementById(id);
+          if (el) el.textContent = val;
+        };
+        set('str-aktif', stats.str.aktif);
+        set('str-hampir', stats.str.hampir);
+        set('str-expired', stats.str.expired);
+        set('str-total', (stats.str.aktif + stats.str.hampir + stats.str.expired) + ' total');
+        set('sip-aktif', stats.sip.aktif);
+        set('sip-hampir', stats.sip.hampir);
+        set('sip-expired', stats.sip.expired);
+        set('sip-total', (stats.sip.aktif + stats.sip.hampir + stats.sip.expired) + ' total');
+      }
 
-        const entries = Object.entries(stats.per_jenis || {}).sort(function (a, b) { return b[1] - a[1]; });
-        const labels = entries.map(function (e) { return e[0]; });
-        const values = entries.map(function (e) { return e[1]; });
-        const palette = ['#0D9488', '#84CC16', '#F59E0B', '#F43F5E', '#0F766E', '#4D7C0F', '#B45309', '#475569'];
+      function renderFasyankesChart(stats) {
+        const canvas = document.getElementById('chart-fasyankes');
+        if (!canvas || typeof window.Chart === 'undefined') return;
+        if (_chartFasyankes) _chartFasyankes.destroy();
+
+        const fasyankes = data.DEMO_FASYANKES;
+        const labels = fasyankes.map(function (f) { return f.nama; });
+        const values = fasyankes.map(function (f) {
+          return stats.byFasyankes[f.id] || 0;
+        });
 
         const ctx = canvas.getContext('2d');
-        _chartJenis = new window.Chart(ctx, {
+        _chartFasyankes = new window.Chart(ctx, {
           type: 'bar',
           data: {
             labels: labels,
             datasets: [{
-              label: 'Jumlah SDMK',
+              label: 'Jumlah Nakes',
               data: values,
-              backgroundColor: labels.map(function (_, i) { return palette[i % palette.length]; }),
+              backgroundColor: ['#0D9488', '#14B8A6', '#84CC16', '#A3E635', '#F59E0B'],
               borderRadius: 8,
               maxBarThickness: 48,
             }],
@@ -219,31 +256,25 @@
             },
             scales: {
               y: { beginAtZero: true, ticks: { precision: 0, color: '#94A3B8' }, grid: { color: '#F1F5F9' } },
-              x: { ticks: { color: '#475569', font: { size: 11 }, maxRotation: 30, minRotation: 0 }, grid: { display: false } },
+              x: { ticks: { color: '#475569', font: { size: 11 }, maxRotation: 30, minRotation: 0, autoSkip: false }, grid: { display: false } },
             },
           },
         });
       }
 
-      function renderStatusChart(stats) {
-        const canvas = document.getElementById('chart-status');
+      function renderJenisChart(stats) {
+        const canvas = document.getElementById('chart-jenis');
         if (!canvas || typeof window.Chart === 'undefined') return;
-        if (_chartStatus) _chartStatus.destroy();
+        if (_chartJenis) _chartJenis.destroy();
 
-        const raw = stats.status_izin || {};
-        const colorMap = {
-          Disetujui: '#0D9488',
-          Proses: '#F59E0B',
-          Pending: '#FCD34D',
-          Ditolak: '#F43F5E',
-        };
-        const entries = Object.entries(raw);
+        const entries = Object.entries(stats.byJenis).sort(function (a, b) { return b[1] - a[1]; });
         const labels = entries.map(function (e) { return e[0]; });
         const values = entries.map(function (e) { return e[1]; });
-        const colors = labels.map(function (l) { return colorMap[l] || '#94A3B8'; });
+        const palette = ['#0D9488', '#84CC16', '#F59E0B', '#F43F5E', '#0F766E', '#4D7C0F', '#B45309', '#475569'];
+        const colors = labels.map(function (_, i) { return palette[i % palette.length]; });
 
         const ctx = canvas.getContext('2d');
-        _chartStatus = new window.Chart(ctx, {
+        _chartJenis = new window.Chart(ctx, {
           type: 'doughnut',
           data: {
             labels: labels,
@@ -269,7 +300,7 @@
           },
         });
 
-        const legendEl = document.getElementById('chart-status-legend');
+        const legendEl = document.getElementById('chart-jenis-legend');
         if (legendEl) {
           const total = values.reduce(function (a, b) { return a + b; }, 0) || 1;
           legendEl.innerHTML = labels.map(function (lab, i) {
@@ -285,94 +316,101 @@
         }
       }
 
-      function renderUnitChart(stats) {
-        const canvas = document.getElementById('chart-unit');
-        if (!canvas || typeof window.Chart === 'undefined') return;
-        if (_chartUnit) _chartUnit.destroy();
-
-        const entries = Object.entries(stats.per_unit || {}).sort(function (a, b) { return b[1] - a[1]; });
-        const labels = entries.map(function (e) { return e[0]; });
-        const values = entries.map(function (e) { return e[1]; });
-        const palette = ['#0D9488', '#14B8A6', '#84CC16', '#A3E635', '#F59E0B', '#0F766E', '#4D7C0F', '#B45309', '#475569'];
-
-        const ctx = canvas.getContext('2d');
-        _chartUnit = new window.Chart(ctx, {
-          type: 'bar',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Jumlah SDMK',
-              data: values,
-              backgroundColor: labels.map(function (_, i) { return palette[i % palette.length]; }),
-              borderRadius: 8,
-              maxBarThickness: 48,
-            }],
-          },
-          options: {
-            indexAxis: 'y',
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: '#0F172A',
-                padding: 12,
-                cornerRadius: 8,
-              },
-            },
-            scales: {
-              x: { beginAtZero: true, ticks: { precision: 0, color: '#94A3B8' }, grid: { color: '#F1F5F9' } },
-              y: { ticks: { color: '#475569', font: { size: 11 } }, grid: { display: false } },
-            },
-          },
-        });
-      }
-
-      function renderVervalSummary(stats) {
-        const set = function (id, val) {
-          const el = document.getElementById(id);
-          if (el) el.textContent = val;
-        };
-        set('vf-layak', stats.vf_layak || 0);
-        set('vf-tidak-layak', stats.vf_tidak_layak || 0);
-        set('vf-pending', stats.vf_pending || 0);
-        set('vf-total', utils.fmtNumber(stats.total_verval_fasyankes || 0));
-      }
-
-      function renderPengumumanTerbaru(list) {
-        const container = document.getElementById('pengumuman-terbaru');
+      function renderExpiringList(nakesList, praktikList) {
+        const container = document.getElementById('expiring-list');
         if (!container) return;
-        if (!list || !list.length) {
-          container.innerHTML = emptyState('Belum ada pengumuman', 'bell');
+
+        const items = [];
+        nakesList.forEach(function (n) {
+          const status = n.expire_status || db.calcExpireStatus(n.tgl_akhir_str);
+          if (status === db.STATUS.HAMPIR_EXPIRED || status === db.STATUS.EXPIRED) {
+            items.push({
+              id: n.id,
+              nama: n.nama,
+              profesi: n.profesi,
+              tipe: 'STR',
+              no_dok: n.no_str,
+              tgl_akhir: n.tgl_akhir_str,
+              status: status,
+            });
+          }
+        });
+        praktikList.forEach(function (p) {
+          const status = p.expire_status || db.calcExpireStatus(p.tgl_akhir_sip);
+          if (status === db.STATUS.HAMPIR_EXPIRED || status === db.STATUS.EXPIRED) {
+            const n = nakesList.find(function (x) { return x.id === p.tenaga_id; });
+            items.push({
+              id: p.id,
+              nama: n ? n.nama : 'Nakes',
+              profesi: n ? n.profesi : '-',
+              tipe: 'SIP',
+              no_dok: p.no_sip,
+              tgl_akhir: p.tgl_akhir_sip,
+              status: status,
+            });
+          }
+        });
+
+        items.sort(function (a, b) { return new Date(a.tgl_akhir) - new Date(b.tgl_akhir); });
+
+        if (!items.length) {
+          container.innerHTML = emptyState('Tidak ada dokumen yang akan expired dalam 90 hari', 'shield-check');
           return;
         }
-        const top = list.slice(0, 3);
-        container.innerHTML = top.map(function (p) {
-          const penting = p.is_penting === 1 || p.is_penting === true;
-          return '<div class="flex items-start gap-3 p-3 rounded-xl border border-ink-100 hover:bg-teal-50/40 transition-colors">'
-               + '<div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center flex-shrink-0">'
-               +   '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>'
-               + '</div>'
+
+        container.innerHTML = items.slice(0, 6).map(function (it) {
+          const days = utils.daysUntil(it.tgl_akhir);
+          const isExpired = days < 0;
+          const badgeClass = isExpired ? 'badge-rose' : 'badge-amber';
+          const dayText = isExpired ? 'Expired ' + (-days) + ' hari lalu' : 'H-' + days;
+          const colorClass = utils.avatarColor(it.nama);
+          return '<div class="flex items-center gap-3 p-3 rounded-xl border border-ink-100 hover:bg-teal-50/40 transition-colors cursor-pointer" data-notif-id="' + utils.escapeHtml(it.id) + '">'
+               + '<div class="w-10 h-10 rounded-full ' + colorClass + ' text-white flex items-center justify-center text-sm font-bold flex-shrink-0">' + utils.escapeHtml(utils.initials(it.nama)) + '</div>'
                + '<div class="flex-1 min-w-0">'
-               +   '<div class="flex items-center gap-2 flex-wrap">'
-               +     '<p class="text-sm font-semibold text-ink-900 truncate">' + utils.escapeHtml(p.judul) + '</p>'
-               +     (penting ? '<span class="badge badge-rose">PENTING</span>' : '')
-               +   '</div>'
-               +   '<p class="text-xs text-ink-500 mt-0.5">' + utils.fmtDate(p.tanggal) + '</p>'
-               +   '<p class="text-xs text-ink-600 mt-1 line-clamp-2">' + utils.escapeHtml(p.isi || '') + '</p>'
+               + '<div class="flex items-center gap-2">'
+               + '<p class="text-sm font-semibold text-ink-900 truncate">' + utils.escapeHtml(it.nama) + '</p>'
+               + '<span class="badge ' + (it.tipe === 'STR' ? 'badge-teal' : 'badge-lime') + '">' + it.tipe + '</span>'
+               + '</div>'
+               + '<p class="text-xs text-ink-500 truncate">' + utils.escapeHtml(it.profesi || '-') + '</p>'
+               + '</div>'
+               + '<div class="text-right flex-shrink-0">'
+               + '<span class="badge ' + badgeClass + '">' + dayText + '</span>'
+               + '<p class="text-[11px] text-ink-400 mt-1">' + utils.fmtDate(it.tgl_akhir) + '</p>'
                + '</div>'
                + '</div>';
         }).join('');
+
+        container.querySelectorAll('[data-notif-id]').forEach(function (el) {
+          el.addEventListener('click', function () {
+            window.SIMANTRI.navigateTo('notifikasi-expired');
+          });
+        });
       }
 
       function emptyState(message, icon) {
-        const iconPath = (components.ICONS && components.ICONS[icon]) || components.ICONS['bell'];
-        return '<div class="text-center py-6 px-4">'
+        const iconPath = (components.ICONS[icon] || components.ICONS['shield-check']);
+        return '<div class="text-center py-8 px-4">'
              + '<div class="w-12 h-12 mx-auto rounded-xl bg-ink-100 text-ink-400 flex items-center justify-center mb-3">'
              + '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="' + iconPath + '"/></svg>'
              + '</div>'
              + '<p class="text-sm text-ink-500">' + utils.escapeHtml(message) + '</p>'
              + '</div>';
+      }
+
+      function exportCsv() {
+        try {
+          const s = _statsSnapshot;
+          const rows = [
+            ['Kategori', 'Aktif', 'Hampir Expired', 'Expired'],
+            ['STR', s.str.aktif, s.str.hampir, s.str.expired],
+            ['SIP', s.sip.aktif, s.sip.hampir, s.sip.expired],
+          ];
+          const csv = rows.map(function (r) { return r.join(','); }).join('\n');
+          utils.downloadFile('simantri-dashboard-' + Date.now() + '.csv', csv, 'text/csv');
+          utils.toast('Dashboard diexport ke CSV', 'success');
+        } catch (e) {
+          utils.toast('Gagal export: ' + e.message, 'error');
+        }
       }
 
       await render();

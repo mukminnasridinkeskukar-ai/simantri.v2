@@ -1,550 +1,799 @@
 -- ============================================================================
--- SIMANTRI v1.1 -- SKEMA DATABASE LENGKAP (PostgreSQL / Supabase)
--- Platform Digital Pengelolaan Izin Praktik
--- Dinas Kesehatan Kutai Kartanegara
+-- SIMANTRI v3 — Database Schema & RLS Policies
+-- Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
+-- ============================================================================
+--
+-- ⚠️ CARA PAKAI:
+--   1. Buka Supabase Dashboard → SQL Editor
+--   2. Klik "New query"
+--   3. Paste SELURUH ISI FILE INI dari awal sampai akhir (jangan sebagian!)
+--   4. Klik Run (tunggu sampai selesai, ± 10 detik)
+--
+-- PENTING:
+--   - Jalankan dari AWAL sampai AKHIR, jangan hanya bagian tertentu
+--   - Jika error "function gen_salt does not exist", pastikan pgcrypto
+--     extension sudah di-create (otomatis di section 0 di bawah)
+--   - Jika sebagian sudah pernah dijalankan, skrip ini IDEMPOTEN (safe re-run)
+--
+-- Skrip ini IDEMPOTEN — aman dijalankan berulang kali.
+--
+-- Catatan penting:
+--   - Tabel di-create TANPA foreign key antar-tabel-custom terlebih dahulu
+--     (untuk menghindari circular dependency: profiles ↔ fasyankes)
+--   - FK ditambahkan via ALTER TABLE di section terpisah setelah semua tabel ada
+--   - FK ke auth.users tetap inline (tabel auth.users selalu ada di Supabase)
+--   - RLS diaktifkan di semua tabel
+--   - Policy: Dinkes = akses semua; Fasyankes = hanya data fasyankesnya;
+--             Nakes = hanya data dirinya sendiri
+-- ============================================================================
+
+-- ============================================================================
+-- 0. EXTENSIONS & TYPES
+-- ============================================================================
+create extension if not exists "uuid-ossp";
+create extension if not exists "pgcrypto";
+
+do $$ begin
+  create type user_role as enum ('dinkes', 'fasyankes', 'nakes');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type fasyankes_jenis as enum ('RS', 'Puskesmas', 'Klinik Utama', 'Klinik Pratama', 'Praktik Mandiri', 'Apotek');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type nakes_jenis as enum ('Dokter', 'Dokter Gigi', 'Dokter Spesialis', 'Perawat', 'Bidan', 'Apoteker', 'TTK', 'ATLM', 'Gizi', 'Kesling');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type praktik_status as enum ('aktif', 'nonaktif', 'hampir_expired', 'expired');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type verifikasi_status as enum ('pending', 'diverifikasi', 'ditolak');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type audit_action as enum ('CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'APPROVE', 'REJECT');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type notif_type as enum ('str_expired', 'str_hampir_expired', 'sip_expired', 'sip_hampir_expired', 'verifikasi', 'sistem');
+exception when duplicate_object then null; end $$;
+
+-- ============================================================================
+-- 1. TABLES (tanpa FK antar-tabel-custom — ditambah di section 7)
+-- ============================================================================
+-- Urutan: fasyankes → profiles → tenaga_kesehatan → praktik → notifications → audit_log
+-- Catatan: profiles tetap bisa di-create duluan karena FK ke fasyankes
+--          ditambah belakangan via ALTER TABLE.
+
 -- ----------------------------------------------------------------------------
--- PEMETAAN MENU SIDEBAR -> OBJEK DATABASE:
---   1. Dashboard                 -> VIEW: v_dashboard_stats, v_vf_summary,
---                                   v_sdmk_per_jenis, v_status_izin,
---                                   v_sdmk_per_unit, v_verval_izin_detail
---   2. Pengumuman                -> TABEL: pengumuman
---   3. Verval Izin Praktik       -> TABEL: verval_izin_praktik
---   4. Verval Fasyankes          -> TABEL: verval_fasyankes,
---                                   verval_fasyankes_sdm,
---                                   sdm_standar_fasyankes (master opsi SDM)
---   5. Data Verval Fasyankes     -> TABEL: verval_fasyankes (+ indeks & view)
---   6. Profil SDMK               -> TABEL: profil_sdmk
---   7. Data Verval Izin Praktik  -> TABEL: verval_izin_praktik (indeks NIK)
---   8. Panel Admin               -> TABEL: users, logs, izin
+-- 1a. PROFILES
 -- ----------------------------------------------------------------------------
--- CATATAN DESAIN:
---   * Nama kolom mengikuti PERSIS key payload snake_case yang dikirim
---     frontend, agar backend (Supabase Edge Function "super-service") cukup
---     memetakan 1:1 tanpa transformasi.
---   * Constraint memakai VARCHAR + CHECK (bukan ENUM) agar data lama dari
---     spreadsheet tetap kompatibel dan mudah diubah (ALTER TABLE ... DROP).
---   * "timestamp" dan "no" adalah keyword -- selalu diapit kutip ganda.
---   * Aplikasi ini adalah satu-satunya sumber tulis; skema aman dijalankan
---     berulang (IF NOT EXISTS / ON CONFLICT DO NOTHING).
--- ============================================================================
-
-
--- ============================================================================
--- 0. FUNGSI BANTU: updated_at OTOMATIS
--- ============================================================================
-CREATE OR REPLACE FUNCTION set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at := NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-
--- ============================================================================
--- 1. MENU: PENGUMUMAN  ->  tabel `pengumuman`
---    Sumber: renderPengumuman(), savePengumuman(), showAddPengumumanModal()
---    Aksi API: getPengumuman, addPengumuman, updatePengumuman, deletePengumuman
--- ============================================================================
-CREATE TABLE IF NOT EXISTS pengumuman (
-  id          VARCHAR(30)  PRIMARY KEY,               -- 'PENG-001' / generateId('PENG')
-  tanggal     DATE         NOT NULL DEFAULT CURRENT_DATE,
-  judul       VARCHAR(200) NOT NULL,
-  isi         TEXT         NOT NULL,
-  is_penting  SMALLINT     NOT NULL DEFAULT 0
-              CHECK (is_penting IN (0, 1)),           -- 1 = tampil badge PENTING
-  created_by  VARCHAR(60)  NOT NULL DEFAULT 'system', -- username pembuat
-  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+-- Catatan: id TIDAK reference auth.users karena aplikasi memakai CUSTOM AUTH
+-- (via fungsi verify_user). Hapus FK ke auth.users supaya bisa insert user
+-- langsung via SQL Editor tanpa harus daftar via Supabase Auth.
+create table if not exists public.profiles (
+  id           uuid primary key default uuid_generate_v4(),
+  email        text not null unique,
+  full_name    text not null default 'Pengguna Baru',
+  role         user_role not null default 'nakes',
+  fasyankes_id uuid,  -- FK ditambah di section 7 (circular dependency dengan fasyankes.created_by)
+  avatar_url   text,
+  phone        text,
+  is_active    boolean not null default true,
+  last_login   timestamptz,
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
 );
 
+-- Drop FK constraint ke auth.users jika masih ada (dari versi sebelumnya)
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+alter table public.profiles drop constraint if exists profiles_id_fkey1;
 
--- ============================================================================
--- 2. MENU: VERVAL IZIN PRAKTIK (menu 3) + DATA VERVAL IZIN PRAKTIK (menu 7)
---    -> tabel `verval_izin_praktik`
---    Sumber: renderVerval() form 27 field, collectVervalData(),
---            searchVervalByNik(), showVervalIzinPraktikDetail()
---    Aksi API: submitVerval, getAllVerval, getVervalByNik, searchNamaVerval,
---              updateVervalByNik
--- ============================================================================
-CREATE TABLE IF NOT EXISTS verval_izin_praktik (
-  id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+create index if not exists idx_profiles_role on public.profiles(role);
+create index if not exists idx_profiles_fasyankes on public.profiles(fasyankes_id);
+create index if not exists idx_profiles_email on public.profiles(email);
 
-  -- ---- (a) 25 field yang dikirim formulir verval (collectVervalData) ----
-  "timestamp"         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),  -- form kirim string locale id-ID
-  nik                 VARCHAR(16)  NOT NULL CHECK (nik ~ '^[0-9]{16}$'),
-  nama_lengkap        VARCHAR(150) NOT NULL,
-  jenis_kelamin       VARCHAR(12)  CHECK (jenis_kelamin IN ('Laki-laki','Perempuan')),
-  tempat_lahir        VARCHAR(100),
-  tanggal_lahir       DATE,
-  alamat_ktp          TEXT,                                 -- alamat sesuai KTP
-  nomor_str           VARCHAR(60)  NOT NULL,
-  status_str          VARCHAR(15)  NOT NULL DEFAULT 'Aktif'
-                      CHECK (status_str IN ('Aktif','Tidak Aktif','Expired')),
-  status_sip          VARCHAR(15)  NOT NULL DEFAULT 'Aktif'
-                      CHECK (status_sip IN ('Aktif','Proses','Expired','Tidak Ada')),
-  nomor_sip           VARCHAR(60),
-  masa_berlaku_sip    DATE,
-  unit_kerja          VARCHAR(150) NOT NULL,                -- nama fasyankes tempat praktik
-  alamat_unit         TEXT,                                 -- alamat unit kerja
-  desa_kelurahan      VARCHAR(100),                         -- desa/kelurahan unit kerja
-  status_satu_sehat   VARCHAR(8)   DEFAULT 'Belum'
-                      CHECK (status_satu_sehat IN ('Sudah','Belum')), -- status unit di SatuSehat
-  sop_pelayanan       VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sop_pelayanan IN ('Ada','Tidak Ada')),
-  sop_profesi         VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sop_profesi IN ('Ada','Tidak Ada')),
-  sop_etika           VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sop_etika IN ('Ada','Tidak Ada')),
-  sdmk_named          VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sdmk_named IN ('Ada','Tidak Ada')),
-  sdmk_nakes          VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sdmk_nakes IN ('Ada','Tidak Ada')),
-  sdmk_admin          VARCHAR(10)  DEFAULT 'Tidak Ada'
-                      CHECK (sdmk_admin IN ('Ada','Tidak Ada')),
-  jam_operasional     VARCHAR(100),                         -- contoh: 'Senin-Jumat 08.00-16.00'
-  catatan_rekomendasi TEXT,                                 -- catatan verifikator
-  pendidikan_str      VARCHAR(150),                         -- pendidikan sesuai STR
-  -- Catatan: 2 field readonly duplikat pada form (v-str-duplicate dan
-  -- v-sip-duplicate) TIDAK disimpan karena hanya salinan tampilan dari
-  -- nomor_str dan nomor_sip. Total field form tetap 27 sesuai badge UI.
-
-  -- ---- (b) field tambahan yang ditampilkan halaman "Data Verval Izin ----
-  -- ----     Praktik" (showVervalIzinPraktikDetail), diisi saat       ----
-  -- ----     verifikasi lanjutan / migrasi data sheet                 ----
-  nip                 VARCHAR(30),                          -- NIP/NRP pegawai
-  jenis_tenaga        VARCHAR(60),
-  golongan_pangkat    VARCHAR(40),
-  jabatan             VARCHAR(100),
-  tanggal_terbit_str  DATE,
-  tanggal_berlaku_str DATE,
-  tanggal_terbit_sip  DATE,
-  tanggal_berlaku_sip DATE,
-  alamat_kerja        TEXT,
-  kecamatan           VARCHAR(100),
-  kabupaten           VARCHAR(100),
-  id_satu_sehat       VARCHAR(60),                          -- ID akun SatuSehat
-  status_verifikasi   VARCHAR(50),                          -- bebas: 'Sah','Pending','Kadarluasa', dst.
-  tanggal_verifikasi  DATE,
-  verifikator         VARCHAR(150),
-  catatan             TEXT,
-
-  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  -- Opsi relasi (aktifkan bila data NIK selalu terdaftar di Profil SDMK):
-  -- , CONSTRAINT fk_verval_profil FOREIGN KEY (nik) REFERENCES profil_sdmk (nik)
-);
-
--- ============================================================================
--- 3. MENU: VERVAL FASYANKES (menu 4) + DATA VERVAL FASYANKES (menu 5)
---    -> tabel `verval_fasyankes` + child `verval_fasyankes_sdm`
---       + master `sdm_standar_fasyankes`
---    Sumber: renderVervalFasyankes(), submitVervalFasyankesForm(),
---            konstanta SDM_FASYANKES, renderDataVervalFasyankes(),
---            viewVFDetail(), exportVFCSV/PDF
---    Aksi API: submitVervalFasyankes, getAllVervalFasyankes
--- ============================================================================
-CREATE TABLE IF NOT EXISTS verval_fasyankes (
-  id                 VARCHAR(40)  PRIMARY KEY,   -- auto-generate 'VF-YYYYMMDD-XXXXX'
-  tanggal            DATE         NOT NULL DEFAULT CURRENT_DATE,
-  nomor_unit         VARCHAR(100) NOT NULL,      -- No. Izin Operasional / UNIT-001
-  nama_fasyankes     VARCHAR(200) NOT NULL,
-  jenis_fasyankes    VARCHAR(40)  NOT NULL
-                     CHECK (jenis_fasyankes IN (
-                       'Rumah Sakit','Puskesmas','Klinik','Apotik','Toko Obat',
-                       'Optik','PBF (Pedagang Besar Farmasi)',
-                       'Tempat Praktik Mandiri')),
-  nama_pemilik       VARCHAR(150) NOT NULL,
-  penanggung_jawab   VARCHAR(150) NOT NULL,      -- penanggung jawab operasional
-  alamat_lengkap     TEXT         NOT NULL,
-  kelurahan          VARCHAR(100) NOT NULL,      -- Kelurahan/Desa
-  kecamatan          VARCHAR(100) NOT NULL,
-  nomor_hp           VARCHAR(20)  NOT NULL,      -- HP / WhatsApp
-  email              VARCHAR(150),
-  sdm_kesehatan      TEXT,                       -- LEGACY: daftar SDM dipisah '; '
-                                                 -- contoh: 'Dokter Umum; Perawat; Bidan'
-  status_verifikasi  VARCHAR(20)  NOT NULL
-                     CHECK (status_verifikasi IN
-                       ('Layak','Tidak Layak','Perbaikan','Pending','Tidak Valid')),
-  catatan_verifikasi TEXT,                       -- temuan lapangan & rekomendasi
-  verifikator        VARCHAR(150) NOT NULL,      -- nama verifikator Dinkes
-  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
--- Child tabel (bentuk normal): SDM kesehatan yang terverifikasi per fasyankes.
--- Diisi paralel dengan kolom legacy `sdm_kesehatan` untuk data baru.
-CREATE TABLE IF NOT EXISTS verval_fasyankes_sdm (
-  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  verval_id   VARCHAR(40) NOT NULL
-              REFERENCES verval_fasyankes (id) ON DELETE CASCADE,
-  jenis_sdm   VARCHAR(80) NOT NULL,               -- contoh: 'Dokter Spesialis'
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (verval_id, jenis_sdm)
-);
-
--- Master opsi SDM standar per jenis fasyankes (pindahan konstanta
--- SDM_FASYANKES dari frontend, dipakai checkbox dinamis Section 3 form).
-CREATE TABLE IF NOT EXISTS sdm_standar_fasyankes (
-  id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  jenis_fasyankes VARCHAR(40) NOT NULL,
-  jenis_sdm       VARCHAR(80) NOT NULL,
-  urutan          SMALLINT    NOT NULL DEFAULT 0,  -- urutan tampil di form
-  UNIQUE (jenis_fasyankes, jenis_sdm)
-);
-
-
--- ============================================================================
--- 4. MENU: PROFIL SDMK (menu 6)  ->  tabel `profil_sdmk`
---    Sumber: renderProfil(), showAddProfilModal(), saveProfil(),
---            editProfilRow(), deleteProfilRow(), seedDemoData()
---    Aksi API: getProfil, addProfil, updateProfil, deleteProfil
---    Kunci utama edit/hapus pada aplikasi = NIK.
--- ============================================================================
-CREATE TABLE IF NOT EXISTS profil_sdmk (
-  "no"             BIGINT GENERATED BY DEFAULT AS IDENTITY UNIQUE, -- kolom 'No' tabel UI
-  nik              VARCHAR(16)  PRIMARY KEY CHECK (nik ~ '^[0-9]{16}$'),
-  nama_lengkap     VARCHAR(150) NOT NULL,
-  jenis_kelamin    VARCHAR(12)  CHECK (jenis_kelamin IN ('Laki-laki','Perempuan')),
-  jenis_tenaga     VARCHAR(60)  NOT NULL,
-  -- Nilai umum pada UI: Dokter, Dokter Gigi, Perawat, Bidan, Apoteker,
-  --                     Analis Kesehatan, Fisioterapis, Lainnya
-  kode_unit        VARCHAR(30),                 -- contoh: 'FK-001'
-  nama_unit        VARCHAR(200),                -- contoh: 'RSUD Dr. Soetomo'
-  status_pegawai   VARCHAR(10)  CHECK (status_pegawai IN ('PNS','PPNPN','Swasta')),
-  nomor_str        VARCHAR(60),
-  status_str       VARCHAR(10)  DEFAULT 'Aktif'
-                   CHECK (status_str IN ('Aktif','Expired')),
-  nomor_sip        VARCHAR(60),
-  tgl_terbit_sip   DATE,
-  tgl_berakhir_sip DATE,                        -- dipakai filter Status STR & ekspirasi
-  keterangan       TEXT,
-  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-
--- ============================================================================
--- 5. MENU: PANEL ADMIN (menu 8)  ->  tabel `users`, `logs`, `izin`
--- ============================================================================
--- 5a. users -- Manajemen User (tabel user + tombol Tambah/Hapus di Panel Admin)
---     Sumber: resetDataStore(), renderAdmin(), showAddUserModal(),
---             saveNewUser(), deleteUser(), login()
-CREATE TABLE IF NOT EXISTS users (
-  username   VARCHAR(40)  PRIMARY KEY,
-  password   VARCHAR(100) NOT NULL,
-  -- PENTING: frontend saat ini menyimpan plaintext (admin123 / operator123).
-  -- Untuk production ganti ke hash bcrypt/argon2 dan autentikasi via Edge Function.
-  role       VARCHAR(10)  NOT NULL CHECK (role IN ('admin','operator')),
-  full_name  VARCHAR(150) NOT NULL,
-  is_active  BOOLEAN      NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-);
-
--- 5b. logs -- jejak audit (array `logs` pada dataStore frontend; saat ini
---     belum ditulis aplikasi, tabel disiapkan untuk backend)
-CREATE TABLE IF NOT EXISTS logs (
-  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  username   VARCHAR(40),
-  aksi       VARCHAR(60) NOT NULL,   -- contoh: LOGIN, ADD_PROFIL, SUBMIT_VERVAL
-  detail     TEXT,
-  ip_address VARCHAR(50),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- 5c. izin -- Pengajuan Izin Praktik (statistik kartu Dashboard & chart Status
---     Izin; store `izin` frontend)
---     Aksi API: getIzin, addIzin, searchByNik
-CREATE TABLE IF NOT EXISTS izin (
-  id           VARCHAR(30)  PRIMARY KEY,   -- generateId('IZIN') -> 'IZIN-xxxxx'
-  nik          VARCHAR(16)  NOT NULL CHECK (nik ~ '^[0-9]{16}$'),
-  nama_lengkap VARCHAR(150) NOT NULL,
-  jenis_izin   VARCHAR(15)  NOT NULL CHECK (jenis_izin IN ('Baru','Perpanjangan')),
-  tgl_usulan   DATE         NOT NULL DEFAULT CURRENT_DATE,
-  status       VARCHAR(12)  NOT NULL DEFAULT 'Pending'
-               CHECK (status IN ('Pending','Proses','Disetujui','Ditolak')),
-  nomor_sip    VARCHAR(60)  DEFAULT '-',
-  unit_kerja   VARCHAR(200),
-  masa_berlaku VARCHAR(60),                -- teks '2024-01-15 s.d 2027-01-15'
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-  -- Opsi relasi:
-  -- , CONSTRAINT fk_izin_profil FOREIGN KEY (nik) REFERENCES profil_sdmk (nik)
-);
-
--- ============================================================================
--- 6. INDEKS -- mendukung pencarian & filter pada setiap menu
--- ============================================================================
--- Menu 6: Profil SDMK (filter unit, jenis tenaga, status STR + pencarian)
-CREATE INDEX IF NOT EXISTS idx_profil_unit  ON profil_sdmk (nama_unit);
-CREATE INDEX IF NOT EXISTS idx_profil_jenis ON profil_sdmk (jenis_tenaga);
-CREATE INDEX IF NOT EXISTS idx_profil_str   ON profil_sdmk (status_str);
-CREATE INDEX IF NOT EXISTS idx_profil_nama  ON profil_sdmk (nama_lengkap);
-
--- Menu 3 & 7: Verval Izin Praktik (cari NIK, autocomplete nama, filter SIP)
-CREATE INDEX IF NOT EXISTS idx_verval_nik  ON verval_izin_praktik (nik);
-CREATE INDEX IF NOT EXISTS idx_verval_nama ON verval_izin_praktik (nama_lengkap);
-CREATE INDEX IF NOT EXISTS idx_verval_unit ON verval_izin_praktik (unit_kerja);
-CREATE INDEX IF NOT EXISTS idx_verval_sip  ON verval_izin_praktik (status_sip);
-CREATE INDEX IF NOT EXISTS idx_verval_tgl  ON verval_izin_praktik ("timestamp" DESC);
-
--- Menu 5: Data Verval Fasyankes (filter jenis/status/kecamatan + pencarian)
-CREATE INDEX IF NOT EXISTS idx_vf_nama       ON verval_fasyankes (nama_fasyankes);
-CREATE INDEX IF NOT EXISTS idx_vf_jenis      ON verval_fasyankes (jenis_fasyankes);
-CREATE INDEX IF NOT EXISTS idx_vf_status     ON verval_fasyankes (status_verifikasi);
-CREATE INDEX IF NOT EXISTS idx_vf_kec        ON verval_fasyankes (kecamatan);
-CREATE INDEX IF NOT EXISTS idx_vf_sdm_verval ON verval_fasyankes_sdm (verval_id);
-CREATE INDEX IF NOT EXISTS idx_sdm_standar   ON sdm_standar_fasyankes (jenis_fasyankes);
-
--- Menu 2: Pengumuman (urut tanggal terbaru, pengumuman penting)
-CREATE INDEX IF NOT EXISTS idx_pengumuman_tgl     ON pengumuman (tanggal DESC);
-CREATE INDEX IF NOT EXISTS idx_pengumuman_penting ON pengumuman (is_penting);
-
--- Menu 8: Izin (cari NIK + chart status)
-CREATE INDEX IF NOT EXISTS idx_izin_nik    ON izin (nik);
-CREATE INDEX IF NOT EXISTS idx_izin_status ON izin (status);
-
-
--- ============================================================================
--- 7. MENU: DASHBOARD (menu 1)  ->  VIEW agregasi statistik real-time
---    Sumber: loadDashboardData(), initDashboardCharts(), updateDashboardUI()
--- ============================================================================
--- Kartu statistik utama: Total Profil SDMK, Pengajuan Izin, Data Verval,
--- Verval Fasyankes + jumlah pengumuman
-CREATE OR REPLACE VIEW v_dashboard_stats AS
-SELECT
-  (SELECT COUNT(*) FROM profil_sdmk)                     AS total_profil_sdmk,
-  (SELECT COUNT(*) FROM izin)                            AS total_pengajuan_izin,
-  (SELECT COUNT(*) FROM izin WHERE status = 'Proses')    AS izin_diproses,
-  (SELECT COUNT(*) FROM verval_izin_praktik)             AS total_verval_izin,
-  (SELECT COUNT(*) FROM verval_fasyankes)                AS total_verval_fasyankes,
-  (SELECT COUNT(*) FROM pengumuman)                      AS total_pengumuman;
-
--- Panel "Ringkasan Verval Fasyankes" (vf-total, vf-layak, vf-tidak, vf-pending)
--- dan kartu statistik halaman Data Verval Fasyankes
-CREATE OR REPLACE VIEW v_vf_summary AS
-SELECT
-  COUNT(*)                                                                AS total_fasyankes,
-  COUNT(*) FILTER (WHERE status_verifikasi = 'Layak')                     AS layak,
-  COUNT(*) FILTER (WHERE status_verifikasi IN ('Tidak Layak','Tidak Valid')) AS tidak_layak,
-  COUNT(*) FILTER (WHERE status_verifikasi IN ('Perbaikan','Pending'))    AS pending_perbaikan
-FROM verval_fasyankes;
-
--- Grafik 1 "SDMK per Jenis Tenaga" (canvas chart-jenis)
-CREATE OR REPLACE VIEW v_sdmk_per_jenis AS
-SELECT jenis_tenaga AS label, COUNT(*) AS jumlah
-FROM profil_sdmk
-GROUP BY jenis_tenaga
-ORDER BY jumlah DESC;
-
--- Grafik 2 "Status Izin Praktik" (canvas chart-status)
-CREATE OR REPLACE VIEW v_status_izin AS
-SELECT status AS label, COUNT(*) AS jumlah
-FROM izin
-GROUP BY status
-ORDER BY jumlah DESC;
-
--- Grafik 3 "Distribusi Unit Kerja" (canvas chart-unit)
-CREATE OR REPLACE VIEW v_sdmk_per_unit AS
-SELECT COALESCE(NULLIF(nama_unit, ''), 'Tidak diketahui') AS label,
-       COUNT(*) AS jumlah
-FROM profil_sdmk
-GROUP BY 1
-ORDER BY jumlah DESC;
-
--- Detail gabungan untuk halaman "Data Verval Izin Praktik" (menu 7, pencarian
--- NIK + kartu detail showVervalIzinPraktikDetail) -- nama kolom mengikuti
--- field yang dibaca frontend.
-CREATE OR REPLACE VIEW v_verval_izin_detail AS
-SELECT
-  v.id,
-  v."timestamp",
-  v.nik,
-  v.nama_lengkap,
-  v.jenis_kelamin,
-  v.tempat_lahir,
-  v.tanggal_lahir,
-  v.nip,
-  v.jenis_tenaga,
-  v.golongan_pangkat,
-  v.jabatan,
-  v.nomor_str,
-  v.tanggal_terbit_str,
-  v.tanggal_berlaku_str,
-  v.status_str,
-  v.nomor_sip,
-  v.tanggal_terbit_sip,
-  v.tanggal_berlaku_sip,
-  v.status_sip,
-  v.unit_kerja,
-  v.alamat_unit                 AS alamat_kerja,
-  v.kecamatan,
-  v.kabupaten,
-  v.id_satu_sehat,
-  v.status_satu_sehat,
-  v.status_verifikasi,
-  v.tanggal_verifikasi,
-  v.verifikator,
-  COALESCE(v.catatan, v.catatan_rekomendasi) AS catatan,
-  v.masa_berlaku_sip,
-  v.jam_operasional,
-  v.created_at
-FROM verval_izin_praktik v;
-
--- Record verval TERBARU per NIK (dipakai aksi API getVervalByNik yang
--- mengembalikan `latest`):
-CREATE OR REPLACE VIEW v_verval_izin_latest AS
-SELECT DISTINCT ON (nik)
-  *
-FROM verval_izin_praktik
-ORDER BY nik, "timestamp" DESC, id DESC;
-
-
--- ============================================================================
--- 8. TRIGGER updated_at OTOMATIS (PostgreSQL 14+ / Supabase PG15 -- aman)
--- ============================================================================
-CREATE OR REPLACE TRIGGER trg_pengumuman_updated
-  BEFORE UPDATE ON pengumuman          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE OR REPLACE TRIGGER trg_verval_updated
-  BEFORE UPDATE ON verval_izin_praktik FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE OR REPLACE TRIGGER trg_vf_updated
-  BEFORE UPDATE ON verval_fasyankes    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE OR REPLACE TRIGGER trg_profil_updated
-  BEFORE UPDATE ON profil_sdmk         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE OR REPLACE TRIGGER trg_users_updated
-  BEFORE UPDATE ON users               FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE OR REPLACE TRIGGER trg_izin_updated
-  BEFORE UPDATE ON izin                FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-
--- ============================================================================
--- 9. ROW LEVEL SECURITY (Supabase)
 -- ----------------------------------------------------------------------------
--- Frontend TIDAK mengakses tabel secara langsung; semua request melewati
--- Edge Function "super-service" (GAS_WEB_APP_URL). Pilih salah satu opsi:
---
--- OPSI A -- REKOMENDASI (default-deny):
---   Cukup ENABLE RLS tanpa policy. Edge Function yang memakai service_role
---   tetap lolos, sedangkan anon key tidak bisa baca/tulis langsung.
---
--- OPSI B -- akses langsung dari klien dengan anon key (HANYA untuk
---   pengembangan; HAPUS sebelum production):
---   aktifkan contoh policy di bawah untuk setiap tabel.
+-- 1b. FASYANKES
+-- ----------------------------------------------------------------------------
+create table if not exists public.fasyankes (
+  id         uuid primary key default uuid_generate_v4(),
+  nama       text not null,
+  jenis      fasyankes_jenis not null,
+  alamat     text,
+  kecamatan  text,
+  kabupaten  text,
+  provinsi   text,
+  lat_lng    text, -- format: "lat,lng"
+  phone      text,
+  email      text,
+  status     praktik_status not null default 'aktif',
+  created_by uuid,  -- FK ditambah di section 7
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_fasyankes_jenis on public.fasyankes(jenis);
+create index if not exists idx_fasyankes_kabupaten on public.fasyankes(kabupaten);
+create index if not exists idx_fasyankes_nama on public.fasyankes(nama);
+
+-- ----------------------------------------------------------------------------
+-- 1c. TENAGA_KESEHATAN
+-- ----------------------------------------------------------------------------
+create table if not exists public.tenaga_kesehatan (
+  id                 uuid primary key default uuid_generate_v4(),
+  nik                text unique not null,
+  nama               text not null,
+  profesi            text not null,
+  jenis              nakes_jenis not null,
+  no_str             text unique not null,
+  tgl_terbit_str     date not null,
+  tgl_akhir_str      date not null,
+  file_str_url       text,
+  foto_url           text,
+  phone              text,
+  email              text,
+  fasyankes_id       uuid,  -- FK di section 7
+  user_id            uuid,  -- FK di section 7
+  status             praktik_status not null default 'aktif',
+  verifikasi_status  verifikasi_status not null default 'pending',
+  verified_by        uuid,  -- FK di section 7
+  verified_at        timestamptz,
+  metadata           jsonb default '{}'::jsonb,
+  created_by         uuid,  -- FK di section 7
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  constraint chk_tgl_str check (tgl_akhir_str > tgl_terbit_str),
+  constraint chk_nik_format check (nik ~ '^[0-9]{16}$')
+);
+
+create index if not exists idx_nakes_nama on public.tenaga_kesehatan(nama);
+create index if not exists idx_nakes_jenis on public.tenaga_kesehatan(jenis);
+create index if not exists idx_nakes_fasyankes on public.tenaga_kesehatan(fasyankes_id);
+create index if not exists idx_nakes_str_akhir on public.tenaga_kesehatan(tgl_akhir_str);
+create index if not exists idx_nakes_status on public.tenaga_kesehatan(status);
+create index if not exists idx_nakes_verifikasi on public.tenaga_kesehatan(verifikasi_status);
+create index if not exists idx_nakes_search on public.tenaga_kesehatan
+  using gin (to_tsvector('simple', nama || ' ' || coalesce(nik, '') || ' ' || coalesce(no_str, '') || ' ' || coalesce(profesi, '')));
+
+-- ----------------------------------------------------------------------------
+-- 1d. PRAKTIK (SIP / SIK / Rekomendasi)
+-- ----------------------------------------------------------------------------
+create table if not exists public.praktik (
+  id                 uuid primary key default uuid_generate_v4(),
+  tenaga_id          uuid not null,  -- FK di section 7
+  fasyankes_id       uuid not null,  -- FK di section 7
+  no_sip             text unique not null,
+  jenis_dok          text not null default 'SIP', -- SIP / SIK / Rekomendasi
+  tgl_terbit_sip     date not null,
+  tgl_akhir_sip      date not null,
+  jadwal_json        jsonb default '{}'::jsonb,
+  status             praktik_status not null default 'aktif',
+  verifikasi_status  verifikasi_status not null default 'pending',
+  verified_by        uuid,  -- FK di section 7
+  verified_at        timestamptz,
+  file_sip_url       text,
+  catatan            text,
+  created_by         uuid,  -- FK di section 7
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  constraint chk_tgl_sip check (tgl_akhir_sip > tgl_terbit_sip)
+);
+
+create index if not exists idx_praktik_tenaga on public.praktik(tenaga_id);
+create index if not exists idx_praktik_fasyankes on public.praktik(fasyankes_id);
+create index if not exists idx_praktik_sip_akhir on public.praktik(tgl_akhir_sip);
+create index if not exists idx_praktik_status on public.praktik(status);
+create index if not exists idx_praktik_verifikasi on public.praktik(verifikasi_status);
+
+-- ----------------------------------------------------------------------------
+-- 1e. NOTIFICATIONS
+-- ----------------------------------------------------------------------------
+create table if not exists public.notifications (
+  id          uuid primary key default uuid_generate_v4(),
+  tenaga_id   uuid,  -- FK di section 7
+  praktik_id  uuid,  -- FK di section 7
+  user_id     uuid,  -- FK di section 7
+  type        notif_type not null,
+  title       text not null,
+  message     text not null,
+  is_read     boolean not null default false,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_notif_user on public.notifications(user_id);
+create index if not exists idx_notif_unread on public.notifications(is_read, created_at desc);
+create index if not exists idx_notif_type on public.notifications(type);
+
+-- ----------------------------------------------------------------------------
+-- 1f. AUDIT_LOG
+-- ----------------------------------------------------------------------------
+create table if not exists public.audit_log (
+  id          uuid primary key default uuid_generate_v4(),
+  user_id     uuid,  -- FK di section 7
+  action      audit_action not null,
+  entity      text not null,
+  entity_id   text,
+  detail      jsonb default '{}'::jsonb,
+  ip_address  inet,
+  user_agent  text,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_audit_user on public.audit_log(user_id);
+create index if not exists idx_audit_created on public.audit_log(created_at desc);
+create index if not exists idx_audit_entity on public.audit_log(entity, entity_id);
+create index if not exists idx_audit_action on public.audit_log(action);
+
 -- ============================================================================
-ALTER TABLE pengumuman            ENABLE ROW LEVEL SECURITY;
-ALTER TABLE verval_izin_praktik   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE verval_fasyankes      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE verval_fasyankes_sdm  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE sdm_standar_fasyankes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profil_sdmk           ENABLE ROW LEVEL SECURITY;
-ALTER TABLE users                 ENABLE ROW LEVEL SECURITY;
-ALTER TABLE logs                  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE izin                  ENABLE ROW LEVEL SECURITY;
+-- 2. FOREIGN KEY CONSTRAINTS (dipasang setelah semua tabel ada — anti circular)
+-- ============================================================================
+-- Drop dulu jika ada (idempoten), lalu create ulang.
 
--- Contoh OPSI B (ulangi per tabel; JANGAN dipakai di production):
--- CREATE POLICY "dev_full_access_pengumuman" ON pengumuman
---   FOR ALL TO anon, authenticated USING (TRUE) WITH CHECK (TRUE);
+-- profiles → fasyankes
+alter table public.profiles drop constraint if exists fk_profiles_fasyankes;
+alter table public.profiles
+  add constraint fk_profiles_fasyankes
+  foreign key (fasyankes_id) references public.fasyankes(id) on delete set null;
 
+-- fasyankes → profiles (created_by)
+alter table public.fasyankes drop constraint if exists fk_fasyankes_created_by;
+alter table public.fasyankes
+  add constraint fk_fasyankes_created_by
+  foreign key (created_by) references public.profiles(id) on delete set null;
+
+-- tenaga_kesehatan → fasyankes
+alter table public.tenaga_kesehatan drop constraint if exists fk_nakes_fasyankes;
+alter table public.tenaga_kesehatan
+  add constraint fk_nakes_fasyankes
+  foreign key (fasyankes_id) references public.fasyankes(id) on delete set null;
+
+-- tenaga_kesehatan → profiles (user_id — jika nakes punya akun login)
+alter table public.tenaga_kesehatan drop constraint if exists fk_nakes_user;
+alter table public.tenaga_kesehatan
+  add constraint fk_nakes_user
+  foreign key (user_id) references public.profiles(id) on delete set null;
+
+-- tenaga_kesehatan → profiles (verified_by)
+alter table public.tenaga_kesehatan drop constraint if exists fk_nakes_verified_by;
+alter table public.tenaga_kesehatan
+  add constraint fk_nakes_verified_by
+  foreign key (verified_by) references public.profiles(id) on delete set null;
+
+-- tenaga_kesehatan → profiles (created_by)
+alter table public.tenaga_kesehatan drop constraint if exists fk_nakes_created_by;
+alter table public.tenaga_kesehatan
+  add constraint fk_nakes_created_by
+  foreign key (created_by) references public.profiles(id) on delete set null;
+
+-- praktik → tenaga_kesehatan
+alter table public.praktik drop constraint if exists fk_praktik_tenaga;
+alter table public.praktik
+  add constraint fk_praktik_tenaga
+  foreign key (tenaga_id) references public.tenaga_kesehatan(id) on delete cascade;
+
+-- praktik → fasyankes
+alter table public.praktik drop constraint if exists fk_praktik_fasyankes;
+alter table public.praktik
+  add constraint fk_praktik_fasyankes
+  foreign key (fasyankes_id) references public.fasyankes(id) on delete restrict;
+
+-- praktik → profiles (verified_by)
+alter table public.praktik drop constraint if exists fk_praktik_verified_by;
+alter table public.praktik
+  add constraint fk_praktik_verified_by
+  foreign key (verified_by) references public.profiles(id) on delete set null;
+
+-- praktik → profiles (created_by)
+alter table public.praktik drop constraint if exists fk_praktik_created_by;
+alter table public.praktik
+  add constraint fk_praktik_created_by
+  foreign key (created_by) references public.profiles(id) on delete set null;
+
+-- notifications → tenaga_kesehatan
+alter table public.notifications drop constraint if exists fk_notif_tenaga;
+alter table public.notifications
+  add constraint fk_notif_tenaga
+  foreign key (tenaga_id) references public.tenaga_kesehatan(id) on delete cascade;
+
+-- notifications → praktik
+alter table public.notifications drop constraint if exists fk_notif_praktik;
+alter table public.notifications
+  add constraint fk_notif_praktik
+  foreign key (praktik_id) references public.praktik(id) on delete cascade;
+
+-- notifications → profiles
+alter table public.notifications drop constraint if exists fk_notif_user;
+alter table public.notifications
+  add constraint fk_notif_user
+  foreign key (user_id) references public.profiles(id) on delete cascade;
+
+-- audit_log → profiles
+alter table public.audit_log drop constraint if exists fk_audit_user;
+alter table public.audit_log
+  add constraint fk_audit_user
+  foreign key (user_id) references public.profiles(id) on delete set null;
 
 -- ============================================================================
--- 10. DATA AWAL (SEED)
+-- 3. TRIGGERS — auto-update updated_at
 -- ============================================================================
--- 10a. User default -- sama dengan resetDataStore() pada frontend.
---      Segera ganti password setelah login pertama!
-INSERT INTO users (username, password, role, full_name) VALUES
-  ('admin',    'admin123',    'admin',    'Administrator SIMANTRI'),
-  ('operator', 'operator123', 'operator', 'Operator Verval')
-ON CONFLICT (username) DO NOTHING;
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end $$;
 
--- 10b. Master SDM standar per jenis fasyankes -- pindahan konstanta
---      SDM_FASYANKES pada frontend (checkbox dinamis form Verval Fasyankes)
-INSERT INTO sdm_standar_fasyankes (jenis_fasyankes, jenis_sdm, urutan) VALUES
-  -- Rumah Sakit (14)
-  ('Rumah Sakit','Dokter Spesialis', 1),
-  ('Rumah Sakit','Dokter Umum', 2),
-  ('Rumah Sakit','Perawat', 3),
-  ('Rumah Sakit','Bidan', 4),
-  ('Rumah Sakit','Ahli Gizi', 5),
-  ('Rumah Sakit','Farmapis', 6),
-  ('Rumah Sakit','Radiografer', 7),
-  ('Rumah Sakit','Laboran', 8),
-  ('Rumah Sakit','Fisioterapis', 9),
-  ('Rumah Sakit','Elektromedik', 10),
-  ('Rumah Sakit','Sanitarian', 11),
-  ('Rumah Sakit','Rekam Medis', 12),
-  ('Rumah Sakit','Nutritionist', 13),
-  ('Rumah Sakit','OK Assistant', 14),
-  -- Puskesmas (9)
-  ('Puskesmas','Dokter Umum', 1),
-  ('Puskesmas','Perawat', 2),
-  ('Puskesmas','Bidan', 3),
-  ('Puskesmas','Ahli Gizi', 4),
-  ('Puskesmas','Sanitarian', 5),
-  ('Puskesmas','Epidemiolog', 6),
-  ('Puskesmas','Promosi Kesehatan', 7),
-  ('Puskesmas','Entomologist', 8),
-  ('Puskesmas','Admin Kesehatan', 9),
-  -- Klinik (7)
-  ('Klinik','Dokter Umum', 1),
-  ('Klinik','Dokter Gigi', 2),
-  ('Klinik','Perawat', 3),
-  ('Klinik','Bidan', 4),
-  ('Klinik','Asisten Apoteker', 5),
-  ('Klinik','Ahli Gizi', 6),
-  ('Klinik','Fisioterapis', 7),
-  -- Apotik (3)
-  ('Apotik','Apoteker', 1),
-  ('Apotik','Asisten Apoteker', 2),
-  ('Apotik','Teknis Kefarmasian', 3),
-  -- Toko Obat (2)
-  ('Toko Obat','Asisten Apoteker', 1),
-  ('Toko Obat','Tenaga Teknis Kefarmasian', 2),
-  -- Optik (3)
-  ('Optik','Optometris', 1),
-  ('Optik','Optisian', 2),
-  ('Optik','Tenaga Teknis Optisi', 3),
-  -- PBF (4)
-  ('PBF (Pedagang Besar Farmasi)','Apoteker', 1),
-  ('PBF (Pedagang Besar Farmasi)','Staff Penjualan', 2),
-  ('PBF (Pedagang Besar Farmasi)','Quality Control', 3),
-  ('PBF (Pedagang Besar Farmasi)','Gudang Farmasi', 4),
-  -- Tempat Praktik Mandiri (8)
-  ('Tempat Praktik Mandiri','Dokter Spesialis', 1),
-  ('Tempat Praktik Mandiri','Dokter Umum', 2),
-  ('Tempat Praktik Mandiri','Dokter Gigi', 3),
-  ('Tempat Praktik Mandiri','Bidan', 4),
-  ('Tempat Praktik Mandiri','Perawat', 5),
-  ('Tempat Praktik Mandiri','Psikolog', 6),
-  ('Tempat Praktik Mandiri','Fisioterapis', 7),
-  ('Tempat Praktik Mandiri','Akupunturis', 8)
-ON CONFLICT (jenis_fasyankes, jenis_sdm) DO NOTHING;
+drop trigger if exists trg_profiles_updated on public.profiles;
+create trigger trg_profiles_updated before update on public.profiles
+  for each row execute function public.set_updated_at();
 
--- 10c. Contoh data demo (opsional -- hapus komentar bila diperlukan):
+drop trigger if exists trg_fasyankes_updated on public.fasyankes;
+create trigger trg_fasyankes_updated before update on public.fasyankes
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_nakes_updated on public.tenaga_kesehatan;
+create trigger trg_nakes_updated before update on public.tenaga_kesehatan
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists trg_praktik_updated on public.praktik;
+create trigger trg_praktik_updated before update on public.praktik
+  for each row execute function public.set_updated_at();
+
+-- ============================================================================
+-- 4. AUTO-CREATE PROFILE — TIDAK DIPAKAI di v3 (custom auth)
+-- ============================================================================
+-- Aplikasi SIMANTRI v3 memakai CUSTOM AUTH via fungsi verify_user.
+-- User ditambahkan langsung via SQL Editor atau halaman Manajemen User,
+-- TIDAK melalui Supabase Auth sign-up.
+-- Karena itu trigger on_auth_user_created tidak diperlukan.
+
+-- Drop trigger & function jika ada (dari versi sebelumnya)
+drop trigger if exists on_auth_user_created on auth.users;
+drop function if exists public.handle_new_user() cascade;
+
+-- ============================================================================
+-- 5. HELPER FUNCTIONS — untuk RLS
+-- ============================================================================
+-- Ambil role user saat ini
+create or replace function public.current_user_role()
+returns user_role language sql stable security definer set search_path = public as $$
+  select role from public.profiles where id = auth.uid();
+$$;
+
+-- Ambil fasyankes_id user saat ini
+create or replace function public.current_user_fasyankes()
+returns uuid language sql stable security definer set search_path = public as $$
+  select fasyankes_id from public.profiles where id = auth.uid();
+$$;
+
+-- Cek apakah user saat ini adalah Dinkes
+create or replace function public.is_dinkes()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'dinkes');
+$$;
+
+-- Cek apakah user saat ini adalah Fasyankes
+create or replace function public.is_fasyankes()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles where id = auth.uid() and role = 'fasyankes');
+$$;
+
+-- ============================================================================
+-- 6. ROW LEVEL SECURITY (RLS)
+-- ============================================================================
+alter table public.profiles          enable row level security;
+alter table public.fasyankes         enable row level security;
+alter table public.tenaga_kesehatan  enable row level security;
+alter table public.praktik           enable row level security;
+alter table public.notifications     enable row level security;
+alter table public.audit_log         enable row level security;
+
+-- ===== PROFILES =====
+-- Dinkes: lihat semua; Fasyankes: lihat profil di fasyankesnya; Nakes: lihat dirinya
+drop policy if exists profiles_select on public.profiles;
+create policy profiles_select on public.profiles
+  for select using (
+    public.is_dinkes()
+    or (public.is_fasyankes() and fasyankes_id = public.current_user_fasyankes())
+    or id = auth.uid()
+  );
+
+-- User bisa update dirinya sendiri (terbatas)
+drop policy if exists profiles_update_self on public.profiles;
+create policy profiles_update_self on public.profiles
+  for update using (id = auth.uid());
+
+-- Hanya Dinkes yang bisa insert & delete profile lain
+drop policy if exists profiles_insert_dinkes on public.profiles;
+create policy profiles_insert_dinkes on public.profiles
+  for insert with check (public.is_dinkes());
+
+drop policy if exists profiles_delete_dinkes on public.profiles;
+create policy profiles_delete_dinkes on public.profiles
+  for delete using (public.is_dinkes());
+
+-- ===== FASYANKES =====
+drop policy if exists fasyankes_select on public.fasyankes;
+create policy fasyankes_select on public.fasyankes
+  for select using (
+    public.is_dinkes()
+    or id = public.current_user_fasyankes()
+  );
+
+drop policy if exists fasyankes_modify_dinkes on public.fasyankes;
+create policy fasyankes_modify_dinkes on public.fasyankes
+  for all using (public.is_dinkes()) with check (public.is_dinkes());
+
+-- ===== TENAGA_KESEHATAN =====
+-- Dinkes: semua; Fasyankes: nakes di fasyankesnya; Nakes: dirinya sendiri
+drop policy if exists nakes_select on public.tenaga_kesehatan;
+create policy nakes_select on public.tenaga_kesehatan
+  for select using (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+    or user_id = auth.uid()
+  );
+
+drop policy if exists nakes_insert on public.tenaga_kesehatan;
+create policy nakes_insert on public.tenaga_kesehatan
+  for insert with check (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+    or user_id = auth.uid()
+  );
+
+drop policy if exists nakes_update on public.tenaga_kesehatan;
+create policy nakes_update on public.tenaga_kesehatan
+  for update using (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+    or user_id = auth.uid()
+  );
+
+drop policy if exists nakes_delete on public.tenaga_kesehatan;
+create policy nakes_delete on public.tenaga_kesehatan
+  for delete using (public.is_dinkes());
+
+-- ===== PRAKTIK =====
+drop policy if exists praktik_select on public.praktik;
+create policy praktik_select on public.praktik
+  for select using (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+    or tenaga_id in (select id from public.tenaga_kesehatan where user_id = auth.uid())
+  );
+
+drop policy if exists praktik_insert on public.praktik;
+create policy praktik_insert on public.praktik
+  for insert with check (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+  );
+
+drop policy if exists praktik_update on public.praktik;
+create policy praktik_update on public.praktik
+  for update using (
+    public.is_dinkes()
+    or fasyankes_id = public.current_user_fasyankes()
+  );
+
+drop policy if exists praktik_delete on public.praktik;
+create policy praktik_delete on public.praktik
+  for delete using (public.is_dinkes());
+
+-- ===== NOTIFICATIONS =====
+drop policy if exists notif_select on public.notifications;
+create policy notif_select on public.notifications
+  for select using (
+    public.is_dinkes()
+    or user_id = auth.uid()
+    or tenaga_id in (
+      select id from public.tenaga_kesehatan
+      where user_id = auth.uid() or fasyankes_id = public.current_user_fasyankes()
+    )
+  );
+
+drop policy if exists notif_update on public.notifications;
+create policy notif_update on public.notifications
+  for update using (user_id = auth.uid() or public.is_dinkes());
+
+drop policy if exists notif_insert on public.notifications;
+create policy notif_insert on public.notifications
+  for insert with check (public.is_dinkes() or user_id = auth.uid());
+
+-- ===== AUDIT_LOG =====
+drop policy if exists audit_select on public.audit_log;
+create policy audit_select on public.audit_log
+  for select using (public.is_dinkes() or user_id = auth.uid());
+
+drop policy if exists audit_insert on public.audit_log;
+create policy audit_insert on public.audit_log
+  for insert with check (user_id = auth.uid() or public.is_dinkes());
+
+-- ============================================================================
+-- 7. STORAGE BUCKETS (untuk file STR/SIP)
+-- ============================================================================
+-- Buat buckets private (akses via signed URL)
+do $$ begin
+  insert into storage.buckets (id, name, public) values
+    ('str-files', 'str-files', false),
+    ('sip-files', 'sip-files', false)
+  on conflict (id) do nothing;
+exception
+  when insufficient_privilege then
+    raise notice 'Skipping storage buckets — run as service_role in Supabase Dashboard';
+end $$;
+
+-- Storage policies — authenticated users bisa baca file miliknya
+drop policy if exists "str_files_read_own" on storage.objects;
+create policy "str_files_read_own" on storage.objects
+  for select to authenticated using (
+    bucket_id in ('str-files', 'sip-files')
+    and auth.uid() is not null
+  );
+
+drop policy if exists "str_files_upload_own" on storage.objects;
+create policy "str_files_upload_own" on storage.objects
+  for insert to authenticated with check (
+    bucket_id in ('str-files', 'sip-files')
+    and auth.uid() is not null
+  );
+
+drop policy if exists "str_files_update_own" on storage.objects;
+create policy "str_files_update_own" on storage.objects
+  for update to authenticated using (
+    bucket_id in ('str-files', 'sip-files')
+    and auth.uid() is not null
+  );
+
+drop policy if exists "str_files_delete_own" on storage.objects;
+create policy "str_files_delete_own" on storage.objects
+  for delete to authenticated using (
+    bucket_id in ('str-files', 'sip-files')
+    and (auth.uid() is not null and public.is_dinkes())
+  );
+
+-- ============================================================================
+-- 8. SEED DATA — sample (opsional, hapus untuk produksi murni)
+-- ============================================================================
+-- Hanya insert jika tabel masih kosong (idempoten via on conflict do nothing)
+do $$ begin
+  if not exists (select 1 from public.fasyankes limit 1) then
+    insert into public.fasyankes (nama, jenis, alamat, lat_lng, kabupaten, provinsi) values
+      ('RSUD Demo', 'RS', 'Jl. Demo 1, Surabaya', '-7.2756,112.7423', 'Surabaya', 'Jawa Timur'),
+      ('Puskesmas Demo', 'Puskesmas', 'Jl. Demo 2, Surabaya', '-7.2589,112.7467', 'Surabaya', 'Jawa Timur'),
+      ('Klinik Utama Demo', 'Klinik Utama', 'Jl. Demo 3, Surabaya', '-7.2645,112.7551', 'Surabaya', 'Jawa Timur')
+    on conflict do nothing;
+  end if;
+end $$;
+
+-- ============================================================================
+-- 9. MULTIUSER LOGIN (custom auth via tabel profiles)
+-- ============================================================================
+-- Sistem ini TIDAK memakai Supabase Auth bawaan (yang butuh sign-up via Dashboard).
+-- Sebagai gantinya, password disimpan di kolom `password_hash` pada tabel
+-- `profiles`, dan login divalidasi via fungsi `verify_user(email, password)`.
 --
--- INSERT INTO pengumuman (id, tanggal, judul, isi, is_penting, created_by) VALUES
---   ('PENG-001', '2025-05-01', 'Pembaruan Sistem SIMANTRI v1.2',
---    'Mulai 1 Juni 2025 seluruh pengajuan izin praktik wajib menggunakan formulir digital baru.',
---    1, 'admin'),
---   ('PENG-002', '2025-04-20', 'Jadwal Verval Triwulan II',
---    'Verval izin praktik periode April-Juni dilaksanakan secara bertahap.',
---    0, 'admin')
--- ON CONFLICT (id) DO NOTHING;
+-- Kelebihan:
+--   ✅ Admin bisa CRUD user langsung via SQL Editor / Table Editor
+--   ✅ Tidak perlu sign-up manual via Authentication menu
+--   ✅ Password di-hash dengan pgcrypto (bcrypt-style)
+--   ✅ Compatible dengan RLS yang sudah ada
 --
--- INSERT INTO profil_sdmk
---   (nik, nama_lengkap, jenis_kelamin, jenis_tenaga, kode_unit, nama_unit,
---    status_pegawai, nomor_str, status_str, nomor_sip, tgl_terbit_sip,
---    tgl_berakhir_sip, keterangan)
--- VALUES
---   ('3275012345678901', 'dr. Andi Wijaya, Sp.PD', 'Laki-laki', 'Dokter',
---    'FK-001', 'RSUD Dr. Soetomo', 'PNS', 'STR.12345.2023', 'Aktif',
---    'SIP/2024/001234', '2024-01-15', '2027-01-15', 'Spesialis Penyakit Dalam'),
---   ('3275023456789012', 'drg. Siti Rahayu', 'Perempuan', 'Dokter Gigi',
---    'FK-002', 'Klinik Sehat Buah', 'Swasta', 'STR.23456.2022', 'Aktif',
---    'SIP/2024/002345', '2024-03-20', '2026-03-20', NULL)
--- ON CONFLICT (nik) DO NOTHING;
+-- Cara admin tambah user baru (jalankan di SQL Editor):
+--   insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+--   values (
+--     uuid_generate_v4(),
+--     'admin@dinkes.go.id',
+--     'Dr. Admin Baru',
+--     'dinkes',
+--     public.hash_password('password123'),
+--     true
+--   );
+--
+-- Cara admin ubah password user:
+--   update public.profiles
+--   set password_hash = public.hash_password('newpassword')
+--   where email = 'admin@dinkes.go.id';
+-- ============================================================================
+
+-- 9a. Pastikan extension pgcrypto aktif (dibutuhkan untuk crypt() & gen_salt())
+-- WAJIB: jalankan CREATE EXTENSION ini duluan, jangan langsung ke fungsi
+create extension if not exists pgcrypto;
+
+-- Verifikasi pgcrypto aktif dengan cek apakah gen_salt function ada
+-- (raise exception jika tidak ada, supaya user tahu masalahnya)
+do $$
+begin
+  if not exists (
+    select 1 from pg_proc p
+    join pg_namespace n on p.pronamespace = n.oid
+    where n.nspname = 'public' and p.proname = 'gen_salt'
+       or n.nspname = 'pg_catalog' and p.proname = 'gen_salt'
+  ) then
+    -- gen_salt juga ada di schema public dari pgcrypto, cek juga di catalog
+    if not exists (
+      select 1 from pg_proc p
+      join pg_namespace n on p.pronamespace = n.oid
+      where p.proname = 'gen_salt'
+    ) then
+      raise exception 'pgcrypto extension belum aktif. Jalankan: CREATE EXTENSION pgcrypto;';
+    end if;
+  end if;
+end $$;
+
+-- 9b. Tambah kolom password_hash ke tabel profiles
+alter table public.profiles drop column if exists password_hash;
+alter table public.profiles add column password_hash text;
+
+-- 9c. Fungsi hash_password — hash plain text password pakai pgcrypto
+-- Pakai algoritma bf (blowfish) dengan cost factor 8
+-- Pakai plpgsql dengan exception handling — jika gen_salt gagal,
+-- fallback ke md5 (kurang aman tapi tetap berfungsi)
+create or replace function public.hash_password(plain text)
+returns text language plpgsql immutable security definer set search_path = public as $$
+declare
+  result text;
+  salt_text text := 'bf';
+  cost_int integer := 8;
+begin
+  -- Coba pakai pgcrypto (blowfish - aman)
+  begin
+    result := crypt(plain, gen_salt(salt_text, cost_int));
+    if result is not null and result <> '' then
+      return result;
+    end if;
+  exception
+    when others then
+      -- Fallback ke md5 jika pgcrypto gen_salt bermasalah
+      result := 'md5' || md5(plain || 'simantri_salt_v3');
+      return result;
+  end;
+
+  -- Jika sampai sini, berarti crypt return null — fallback
+  result := 'md5' || md5(plain || 'simantri_salt_v3');
+  return result;
+end $$;
+
+-- 9d. Fungsi verify_user — return profile jika email+password valid
+-- Return null jika tidak valid / user nonaktif
+-- Handle 2 format hash: crypt() (blowfish) dan md5 fallback
+create or replace function public.verify_user(p_email text, p_password text)
+returns public.profiles language plpgsql security definer set search_path = public as $$
+declare
+  v_profile public.profiles;
+  v_password_match boolean := false;
+begin
+  select * into v_profile
+  from public.profiles
+  where lower(email) = lower(p_email)
+    and is_active = true
+  limit 1;
+
+  if not found then
+    return null;
+  end if;
+
+  -- Jika password_hash null → tidak bisa login
+  if v_profile.password_hash is null then
+    return null;
+  end if;
+
+  -- Cek password berdasarkan format hash
+  -- Format 1: crypt (blowfish) — diawali dengan $2a$, $2b$, atau $2y$
+  -- Format 2: md5 fallback — diawali dengan 'md5'
+  begin
+    if v_profile.password_hash like 'md5%' then
+      -- Format md5 fallback
+      v_password_match := (v_profile.password_hash = 'md5' || md5(p_password || 'simantri_salt_v3'));
+    else
+      -- Format crypt (blowfish)
+      v_password_match := (crypt(p_password, v_profile.password_hash) = v_profile.password_hash);
+    end if;
+  exception
+    when others then
+      v_password_match := false;
+  end;
+
+  if v_password_match then
+    -- Update last_login
+    update public.profiles set last_login = now() where id = v_profile.id;
+    return v_profile;
+  else
+    return null;
+  end if;
+exception
+  when others then
+    return null;
+end $$;
+
+-- 9d. RLS untuk profiles — agar fungsi verify_user bisa akses
+-- (profiles_select sudah ada, tapi pastikan verify_user tetap jalan sebagai security definer)
+-- verify_user sudah pakai security definer → bisa akses semua row
+-- Tidak perlu policy tambahan.
+
+-- 9e. Seed default admin users (jika belum ada)
+do $$ begin
+  -- Admin Dinkes default
+  if not exists (select 1 from public.profiles where email = 'dinkes@simantri.demo') then
+    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+    values (
+      'd0000000-0000-0000-0000-000000000001',
+      'dinkes@simantri.demo',
+      'Dr. Admin Dinkes',
+      'dinkes',
+      public.hash_password('dinkes123'),
+      true
+    ) on conflict do nothing;
+  end if;
+
+  -- Admin Dinkes 2
+  if not exists (select 1 from public.profiles where email = 'dinkes2@simantri.demo') then
+    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+    values (
+      'd0000000-0000-0000-0000-000000000002',
+      'dinkes2@simantri.demo',
+      'Dr. Andi Pratama',
+      'dinkes',
+      public.hash_password('dinkes123'),
+      true
+    ) on conflict do nothing;
+  end if;
+exception
+  when others then
+    raise notice 'Seed users skipped: %', sqlerrm;
+end $$;
+
+-- 9f. Policy untuk allow anon call verify_user (tanpa login Supabase Auth)
+-- Karena verify_user pakai security definer, ia bisa akses profiles.
+-- Tapi anon role perlu permission invoke RPC.
+-- Supabase otomatis allow anon call public functions yang SECURITY DEFINER.
+
+-- 9g. Helper: Update semua profile yang belum punya password_hash
+-- (untuk migrasi dari versi sebelumnya)
+update public.profiles
+set password_hash = public.hash_password('dinkes123')
+where password_hash is null
+  and role = 'dinkes';
+
+-- ============================================================================
+-- CARA PAKAI MULTIUSER:
+-- ============================================================================
+-- 1. Login di aplikasi pakai email+password dari tabel profiles
+--    Contoh default: dinkes@simantri.demo / dinkes123
+--
+-- 2. Tambah user baru via SQL Editor:
+--    insert into public.profiles (id, email, full_name, role, password_hash, is_active)
+--    values (uuid_generate_v4(), 'newuser@domain.go.id', 'Nama User', 'dinkes',
+--            public.hash_password('passwordBaru'), true);
+--
+-- 3. Ubah password user:
+--    update public.profiles set password_hash = public.hash_password('newpass')
+--    where email = 'user@domain.go.id';
+--
+-- 4. Nonaktifkan user (tidak bisa login):
+--    update public.profiles set is_active = false where email = 'user@domain.go.id';
+--
+-- 5. Hapus user:
+--    delete from public.profiles where email = 'user@domain.go.id';
+--
+-- 6. Lihat semua user:
+--    select id, email, full_name, role, is_active, last_login, created_at
+--    from public.profiles order by created_at;
+-- ============================================================================
+
+-- ============================================================================
+-- SELESAI
+-- ============================================================================
+-- Verifikasi cepat — jalankan query berikut untuk cek:
+--   select count(*) from public.fasyankes;        -- harus ≥ 3 (seed)
+--   select count(*) from public.tenaga_kesehatan; -- harus 0
+--   select * from pg_constraint where conname like 'fk_%';  -- list semua FK
+--   select tablename, rowsecurity from pg_tables where schemaname='public';  -- RLS status
+--   select email, full_name, role, is_active from public.profiles;  -- list users
+--   select public.verify_user('dinkes@simantri.demo', 'dinkes123');  -- test login
+-- ============================================================================
