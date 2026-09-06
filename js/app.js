@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.0.2';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.0.3';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -1683,7 +1683,7 @@ const ROUTES = {
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.0.2';
+const VERSI_SIMANTRI = '1.0.3';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,

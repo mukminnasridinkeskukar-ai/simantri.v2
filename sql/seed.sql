@@ -5,12 +5,14 @@
 -- melihat dashboard, grafik, dan peta. Data ini MASUK ke
 -- Supabase (bukan mock di kode), sehingga aplikasi tetap
 -- membaca live dari Supabase.
--- Aman dijalankan berulang (id bersifat eksplisit & on conflict).
+-- Aman dijalankan berulang (id eksplisit + overriding system value +
+-- on conflict do nothing + sinkronisasi sequence setelah tiap tabel).
 -- =========================================================
 
 -- ---------- FASYANKES ----------
 insert into public.fasyankes
   (id, nama_fasyankes, jenis, alamat, kecamatan, latitude, longitude, status_verifikasi)
+overriding system value
 values
   (1, 'RSUD Samarinda', 'RS', 'Jl. Milono No. 1', 'Samarinda Ilir', -0.4905, 117.1462, 'disetujui'),
   (2, 'RS Islam Sakinah', 'RS', 'Jl. WR Supratman No. 1', 'Samarinda Ulu', -0.4780, 117.1540, 'disetujui'),
@@ -24,6 +26,11 @@ values
   (10, 'Klinik Gigi Niaga', 'Klinik', 'Jl. Bhayangkara', 'Samarinda Kota', -0.4945, 117.1430, 'ditolak')
 on conflict (id) do nothing;
 
+-- Sinkronkan sequence kolom identity agar insert berikutnya dari
+-- aplikasi tidak bertabrakan (duplicate key) dengan id hasil seed.
+select setval(pg_get_serial_sequence('public.fasyankes', 'id'),
+              coalesce((select max(id) from public.fasyankes), 0) + 1, false);
+
 -- Contoh catatan verifikasi
 update public.fasyankes set
   catatan_verifikasi = 'Nomor izin klinik belum dilampirkan. Mohon lengkapi berkas.',
@@ -34,6 +41,7 @@ where id = 10;
 -- ---------- PRAKTIK MANDIRI ----------
 insert into public.praktik_mandiri
   (id, nama_praktik, pemilik, alamat, jenis_praktik, kecamatan, latitude, longitude, status_verifikasi)
+overriding system value
 values
   (1, 'Praktik Bidan Rosnani', 'Rosnani, S.Tr.Keb', 'Jl. Solihin MS', 'Praktik Bidan', 'Loa Janan Ilir', -0.5220, 117.1280, 'disetujui'),
   (2, 'Praktik Dokter Gigi Smile', 'drg. Andi Prasetyo', 'Jl. Dr. Sutomo', 'Praktik Dokter Gigi', 'Samarinda Tengah', -0.4925, 117.1490, 'disetujui'),
@@ -45,6 +53,9 @@ values
   (8, 'Praktik Dokter dr. Rahmat', 'dr. Rahmat Hidayat', 'Jl. PAI Sumbu', 'Praktik Dokter', 'Samarinda Induk', -0.4330, 117.2250, 'ditolak')
 on conflict (id) do nothing;
 
+select setval(pg_get_serial_sequence('public.praktik_mandiri', 'id'),
+              coalesce((select max(id) from public.praktik_mandiri), 0) + 1, false);
+
 update public.praktik_mandiri set
   catatan_verifikasi = 'Alamat praktik tidak sesuai dengan data SIP.',
   verified_by = 'verifikator@dinkes.go.id',
@@ -54,6 +65,7 @@ where id = 8;
 -- ---------- TENAGA MEDIS ----------
 insert into public.tenaga_medis
   (id, nik, nama_lengkap, no_str, no_sip, spesialisasi, tempat_praktik, masa_berlaku_sip, status)
+overriding system value
 values
   (1, '6472010101900001', 'dr. Ahmad Fauzi, Sp.PD', '30.1.4.31.01725', '446/STR/2024', 'Penyakit Dalam', 'RSUD Samarinda', '2026-08-20', 'aktif'),
   (2, '6472010102910002', 'dr. Siti Rahmawati, Sp.A', '30.1.4.31.01902', '512/STR/2024', 'Anak', 'RS Islam Sakinah', '2026-09-18', 'aktif'),
@@ -64,9 +76,13 @@ values
   (7, '6472010107800007', 'dr. Kurniawan, Sp.OG', '30.1.4.31.01540', '455/STR/2024', 'Obstetri & Ginekologi', 'RS Islam Sakinah', '2027-06-30', 'aktif')
 on conflict (id) do nothing;
 
+select setval(pg_get_serial_sequence('public.tenaga_medis', 'id'),
+              coalesce((select max(id) from public.tenaga_medis), 0) + 1, false);
+
 -- ---------- TENAGA KESEHATAN ----------
 insert into public.tenaga_kesehatan
   (id, nik, nama_lengkap, no_str, no_sip, profesi, tempat_praktik, masa_berlaku_sip, status)
+overriding system value
 values
   (1, '6472020101900001', 'Ni Luh Putu Ayu, S.Kep', '30.3.4.31.02201', 'SIP-N/118', 'Perawat', 'Klinik Pratama Harapan Bunda', '2026-09-30', 'aktif'),
   (2, '6472020102920002', 'Rahmawati, A.Md.Keb', '30.5.4.31.01877', 'SIP-B/204', 'Bidan', 'Praktik Bidan Rosnani', '2027-05-10', 'aktif'),
@@ -75,9 +91,13 @@ values
   (5, '6472020105990005', 'Siti Aminah, A.Md.AK', '30.7.4.31.01988', 'SIP-G/61', 'Teknologi Laboratorium Medik (ATLM)', 'Laboratorium Klinik Prama', '2026-10-28', 'aktif')
 on conflict (id) do nothing;
 
+select setval(pg_get_serial_sequence('public.tenaga_kesehatan', 'id'),
+              coalesce((select max(id) from public.tenaga_kesehatan), 0) + 1, false);
+
 -- ---------- MONEV IZIN ----------
 insert into public.monev_izin
   (id, tanggal_kunjungan, sasaran_jenis, sasaran_nama, petugas, temuan, tindak_lanjut, created_by)
+overriding system value
 values
   (1, '2026-08-25', 'Fasyankes', 'Klinik Pratama Harapan Bunda', 'Tim Monev Dinkes',
    'Arsip SIP tenaga medis tidak lengkap untuk 1 dokter.', 'Surat rekomendasi pelengkapan berkas dalam 14 hari.',
@@ -86,3 +106,6 @@ values
    'Ruang praktik bersih, alat PWS-KIA lengkap dan terkalibrasi.', 'Tidak ada; pertahankan standar pelayanan.',
    'operator@dinkes.go.id')
 on conflict (id) do nothing;
+
+select setval(pg_get_serial_sequence('public.monev_izin', 'id'),
+              coalesce((select max(id) from public.monev_izin), 0) + 1, false);
