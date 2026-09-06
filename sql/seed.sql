@@ -109,3 +109,31 @@ on conflict (id) do nothing;
 
 select setval(pg_get_serial_sequence('public.monev_izin', 'id'),
               coalesce((select max(id) from public.monev_izin), 0) + 1, false);
+
+-- ---------- VERVAL IZIN PRAKTIK ----------
+insert into public.verval_izin_praktik
+  (id, nik, nama_lengkap, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat_ktp,
+   nomor_str, status_str, status_sip, nomor_sip, masa_berlaku_sip,
+   unit_kerja, alamat_unit, desa_kelurahan, kecamatan, status_satu_sehat,
+   sop_pelayanan, sop_profesi, sop_etika, sdmk_named, sdmk_nakes, sdmk_admin,
+   jam_operasional, catatan_rekomendasi, pendidikan_str, kode_verifikasi, verifikator)
+overriding system value
+values
+  (1, '6472010101900001', 'dr. Ahmad Fauzi, Sp.PD', 'Laki-laki', 'Samarinda', '1990-01-01',
+   'Jl. Cempaka No. 25, Samarinda Ilir',
+   '30.1.4.31.01725', 'Aktif', 'Aktif', '446/STR/2024', '2026-08-20',
+   'RSUD Samarinda', 'Jl. Milono No. 1', 'Sidodamai', 'Samarinda Ilir', 'Sudah',
+   'Ada', 'Ada', 'Ada', 'Ada', 'Ada', 'Ada',
+   'Senin-Jumat 07.30-16.00', 'SIP masih berlaku, lengkapi pembaruan STR tahun depan.',
+   'S1 Kedokteran - Sp. Penyakit Dalam', 'SIMANTRI-VERVAL-6472010101900001-DEMO', 'verifikator@dinkes.go.id'),
+  (2, '6472020101900001', 'Ni Luh Putu Ayu, S.Kep', 'Perempuan', 'Denpasar', '1991-02-10',
+   'Jl. Karang Mumus Raya No. 8, Samarinda',
+   '30.3.4.31.02201', 'Aktif', 'Aktif', 'SIP-N/118', '2026-09-30',
+   'Klinik Pratama Harapan Bunda', 'Jl. Gajah Mada No. 12', 'Pelabuhan', 'Samarinda Kota', 'Belum',
+   'Ada', 'Ada', 'Tidak Ada', 'Ada', 'Ada', 'Belum',
+   'Senin-Sabtu 08.00-20.00', 'Registrasi SatuSehat SDMK dan SOP etika perlu dilengkapi.',
+   'D3 Keperawatan / S1 Ners', 'SIMANTRI-VERVAL-6472020101900001-DEMO', 'verifikator@dinkes.go.id')
+on conflict (id) do nothing;
+
+select setval(pg_get_serial_sequence('public.verval_izin_praktik', 'id'),
+              coalesce((select max(id) from public.verval_izin_praktik), 0) + 1, false);

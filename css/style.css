@@ -370,3 +370,72 @@ a:focus-visible, button:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--primary); outline-offset: 2px;
 }
+
+/* =========================================================
+   13. FORMULIR VERVAL IZIN PRAKTIK (menu Verifikasi Praktik)
+   ========================================================= */
+
+.verval-grid { display: grid; grid-template-columns: 1fr; gap: .8rem 1rem; }
+@media (min-width: 640px)  { .verval-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1150px) { .verval-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+.verval-field label {
+  display: block; font-size: .7rem; font-weight: 700;
+  color: #475569; margin-bottom: .3rem; line-height: 1.35;
+}
+.verval-field label .req { color: #e11d48; }
+.verval-span { grid-column: 1 / -1; }
+
+.verval-hint {
+  display: block; font-size: .66rem; color: #94a3b8; margin-top: .25rem;
+}
+.verval-status-ok  { color: #059669; }
+.verval-status-warn{ color: #d97706; }
+
+/* Input readonly (timestamp & kolom duplikat otomatis) */
+.input-readonly {
+  background: #f8fafc; color: #64748b; cursor: default;
+  border-style: dashed;
+}
+.input-readonly:focus { border-color: #dfe7ef; box-shadow: none; }
+
+/* Judul kelompok field di dalam grid */
+.verval-section {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: .6rem; margin-top: .5rem;
+}
+.verval-section-title {
+  font-size: .64rem; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--primary-dark);
+  background: var(--primary-soft); border: 1px solid #99f6e4;
+  padding: .3rem .8rem; border-radius: 999px; white-space: nowrap;
+}
+.verval-section::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+/* Baris aksi bawah formulir */
+.verval-actions {
+  display: flex; flex-wrap: wrap; gap: .6rem;
+  margin-top: 1.2rem; padding-top: 1.1rem;
+  border-top: 1px dashed var(--line);
+}
+.verval-actions .btn-submit { flex: 1 1 230px; }
+
+/* Status draft otomatis */
+.draft-status {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .72rem; font-weight: 600; color: #059669;
+  min-height: 1.1rem;
+}
+.draft-status.saving { color: #d97706; }
+.draft-status.verval-status-warn { color: #d97706; }
+
+/* Baris riwayat verval */
+.rv-row { cursor: pointer; transition: border-color .15s, transform .12s; }
+.rv-row:hover { border-color: #99f6e4; transform: translateY(-1px); }
+
+/* Kode verifikasi */
+.kode-chip {
+  display: inline-block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .72rem; background: #f1f5f9; border: 1px solid var(--line);
+  padding: .15rem .55rem; border-radius: .45rem; color: #334155;
+}

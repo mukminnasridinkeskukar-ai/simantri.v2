@@ -20,8 +20,9 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ├── assets/
 │   └── logo.svg        # Logo SIMANTRI
 ├── sql/
-│   ├── schema.sql      # SEMUA tabel + RLS + trigger + bucket (WAJIB dijalankan)
-│   └── seed.sql        # Data demo opsional (fasyankes/praktik Samarinda + koordinat)
+│   ├── schema.sql         # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru)
+│   ├── migrasi_verval.sql # Migrasi v1.1.0: tabel verval (untuk database yang SUDAH berjalan)
+│   └── seed.sql           # Data demo opsional (fasyankes/praktik Samarinda + koordinat)
 └── README.md
 ```
 
@@ -37,6 +38,8 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 1. Buka **SQL Editor → New query**.
 2. Salin seluruh isi `sql/schema.sql` → klik **Run**.
 3. (Opsional) Salin isi `sql/seed.sql` → **Run** untuk data demo (RSUD Samarinda, Puskesmas, praktik bidan, dll. — lengkap dengan koordinat agar peta langsung tampil).
+
+> **Database sudah berjalan dari versi lama (≤ v1.0.3)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_verval.sql` sekali untuk menambah tabel **verval_izin_praktik** (hasil Formulir Verval) dan **verval_draft** (draf otomatis) beserta RLS-nya.
 
 ### 3. Konfigurasi Auth
 1. Buka **Authentication → Sign In / Providers → Email**.
@@ -101,6 +104,9 @@ python3 -m http.server 8080
 | Mengedit data | ✅ | hanya status verifikasi | ✅ |
 | Menghapus data | ✅ | — | — |
 | Setujui / Tolak pengajuan (Bagian 3) | ✅ | ✅ | — |
+| Mengisi & mengirim Formulir Verval Izin Praktik | ✅ | ✅ | — |
+| Melihat riwayat & detail verval | ✅ | ✅ | ✅ |
+| Menghapus catatan verval | ✅ | — | — |
 | Kelola pengguna & assign role (Bagian 4) | ✅ | — | — |
 
 > Polisi `SELECT` saat ini **publik** agar dashboard/peta dapat dibuka tanpa login (sesuai alur landing → `#beranda`). Untuk menutupnya, ubah `using (true)` pada policy select menjadi `using (auth.uid() is not null)` di `sql/schema.sql`.
@@ -113,6 +119,16 @@ python3 -m http.server 8080
 - **Layout**: sidebar kiri fixed 280px (collapsible di mobile) + topbar + content.
 - **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (accordion), Peta Sebaran Praktik (Leaflet, pusat −0.502, 117.154), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30).
 - **Bagian 2 — Manajemen Data**: CRUD penuh Tenaga Medis, Tenaga Kesehatan, Fasyankes, Praktik Mandiri — form tambah/edit via modal, klik baris → modal detail.
-- **Bagian 3 — Perizinan**: Verifikasi Praktik & Faskes (approve/reject + catatan), Cek Hasil Verifikasi (NIK/nama), Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
+- **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 28 field — pencarian NIK otomatis dari data verval/tenaga medis, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan), Verifikasi Faskes (approve/reject), Cek Hasil Verifikasi (NIK/nama), Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
 - **Bagian 4 — Manajemen User**: hanya admin — CRUD pengguna, assign role (admin/verifikator/operator).
 - Semua kartu statistik & baris tabel membuka **modal detail live** dari Supabase (bukan alert).
+
+---
+
+## Riwayat Versi
+
+- **v1.1.0** — Menu Verifikasi Praktik dikembangkan: Formulir Verval Izin Praktik 28 field (adaptasi formulir verval SatuSehat SDMK), tabel baru `verval_izin_praktik` + `verval_draft` (draf otomatis per pengguna — pengganti localStorage), migrasi terpisah `sql/migrasi_verval.sql`, data demo verval pada `seed.sql`.
+- **v1.0.3** — Perbaikan seed.sql (overriding system value + sinkronisasi sequence identity).
+- **v1.0.2** — Perbaikan empty-state dashboard; cache-buster anti file lama.
+- **v1.0.1** — Perbaikan error file lama/404; penanda versi console.
+- **v1.0.0** — Rilis awal (13 halaman, 3 role, dashboard, peta, expired H-30, CRUD, verifikasi, monev, manajemen pengguna).

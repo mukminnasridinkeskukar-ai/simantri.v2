@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.0.3';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.1.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -83,6 +83,10 @@ const ICONS = {
   check: '<path d="m5 13 4.5 4.5L19 7"/>',
   upload: '<path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M4.5 16v2.5A1.5 1.5 0 0 0 6 20h12a1.5 1.5 0 0 0 1.5-1.5V16"/>',
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 7.8v.4"/>',
+  save: '<rect x="4.5" y="4.5" width="15" height="15" rx="2.5"/><path d="M8 4.5V9h7V4.5"/><path d="M8 20v-6h8v6"/>',
+  send: '<path d="M20.5 3.5 10 14"/><path d="M20.5 3.5 14 20.5l-4-6.5-6.5-4z"/>',
+  eye: '<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>',
+  undo: '<path d="M4 9h10a6 6 0 0 1 0 12h-3"/><path d="M8 5 4 9l4 4"/>',
 };
 
 function icon(name, cls = 'w-5 h-5') {
@@ -435,7 +439,7 @@ function notFoundCard() {
 }
 
 function router() {
-  const id = (location.hash || '#beranda').replace('#', '');
+  const id = (location.hash || '#beranda').replace('#', '').replace(/^\/+/, '');
   const r = ROUTES[id];
 
   if (!r) {
@@ -868,7 +872,7 @@ function renderPetunjuk() {
     },
     {
       t: '5. Verifikasi Perizinan (Bagian 3)',
-      c: `<p>Pengajuan baru berstatus <b>pending</b> dan muncul di halaman Verifikasi Praktik / Verifikasi Faskes. Verifikator atau admin menekan <b>Setujui</b> / <b>Tolak</b> beserta catatan; hasilnya tercatat beserta email verifikator dan waktunya.</p><p>Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> dengan memasukkan NIK atau nama.</p>`,
+      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 28 field verifikasi &amp; validasi izin praktik dengan pencarian NIK otomatis (mengisi form dari data verval/tenaga medis sebelumnya) serta <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> menangani persetujuan pengajuan fasyankes. Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> dengan memasukkan NIK atau nama.</p>`,
     },
     {
       t: '6. Monev Izin & Upload Foto',
@@ -911,18 +915,19 @@ let currentCrudReload = null; // fungsi reload daftar halaman aktif (dipakai mod
 const CRUD = {
   'tenaga-medis': {
     key: 'tenaga-medis', table: 'tenaga_medis', title: 'Data Tenaga Medis',
-    desc: 'Dokter & dokter gigi yang praktik di Kab. Kutai Kartanegara',
-    searchCols: ['nama_lengkap', 'no_str', 'no_sip', 'spesialisasi', 'tempat_praktik'],
+    desc: 'Dokter & dokter gigi yang praktik di Kota Samarinda',
+    searchCols: ['nama_lengkap', 'nik', 'no_str', 'no_sip', 'spesialisasi', 'tempat_praktik'],
     rowTitle: (r) => r.nama_lengkap,
     columns: [
       { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.spesialisasi || '')}</span>` },
+      { k: 'nik', label: 'NIK' },
       { k: 'no_str', label: 'STR / SIP', render: (v, r) => `${esc(v || '—')}<br><span class="text-[.68rem] text-slate-400">${esc(r.no_sip || '')}</span>` },
       { k: 'tempat_praktik', label: 'Tempat Praktik' },
       { k: 'masa_berlaku_sip', label: 'Masa Berlaku SIP', render: (v) => fmtDate(v) },
       { k: 'status', label: 'Status', render: (v) => badge(v) },
     ],
     form: [
-     
+      { k: 'nik', label: 'NIK', required: true, max: 16 },
       { k: 'nama_lengkap', label: 'Nama Lengkap', required: true },
       { k: 'no_str', label: 'No. STR' },
       { k: 'no_sip', label: 'No. SIP' },
@@ -932,7 +937,7 @@ const CRUD = {
       { k: 'status', label: 'Status', type: 'select', options: ['aktif', 'nonaktif'] },
     ],
     detail: (r) => [
-      ['Nama Lengkap', esc(r.nama_lengkap || '—')],
+      ['NIK', esc(r.nik || '—')], ['Nama Lengkap', esc(r.nama_lengkap || '—')],
       ['No. STR', esc(r.no_str || '—')], ['No. SIP', esc(r.no_sip || '—')],
       ['Spesialisasi', esc(r.spesialisasi || '—')], ['Tempat Praktik', esc(r.tempat_praktik || '—')],
       ['Masa Berlaku SIP', fmtDate(r.masa_berlaku_sip)], ['Status', badge(r.status)],
@@ -941,17 +946,19 @@ const CRUD = {
   },
   'tenaga-kesehatan': {
     key: 'tenaga-kesehatan', table: 'tenaga_kesehatan', title: 'Data Tenaga Kesehatan',
-    desc: 'Perawat, bidan, Apoteker dan profesi tenaga kesehatan lainnya',
-    searchCols: ['nama_lengkap', 'no_str', 'no_sip', 'profesi', 'tempat_praktik'],
+    desc: 'Perawat, bidan, dan profesi tenaga kesehatan lainnya',
+    searchCols: ['nama_lengkap', 'nik', 'no_str', 'no_sip', 'profesi', 'tempat_praktik'],
     rowTitle: (r) => r.nama_lengkap,
     columns: [
-      { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.profesi || '')}</span>` },     
+      { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.profesi || '')}</span>` },
+      { k: 'nik', label: 'NIK' },
       { k: 'no_str', label: 'STR / SIP', render: (v, r) => `${esc(v || '—')}<br><span class="text-[.68rem] text-slate-400">${esc(r.no_sip || '')}</span>` },
       { k: 'tempat_praktik', label: 'Tempat Praktik' },
       { k: 'masa_berlaku_sip', label: 'Masa Berlaku SIP', render: (v) => fmtDate(v) },
       { k: 'status', label: 'Status', render: (v) => badge(v) },
     ],
     form: [
+      { k: 'nik', label: 'NIK', required: true, max: 16 },
       { k: 'nama_lengkap', label: 'Nama Lengkap', required: true },
       { k: 'no_str', label: 'No. STR' },
       { k: 'no_sip', label: 'No. SIP' },
@@ -961,7 +968,7 @@ const CRUD = {
       { k: 'status', label: 'Status', type: 'select', options: ['aktif', 'nonaktif'] },
     ],
     detail: (r) => [
-      ['Nama Lengkap', esc(r.nama_lengkap || '—')],
+      ['NIK', esc(r.nik || '—')], ['Nama Lengkap', esc(r.nama_lengkap || '—')],
       ['No. STR', esc(r.no_str || '—')], ['No. SIP', esc(r.no_sip || '—')],
       ['Profesi', esc(r.profesi || '—')], ['Tempat Praktik', esc(r.tempat_praktik || '—')],
       ['Masa Berlaku SIP', fmtDate(r.masa_berlaku_sip)], ['Status', badge(r.status)],
@@ -970,7 +977,7 @@ const CRUD = {
   },
   'fasyankes': {
     key: 'fasyankes', table: 'fasyankes', title: 'Data Fasyankes',
-    desc: 'Rumah sakit, Puskesmas, klinik dan Fasyankes lainnya di Kabupaten Kutai Kartanegara',
+    desc: 'Rumah sakit, puskesmas, dan klinik di Kota Samarinda',
     searchCols: ['nama_fasyankes', 'jenis', 'alamat', 'kecamatan'],
     rowTitle: (r) => r.nama_fasyankes,
     columns: [
@@ -1211,14 +1218,14 @@ function verifyModal(table, nameKey, row, status) {
   });
 }
 
-async function mountVerifikasi(kind) {
+async function mountVerifikasi(kind, target = '#page-content') {
   const isPraktik = kind === 'praktik';
   const table = isPraktik ? 'praktik_mandiri' : 'fasyankes';
   const nameKey = isPraktik ? 'nama_praktik' : 'nama_fasyankes';
   const subKey = isPraktik ? 'jenis_praktik' : 'jenis';
   const cfgT = CRUD[isPraktik ? 'praktik-mandiri' : 'fasyankes'];
 
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="card p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
@@ -1282,6 +1289,537 @@ async function mountVerifikasi(kind) {
     }));
   }
   renderList();
+}
+
+/* =========================================================
+ * 13B. VERIFIKASI PRAKTIK — FORMULIR VERVAL IZIN PRAKTIK
+ *      28 field • draf otomatis tersinkron ke tabel
+ *      verval_draft (per pengguna) • hasil ke verval_izin_praktik
+ * ========================================================= */
+
+let vpTab = 'form';
+let vervalDraftTimer = null;
+
+const VERVAL_SIP_BADGE = {
+  'Aktif': 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
+  'Proses': 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+  'Expired': 'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
+  'Tidak Ada': 'bg-slate-200 text-slate-600 ring-1 ring-slate-300',
+};
+
+/* Pasangan kolom-DB → label (dipakai preview & detail riwayat) */
+const VERVAL_FIELDS = [
+  ['nik', 'NIK'], ['nama_lengkap', 'Nama Lengkap'], ['jenis_kelamin', 'Jenis Kelamin'],
+  ['tempat_lahir', 'Tempat Lahir'], ['tanggal_lahir', 'Tanggal Lahir'], ['alamat_ktp', 'Alamat Sesuai KTP'],
+  ['nomor_str', 'Nomor STR'], ['status_str', 'Status STR'], ['status_sip', 'Status SIP'],
+  ['nomor_sip', 'Nomor SIP'], ['masa_berlaku_sip', 'Masa Berlaku SIP'],
+  ['pendidikan_str', 'Pendidikan Sesuai STR'],
+  ['unit_kerja', 'Unit Kerja / Fasyankes'], ['alamat_unit', 'Alamat Unit Kerja'],
+  ['desa_kelurahan', 'Desa / Kelurahan'], ['kecamatan', 'Kecamatan'],
+  ['jam_operasional', 'Jam Operasional / Praktik'], ['status_satu_sehat', 'Status Unit di SatuSehat SDMK'],
+  ['sop_pelayanan', 'SOP Pelayanan'], ['sop_profesi', 'SOP Profesi'], ['sop_etika', 'SOP Etika'],
+  ['sdmk_named', 'SDMK Named'], ['sdmk_nakes', 'SDMK Nakes'], ['sdmk_admin', 'SDMK Admin'],
+  ['catatan_rekomendasi', 'Catatan Rekomendasi'],
+  ['kode_verifikasi', 'Kode Verifikasi'], ['verifikator', 'Verifikator'], ['created_at', 'Waktu Verval'],
+];
+
+/* Kolom DB → id elemen form (untuk prefill hasil pencarian NIK) */
+const VERVAL_DB_TO_FORM = {
+  nik: 'v-nik', nama_lengkap: 'v-nama', jenis_kelamin: 'v-jk', tempat_lahir: 'v-tempat-lahir',
+  tanggal_lahir: 'v-tgl-lahir', alamat_ktp: 'v-alamat-ktp', nomor_str: 'v-nomor-str',
+  status_str: 'v-status-str', status_sip: 'v-status-sip', nomor_sip: 'v-nomor-sip',
+  masa_berlaku_sip: 'v-masa-sip', unit_kerja: 'v-unit-kerja', alamat_unit: 'v-alamat-unit',
+  desa_kelurahan: 'v-desa', kecamatan: 'v-kecamatan', status_satu_sehat: 'v-satu-sehat',
+  sop_pelayanan: 'v-sop-pelayanan', sop_profesi: 'v-sop-profesi', sop_etika: 'v-sop-etika',
+  sdmk_named: 'v-sdmk-named', sdmk_nakes: 'v-sdmk-nakes', sdmk_admin: 'v-sdmk-admin',
+  jam_operasional: 'v-jam', catatan_rekomendasi: 'v-catatan', pendidikan_str: 'v-pendidikan-str',
+};
+
+const optSimple = (opts, def) => opts.map((o) => `<option ${o === def ? 'selected' : ''}>${o}</option>`).join('');
+
+function setDraftStatus(html, mode = 'ok') {
+  const st = $('#draft-status');
+  if (!st) return;
+  st.classList.toggle('saving', mode === 'saving');
+  st.classList.toggle('verval-status-warn', mode === 'warn');
+  st.innerHTML = html;
+}
+
+function vervalLoginNotice() {
+  return `<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-xs text-sky-800 flex gap-2.5 items-start mb-4">
+    ${icon('info', 'w-4 h-4 mt-0.5 flex-none')}
+    <span>Formulir ini untuk kegiatan <b>verifikasi &amp; validasi izin praktik</b>. Masuk dengan akun
+    <b>Verifikator</b> atau <b>Admin</b> (tombol <b>Masuk</b> di kanan atas) untuk mengirim data.
+    Riwayat &amp; detail verval tetap dapat dilihat tanpa masuk.</span></div>`;
+}
+
+/* ---------- Halaman Verifikasi Praktik (3 tab) ---------- */
+
+async function mountVervalPraktik() {
+  const tabs = [
+    ['form', 'Formulir Verval', 'verif'],
+    ['riwayat', 'Riwayat Verval', 'cek'],
+    ['pengajuan', 'Pengajuan Praktik', 'praktik'],
+  ];
+  $('#page-content').innerHTML = `
+    ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="vp-tabs">
+      ${tabs.map(([k, l, ic]) => `<button class="chip ${vpTab === k ? 'active' : ''}" data-tab="${k}">${icon(ic, 'w-4 h-4')} ${l}</button>`).join('')}
+    </div>
+    <div id="vp-content"></div>`;
+  $$('#vp-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+    if (vpTab === b.dataset.tab) return;
+    vpTab = b.dataset.tab;
+    $$('#vp-tabs [data-tab]').forEach((x) => x.classList.toggle('active', x.dataset.tab === vpTab));
+    renderVpTab();
+  }));
+  renderVpTab();
+}
+
+function renderVpTab() {
+  if (vpTab === 'riwayat') return renderRiwayatVerval();
+  if (vpTab === 'pengajuan') return mountVerifikasi('praktik', '#vp-content');
+  renderVervalForm();
+}
+
+/* ---------- Tab 1: FORMULIR VERVAL ---------- */
+
+function renderVervalForm() {
+  const now = new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
+  $('#vp-content').innerHTML = `
+    ${canVerify() ? '' : vervalLoginNotice()}
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div class="flex items-start gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-xl bg-teal-600 text-white grid place-items-center flex-none">${icon('verif', 'w-5 h-5')}</div>
+          <div class="min-w-0">
+            <p class="text-lg font-extrabold text-teal-800 leading-tight">Formulir Verval Izin Praktik</p>
+            <p class="text-xs text-slate-500 mt-0.5">Verifikasi &amp; Validasi Tenaga Medis / Tenaga Kesehatan &bull; SIMANTRI Dinkes Kota Samarinda</p>
+          </div>
+        </div>
+        <span class="badge bg-teal-100 text-teal-700 ring-1 ring-teal-200">28 Field &bull; Auto-Draft</span>
+      </div>
+
+      <div id="draft-status" class="draft-status mb-4"></div>
+
+      <form id="verval-form" autocomplete="off" novalidate>
+        <div class="verval-grid">
+
+          <div class="verval-section"><span class="verval-section-title">A &bull; Data Pribadi Nakes</span></div>
+
+          <div class="verval-field">
+            <label>Timestamp</label>
+            <input type="text" id="v-timestamp" class="input input-readonly" value="${esc(now)}" readonly>
+            <small class="verval-hint">Terisi otomatis oleh sistem</small>
+          </div>
+
+          <div class="verval-field">
+            <label>NIK (16 digit) <span class="req">*</span></label>
+            <div class="flex gap-2">
+              <input type="text" id="v-nik" class="input" inputmode="numeric" maxlength="16" placeholder="6472xxxxxxxxxxxx">
+              <button type="button" class="btn btn-soft flex-none" id="btn-verval-cari">${icon('cek', 'w-4 h-4')} Cari</button>
+            </div>
+            <small id="nik-status" class="verval-hint">Isi 16 digit lalu klik Cari untuk isi otomatis</small>
+          </div>
+
+          <div class="verval-field"><label>Nama Lengkap (dengan gelar) <span class="req">*</span></label><input type="text" id="v-nama" class="input" placeholder="dr. Nama Lengkap, Sp.XX"></div>
+          <div class="verval-field"><label>Jenis Kelamin <span class="req">*</span></label><select id="v-jk" class="input"><option value="">— Pilih —</option><option>Laki-laki</option><option>Perempuan</option></select></div>
+          <div class="verval-field"><label>Tempat Lahir</label><input type="text" id="v-tempat-lahir" class="input" placeholder="Samarinda"></div>
+          <div class="verval-field"><label>Tanggal Lahir</label><input type="date" id="v-tgl-lahir" class="input"></div>
+          <div class="verval-field verval-span"><label>Alamat Sesuai KTP</label><textarea id="v-alamat-ktp" class="input" rows="2" placeholder="Jl. ... RT/RW ..."></textarea></div>
+
+          <div class="verval-section"><span class="verval-section-title">B &bull; STR &amp; SIP</span></div>
+
+          <div class="verval-field"><label>Nomor STR <span class="req">*</span></label><input type="text" id="v-nomor-str" class="input" placeholder="30.1.4.31.01725"></div>
+          <div class="verval-field"><label>Status STR</label><select id="v-status-str" class="input">${optSimple(['Aktif', 'Tidak Aktif', 'Expired'], 'Aktif')}</select></div>
+          <div class="verval-field"><label>Status SIP</label><select id="v-status-sip" class="input">${optSimple(['Aktif', 'Proses', 'Expired', 'Tidak Ada'], 'Aktif')}</select></div>
+          <div class="verval-field"><label>Nomor SIP</label><input type="text" id="v-nomor-sip" class="input" placeholder="446/STR/2024"></div>
+          <div class="verval-field"><label>Masa Berlaku SIP</label><input type="date" id="v-masa-sip" class="input"></div>
+          <div class="verval-field"><label>Pendidikan Sesuai STR</label><input type="text" id="v-pendidikan-str" class="input" placeholder="S1 Kedokteran / D3 Keperawatan / dst"></div>
+          <div class="verval-field"><label>Nomor STR (Duplikat Otomatis)</label><input type="text" id="v-str-duplicate" class="input input-readonly" readonly><small class="verval-hint">Mengikuti isian Nomor STR</small></div>
+          <div class="verval-field"><label>Nomor SIP (Duplikat Otomatis)</label><input type="text" id="v-sip-duplicate" class="input input-readonly" readonly><small class="verval-hint">Mengikuti isian Nomor SIP</small></div>
+
+          <div class="verval-section"><span class="verval-section-title">C &bull; Unit Kerja / Tempat Praktik</span></div>
+
+          <div class="verval-field"><label>Unit Kerja / Fasyankes <span class="req">*</span></label><input type="text" id="v-unit-kerja" class="input" placeholder="Puskesmas / Klinik / Praktik Mandiri"></div>
+          <div class="verval-field verval-span"><label>Alamat Unit Kerja</label><textarea id="v-alamat-unit" class="input" rows="2"></textarea></div>
+          <div class="verval-field"><label>Desa / Kelurahan Unit Kerja</label><input type="text" id="v-desa" class="input"></div>
+          <div class="verval-field"><label>Kecamatan Unit Kerja</label><select id="v-kecamatan" class="input"><option value="">— Pilih Kecamatan —</option>${KECAMATAN_SAMARINDA.map((k) => `<option>${k}</option>`).join('')}</select></div>
+          <div class="verval-field"><label>Status Unit Praktik di SatuSehat SDMK</label><select id="v-satu-sehat" class="input">${optSimple(['Sudah', 'Belum'], 'Sudah')}</select></div>
+          <div class="verval-field"><label>Jam Operasional / Praktik</label><input type="text" id="v-jam" class="input" placeholder="Senin-Jumat 08.00-16.00"></div>
+
+          <div class="verval-section"><span class="verval-section-title">D &bull; Kelengkapan SOP &amp; SDMK</span></div>
+
+          <div class="verval-field"><label>SOP Pelayanan</label><select id="v-sop-pelayanan" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+          <div class="verval-field"><label>SOP Profesi</label><select id="v-sop-profesi" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+          <div class="verval-field"><label>SOP Etika</label><select id="v-sop-etika" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+          <div class="verval-field"><label>SDMK Named</label><select id="v-sdmk-named" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+          <div class="verval-field"><label>SDMK Nakes</label><select id="v-sdmk-nakes" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+          <div class="verval-field"><label>SDMK Admin</label><select id="v-sdmk-admin" class="input">${optSimple(['Ada', 'Tidak Ada'], 'Ada')}</select></div>
+
+          <div class="verval-section"><span class="verval-section-title">E &bull; Catatan Rekomendasi</span></div>
+
+          <div class="verval-field verval-span"><label>Catatan Rekomendasi Verifikator</label><textarea id="v-catatan" class="input" rows="3" placeholder="Catatan verifikator…"></textarea></div>
+        </div>
+
+        <div class="verval-actions">
+          <button type="button" class="btn btn-ghost" id="btn-verval-preview">${icon('eye', 'w-4 h-4')} Preview Data</button>
+          <button type="submit" class="btn btn-primary btn-submit" ${canVerify() ? '' : 'disabled title="Masuk sebagai Verifikator/Admin dulu"'}>${icon('send', 'w-4 h-4')} Simpan &amp; Kirim Verval</button>
+          <button type="button" class="btn btn-ghost" id="btn-verval-reset">${icon('undo', 'w-4 h-4')} Reset</button>
+        </div>
+      </form>
+    </div>
+    <p class="text-center text-[.7rem] text-slate-400 mt-3">Data tersimpan ke tabel <b>verval_izin_praktik</b> &bull; draf formulir otomatis tersinkron ke database per pengguna</p>`;
+
+  const form = $('#verval-form');
+  form.addEventListener('submit', (e) => { e.preventDefault(); submitVerval(); });
+  $('#btn-verval-preview').addEventListener('click', previewVerval);
+  $('#btn-verval-reset').addEventListener('click', resetFormVerval);
+  $('#btn-verval-cari').addEventListener('click', () => cariVervalByNik());
+  $('#v-nik').addEventListener('input', validateVervalNikInput);
+  $('#v-nik').addEventListener('input', debounce(() => {
+    const v = $('#v-nik').value.trim();
+    if (v.length === 16 && !$('#v-nama').value.trim()) cariVervalByNik();
+  }, 700));
+  $('#v-nomor-str').addEventListener('input', mirrorDuplikatStrSip);
+  $('#v-nomor-sip').addEventListener('input', mirrorDuplikatStrSip);
+  form.addEventListener('input', jadwalkanDraftVerval);
+  form.addEventListener('change', jadwalkanDraftVerval);
+  muatDraftVerval();
+}
+
+function validateVervalNikInput() {
+  const el = $('#v-nik');
+  el.value = el.value.replace(/\D/g, '').slice(0, 16);
+  const st = $('#nik-status');
+  if (!st) return;
+  if (el.value.length === 16) {
+    el.style.borderColor = 'var(--primary)';
+    st.textContent = 'Format NIK valid ✓';
+    st.className = 'verval-hint verval-status-ok';
+  } else {
+    el.style.borderColor = '';
+    st.textContent = el.value.length ? `${el.value.length}/16 digit` : 'Isi 16 digit lalu klik Cari untuk isi otomatis';
+    st.className = 'verval-hint';
+  }
+}
+
+function mirrorDuplikatStrSip() {
+  const str = $('#v-nomor-str'), dup = $('#v-str-duplicate');
+  if (str && dup) dup.value = str.value;
+  const sip = $('#v-nomor-sip'), dupS = $('#v-sip-duplicate');
+  if (sip && dupS) dupS.value = sip.value;
+}
+
+/** Isi form dari objek kolom-DB. onlyEmpty=true → hanya field yang masih kosong. */
+function isiFormDariData(d, onlyEmpty = false) {
+  for (const [col, id] of Object.entries(VERVAL_DB_TO_FORM)) {
+    const el = document.getElementById(id);
+    if (!el || d[col] == null || String(d[col]).trim() === '') continue;
+    const val = String(d[col]);
+    if (onlyEmpty && el.value.trim() !== '') continue;
+    if (el.tagName === 'SELECT') {
+      const ada = Array.from(el.options).some((o) => o.value === val || o.textContent === val);
+      if (ada) el.value = val;
+    } else {
+      el.value = val;
+    }
+  }
+  mirrorDuplikatStrSip();
+}
+
+/** Cari data berdasarkan NIK: verval sebelumnya → tenaga medis → tenaga kesehatan. */
+async function cariVervalByNik() {
+  const st = $('#nik-status');
+  const setSt = (txt, cls = '') => { if (st) { st.textContent = txt; st.className = cls ? `verval-hint ${cls}` : 'verval-hint'; } };
+  const nik = $('#v-nik')?.value.trim() || '';
+  if (nik.length !== 16) { setSt('NIK harus tepat 16 digit.', 'verval-status-warn'); return; }
+  if (!SUPABASE_TERKONFIGURASI) { setSt('Supabase belum dikonfigurasi — isi js/config.js.', 'verval-status-warn'); return; }
+  setSt('Mencari data…');
+  try {
+    const { data: verval, error } = await supabase.from('verval_izin_praktik')
+      .select('*').eq('nik', nik).order('created_at', { ascending: false }).limit(1);
+    if (error) throw error;
+    if (verval?.length) {
+      isiFormDariData(verval[0], false);
+      setSt('Data verval sebelumnya ditemukan ✓ formulir terisi otomatis', 'verval-status-ok');
+      toast('Data verval sebelumnya ditemukan & diisi otomatis.');
+      return;
+    }
+    const { data: tm } = await supabase.from('tenaga_medis').select('*').eq('nik', nik).limit(1);
+    if (tm?.length) {
+      isiFormDariData({
+        nama_lengkap: tm[0].nama_lengkap, nomor_str: tm[0].no_str, nomor_sip: tm[0].no_sip,
+        unit_kerja: tm[0].tempat_praktik, masa_berlaku_sip: tm[0].masa_berlaku_sip,
+      }, true);
+      setSt('Cocok dengan Data Tenaga Medis ✓ field kosong terisi', 'verval-status-ok');
+      toast('Data cocok dengan Data Tenaga Medis — field kosong terisi otomatis.');
+      return;
+    }
+    const { data: tk } = await supabase.from('tenaga_kesehatan').select('*').eq('nik', nik).limit(1);
+    if (tk?.length) {
+      isiFormDariData({
+        nama_lengkap: tk[0].nama_lengkap, nomor_str: tk[0].no_str, nomor_sip: tk[0].no_sip,
+        unit_kerja: tk[0].tempat_praktik, masa_berlaku_sip: tk[0].masa_berlaku_sip,
+      }, true);
+      setSt('Cocok dengan Data Tenaga Kesehatan ✓ field kosong terisi', 'verval-status-ok');
+      toast('Data cocok dengan Data Tenaga Kesehatan — field kosong terisi otomatis.');
+      return;
+    }
+    setSt('NIK baru — silakan lengkapi formulir.');
+  } catch (e) {
+    setSt('Pencarian gagal: ' + friendlyError(e), 'verval-status-warn');
+  }
+}
+
+/* ---------- Draf otomatis (tabel verval_draft, bukan localStorage) ---------- */
+
+function jadwalkanDraftVerval() {
+  clearTimeout(vervalDraftTimer);
+  vervalDraftTimer = setTimeout(simpanDraftVerval, 1500);
+}
+
+async function simpanDraftVerval() {
+  const form = $('#verval-form');
+  if (!form) return;
+  if (!SUPABASE_TERKONFIGURASI || !state.user) {
+    setDraftStatus(`${icon('info', 'w-3.5 h-3.5')} Masuk untuk mengaktifkan simpan-otomatis draf`, 'warn');
+    return;
+  }
+  const data = {};
+  form.querySelectorAll('input, select, textarea').forEach((el) => {
+    if (el.id && el.id !== 'v-timestamp') data[el.id] = el.value;
+  });
+  setDraftStatus(`${icon('save', 'w-3.5 h-3.5')} Menyimpan draf…`, 'saving');
+  try {
+    const { error } = await supabase.from('verval_draft')
+      .upsert({ user_id: state.user.id, data, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+    if (error) throw error;
+    setDraftStatus(`${icon('check', 'w-3.5 h-3.5')} Draf tersimpan otomatis • ${new Date().toLocaleTimeString('id-ID')}`);
+  } catch (e) {
+    console.warn('Draft verval gagal:', e.message);
+    setDraftStatus(`${icon('alert', 'w-3.5 h-3.5')} Draf gagal tersimpan: ${esc(friendlyError(e))}`, 'warn');
+  }
+}
+
+async function muatDraftVerval() {
+  if (!SUPABASE_TERKONFIGURASI || !state.user) {
+    setDraftStatus(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai verifikator/admin untuk mengaktifkan draf otomatis`, 'warn');
+    return;
+  }
+  try {
+    const { data, error } = await supabase.from('verval_draft')
+      .select('data, updated_at').eq('user_id', state.user.id).maybeSingle();
+    if (error) throw error;
+    if (data?.data && Object.keys(data.data).length) {
+      Object.entries(data.data).forEach(([id, v]) => {
+        const el = document.getElementById(id);
+        if (el && v != null) el.value = v;
+      });
+      mirrorDuplikatStrSip();
+      setDraftStatus(`${icon('check', 'w-3.5 h-3.5')} Draf dipulihkan otomatis • tersimpan ${fmtDateTime(data.updated_at)}`);
+    } else {
+      setDraftStatus(`${icon('save', 'w-3.5 h-3.5')} Simpan-otomatis draf aktif (tersinkron ke database)`);
+    }
+  } catch (e) {
+    console.warn('Muat draft verval gagal:', e.message);
+    setDraftStatus(`${icon('alert', 'w-3.5 h-3.5')} Draf tidak dapat dimuat`, 'warn');
+  }
+}
+
+async function hapusDraftVerval(silent = false) {
+  if (!SUPABASE_TERKONFIGURASI || !state.user) return;
+  try {
+    await supabase.from('verval_draft').delete().eq('user_id', state.user.id);
+  } catch (e) {
+    if (!silent) toast(friendlyError(e), 'error');
+  }
+}
+
+function resetFormVerval() {
+  confirmDialog({
+    title: 'Reset Formulir Verval',
+    message: 'Seluruh isian formulir dan draf yang tersimpan akan dihapus. Lanjutkan?',
+    onYes: async () => {
+      await hapusDraftVerval(true);
+      renderVervalForm();
+      toast('Formulir dikosongkan.');
+    },
+  });
+}
+
+/* ---------- Kumpul, preview & submit ---------- */
+
+function kumpulDataVerval() {
+  const g = (id) => document.getElementById(id)?.value.trim() || '';
+  const orNull = (v) => (v === '' ? null : v);
+  return {
+    nik: g('v-nik'), nama_lengkap: g('v-nama'), jenis_kelamin: orNull(g('v-jk')),
+    tempat_lahir: orNull(g('v-tempat-lahir')), tanggal_lahir: orNull(g('v-tgl-lahir')),
+    alamat_ktp: orNull(g('v-alamat-ktp')), nomor_str: g('v-nomor-str'),
+    status_str: orNull(g('v-status-str')), status_sip: orNull(g('v-status-sip')),
+    nomor_sip: orNull(g('v-nomor-sip')), masa_berlaku_sip: orNull(g('v-masa-sip')),
+    unit_kerja: g('v-unit-kerja'), alamat_unit: orNull(g('v-alamat-unit')),
+    desa_kelurahan: orNull(g('v-desa')), kecamatan: orNull(g('v-kecamatan')),
+    status_satu_sehat: orNull(g('v-satu-sehat')), sop_pelayanan: orNull(g('v-sop-pelayanan')),
+    sop_profesi: orNull(g('v-sop-profesi')), sop_etika: orNull(g('v-sop-etika')),
+    sdmk_named: orNull(g('v-sdmk-named')), sdmk_nakes: orNull(g('v-sdmk-nakes')),
+    sdmk_admin: orNull(g('v-sdmk-admin')), jam_operasional: orNull(g('v-jam')),
+    catatan_rekomendasi: orNull(g('v-catatan')), pendidikan_str: orNull(g('v-pendidikan-str')),
+  };
+}
+
+function previewVerval() {
+  const d = kumpulDataVerval();
+  if (!/^\d{16}$/.test(d.nik)) { toast('Lengkapi NIK 16 digit sebelum preview.', 'error'); return; }
+  if (!d.nama_lengkap || !d.unit_kerja) { toast('Nama Lengkap dan Unit Kerja wajib diisi sebelum preview.', 'error'); return; }
+  const rows = VERVAL_FIELDS
+    .filter(([k]) => !['kode_verifikasi', 'verifikator', 'created_at'].includes(k))
+    .map(([k, label]) => {
+      const v = (k === 'tanggal_lahir' || k === 'masa_berlaku_sip') ? fmtDate(d[k]) : d[k];
+      return `<div class="detail-label">${label}</div><div class="detail-value">${esc(v || '—')}</div>`;
+    }).join('');
+  openModal({
+    title: 'Preview Data Verval', size: 'lg',
+    body: `<p class="text-xs text-slate-400 mb-3">Periksa kembali seluruh isian sebelum dikirim ke database SIMANTRI.</p>
+           <div class="detail-grid">${rows}</div>`,
+    footer: `<button class="btn btn-ghost" data-close="1">Kembali Edit</button>
+             <button class="btn btn-primary" id="btn-verval-kirim">${icon('send', 'w-4 h-4')} Ya, Kirim Sekarang</button>`,
+    onOpen: (root) => root.querySelector('#btn-verval-kirim').addEventListener('click', () => {
+      closeModal();
+      submitVerval();
+    }),
+  });
+}
+
+async function submitVerval() {
+  const d = kumpulDataVerval();
+  if (!/^\d{16}$/.test(d.nik)) { toast('NIK harus tepat 16 digit angka.', 'error'); return; }
+  if (!d.nama_lengkap) { toast('Nama Lengkap wajib diisi.', 'error'); return; }
+  if (!d.nomor_str) { toast('Nomor STR wajib diisi.', 'error'); return; }
+  if (!d.unit_kerja) { toast('Unit Kerja / Fasyankes wajib diisi.', 'error'); return; }
+  if (!SUPABASE_TERKONFIGURASI) { toast('Supabase belum dikonfigurasi — isi js/config.js.', 'error'); return; }
+  if (!canVerify()) { toast('Hanya Verifikator/Admin yang dapat mengirim verval. Silakan masuk dahulu.', 'error'); return; }
+
+  const btns = $$('#verval-form button');
+  btns.forEach((b) => { b.disabled = true; });
+  try {
+    const kode = `SIMANTRI-VERVAL-${d.nik}-${Date.now()}`;
+    const { error } = await supabase.from('verval_izin_praktik')
+      .insert({ ...d, kode_verifikasi: kode, verifikator: state.user?.email || null });
+    if (error) throw error;
+    await hapusDraftVerval(true);
+    toast('Data verval berhasil dikirim ke database.');
+    showVervalSukses(d, kode);
+  } catch (err) {
+    toast(friendlyError(err), 'error');
+    btns.forEach((b) => { b.disabled = false; });
+  }
+}
+
+function showVervalSukses(d, kode) {
+  const ts = new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'medium' });
+  openModal({
+    title: 'Verval Berhasil Disimpan', size: 'sm',
+    body: `<div class="text-center py-2">
+      <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center mx-auto mb-3">${icon('check', 'w-8 h-8')}</div>
+      <p class="font-extrabold text-slate-800 mb-1">Data verval berhasil disimpan!</p>
+      <p class="text-xs text-slate-500 leading-relaxed mb-4">Data telah terkirim ke database SIMANTRI untuk tindak lanjut persetujuan izin praktik.</p>
+      <div class="rounded-xl bg-slate-50 border border-slate-100 p-4 text-left text-[.78rem] space-y-1.5">
+        <p><span class="text-slate-400">NIK:</span> <b>${esc(d.nik)}</b></p>
+        <p><span class="text-slate-400">Nama:</span> <b>${esc(d.nama_lengkap)}</b></p>
+        <p><span class="text-slate-400">Unit Kerja:</span> ${esc(d.unit_kerja)}</p>
+        <p><span class="text-slate-400">Waktu:</span> ${esc(ts)}</p>
+        <p class="pt-1"><span class="text-slate-400">Kode Verifikasi:</span><br><span class="kode-chip break-all">${esc(kode)}</span></p>
+      </div>
+    </div>`,
+    footer: `<button class="btn btn-primary" id="btn-verval-selesai">Isi Formulir Baru</button>`,
+    onOpen: (root) => root.querySelector('#btn-verval-selesai').addEventListener('click', () => {
+      closeModal();
+      renderVervalForm();
+    }),
+  });
+}
+
+/* ---------- Tab 2: RIWAYAT VERVAL ---------- */
+
+function renderRiwayatVerval() {
+  $('#vp-content').innerHTML = `
+    <div class="card p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
+        <div>
+          <p class="text-sm font-extrabold text-slate-800">Riwayat Verval Izin Praktik</p>
+          <p class="text-xs text-slate-400">Seluruh hasil pengisian formulir verval. Klik baris untuk detail lengkap.</p>
+        </div>
+        <div class="search-box">${icon('search', 'w-4 h-4 text-slate-400')}<input id="rv-q" placeholder="Cari NIK / nama / unit kerja…"></div>
+      </div>
+      <div id="rv-count"></div>
+      <div id="rv-list">${skeletonRows(4)}</div>
+    </div>`;
+  const q = $('#rv-q');
+  q.addEventListener('input', debounce(() => muatRiwayatVerval(q.value.trim()), 350));
+  muatRiwayatVerval('');
+}
+
+async function muatRiwayatVerval(q) {
+  const list = $('#rv-list');
+  if (!list) return;
+  try {
+    const rows = await fetchRows('verval_izin_praktik', {
+      search: q, searchCols: ['nik', 'nama_lengkap', 'unit_kerja'], limit: 100,
+    });
+    const cnt = $('#rv-count');
+    if (cnt) cnt.innerHTML = `<p class="text-[.7rem] text-slate-400 mb-2">Menampilkan ${rows.length} catatan verval${q ? ` untuk pencarian “${esc(q)}”` : ''}.</p>`;
+    if (!rows.length) { list.innerHTML = emptyState('Belum ada catatan verval.'); return; }
+    list.innerHTML = `<div class="space-y-2.5">${rows.map((r) => `
+      <div class="rv-row card p-3.5 flex flex-col sm:flex-row sm:items-center gap-3" data-id="${r.id}">
+        <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 grid place-items-center flex-none">${icon('verif', 'w-5 h-5')}</div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-[.84rem] text-slate-700">${esc(r.nama_lengkap)}</p>
+          <p class="text-xs text-slate-500 truncate">NIK ${esc(r.nik)} &bull; ${esc(r.unit_kerja)}${r.kecamatan ? ' • ' + esc(r.kecamatan) : ''}</p>
+          <p class="text-[.66rem] text-slate-400 mt-0.5">Verval: ${fmtDateTime(r.created_at)}${r.verifikator ? ' • oleh ' + esc(r.verifikator) : ''}</p>
+        </div>
+        <div class="flex items-center gap-2 flex-none flex-wrap">
+          <span class="badge ${VERVAL_SIP_BADGE[r.status_sip] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">SIP ${esc(r.status_sip || '-')}</span>
+          <span class="kode-chip">${esc(trunc(r.kode_verifikasi || '-', 26))}</span>
+        </div>
+      </div>`).join('')}</div>`;
+    $$('#rv-list .rv-row').forEach((el) => el.addEventListener('click', () => {
+      const row = rows.find((r) => String(r.id) === el.dataset.id);
+      if (row) detailVervalModal(row, () => muatRiwayatVerval($('#rv-q')?.value.trim() || ''));
+    }));
+  } catch (e) {
+    list.innerHTML = errorBlock(e);
+  }
+}
+
+function detailVervalModal(r, onDeleted = null) {
+  const rows = VERVAL_FIELDS.map(([k, label]) => {
+    let v = r[k];
+    if (k === 'tanggal_lahir' || k === 'masa_berlaku_sip') v = fmtDate(v);
+    if (k === 'created_at') v = fmtDateTime(v);
+    if (k === 'kode_verifikasi' && v) return `<div class="detail-label">${label}</div><div class="detail-value"><span class="kode-chip">${esc(v)}</span></div>`;
+    return `<div class="detail-label">${label}</div><div class="detail-value">${esc(v || '—')}</div>`;
+  }).join('');
+  openModal({
+    title: `Detail Verval: ${esc(r.nama_lengkap)}`, size: 'xl',
+    body: `<div class="detail-grid">${rows}</div>`,
+    footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-verval">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
+             <button class="btn btn-ghost" data-close="1">Tutup</button>`,
+    onOpen: (root) => {
+      const del = root.querySelector('#btn-del-verval');
+      if (del) del.addEventListener('click', () => confirmDialog({
+        title: 'Hapus Catatan Verval',
+        message: `Yakin menghapus verval <b>${esc(r.nama_lengkap)}</b> (NIK ${esc(r.nik)})? Tindakan ini tidak dapat dibatalkan.`,
+        onYes: async () => {
+          const { error } = await supabase.from('verval_izin_praktik').delete().eq('id', r.id);
+          if (error) throw error;
+          toast('Catatan verval dihapus.');
+          if (onDeleted) onDeleted();
+        },
+      }));
+    },
+  });
 }
 
 /* =========================================================
@@ -1673,14 +2211,14 @@ const ROUTES = {
   'tenaga-kesehatan': { t: 'Data Tenaga Kesehatan', s: 'Kelola data perawat, bidan & profesi lain', render: () => mountCrud('tenaga-kesehatan') },
   'fasyankes': { t: 'Data Fasyankes', s: 'Kelola data RS, Puskesmas & Klinik', render: () => mountCrud('fasyankes') },
   'praktik-mandiri': { t: 'Data Praktik Mandiri', s: 'Kelola data pengajuan praktik mandiri', render: () => mountCrud('praktik-mandiri') },
-  'verifikasi-praktik': { t: 'Verifikasi Praktik Mandiri', s: 'Setujui / tolak pengajuan dengan catatan', render: () => mountVerifikasi('praktik') },
+  'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan', render: mountVervalPraktik },
   'verifikasi-faskes': { t: 'Verifikasi Fasyankes', s: 'Setujui / tolak pengajuan dengan catatan', render: () => mountVerifikasi('faskes') },
   'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Pencarian status berdasarkan NIK / Nama', render: mountCekVerifikasi },
   'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto', render: mountMonev },
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.0.3';
+const VERSI_SIMANTRI = '1.1.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,
