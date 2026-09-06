@@ -148,8 +148,8 @@
         <div class="p-6">
           <form id="login-form" class="space-y-4">
             <div>
-              <label class="label" for="login-email">Email</label>
-              <input type="email" id="login-email" class="input" placeholder="anda@domain.go.id" required autocomplete="email" />
+              <label class="label" for="login-email">Username</label>
+              <input type="text" id="login-email" class="input" placeholder="admin" required autocomplete="username" />
             </div>
             <div>
               <label class="label" for="login-password">Password</label>
@@ -173,13 +173,22 @@
           <div class="mt-6 pt-6 border-t border-ink-100">
             <p class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Akun Demo (klik untuk isi otomatis)</p>
             <div class="space-y-2">
-              <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-email="dinkes@simantri.demo" data-password="dinkes123">
+              <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-username="admin" data-password="admin123">
                 <div class="flex items-center justify-between">
                   <div>
-                    <p class="font-semibold text-sm text-ink-800">Admin Dinkes</p>
-                    <p class="text-xs text-ink-500">dinkes@simantri.demo • dinkes123</p>
+                    <p class="font-semibold text-sm text-ink-800">Administrator</p>
+                    <p class="text-xs text-ink-500">admin • admin123</p>
                   </div>
                   <span class="badge-teal">Full Access</span>
+                </div>
+              </button>
+              <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-username="operator" data-password="operator123">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <p class="font-semibold text-sm text-ink-800">Operator Verval</p>
+                    <p class="text-xs text-ink-500">operator • operator123</p>
+                  </div>
+                  <span class="badge-lime">View Only</span>
                 </div>
               </button>
             </div>
@@ -288,17 +297,20 @@
   <script src="./js/demo-data.js"></script>
   <script src="./js/components.js"></script>
 
-  <!-- Pages (12) — each attaches to window.SIMANTRI_PAGES -->
+  <!-- Pages — each attaches to window.SIMANTRI_PAGES -->
+  <!-- Bagian 1: Overview (public + admin) -->
   <script src="./js/pages/dashboard.js"></script>
-  <script src="./js/pages/peta-sebaran.js"></script>
+  <script src="./js/pages/pengumuman.js"></script>
   <script src="./js/pages/notifikasi-expired.js"></script>
-  <script src="./js/pages/data-nakes.js"></script>
-  <script src="./js/pages/data-tenaga-kesehatan.js"></script>
-  <script src="./js/pages/data-fasyankes.js"></script>
-  <script src="./js/pages/jadwal-praktik.js"></script>
-  <script src="./js/pages/verifikasi.js"></script>
-  <script src="./js/pages/perpanjangan.js"></script>
-  <script src="./js/pages/laporan.js"></script>
+
+  <!-- Bagian 2: Input Data (admin/operator only) -->
+  <script src="./js/pages/input-pengumuman.js"></script>
+  <script src="./js/pages/input-profil-sdmk.js"></script>
+  <script src="./js/pages/input-verval-izin.js"></script>
+  <script src="./js/pages/input-verval-fasyankes.js"></script>
+  <script src="./js/pages/input-izin-praktik.js"></script>
+
+  <!-- Bagian 3: Sistem (admin only) -->
   <script src="./js/pages/manajemen-user.js"></script>
   <script src="./js/pages/pengaturan.js"></script>
 

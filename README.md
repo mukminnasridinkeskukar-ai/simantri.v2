@@ -1,8 +1,7 @@
 # SIMANTRI v3 — Sistem Informasi & Manajemen Praktik Nakes
 
-> **SIMANTRI** = Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri.
->
-> Platform digital untuk **Dinas Kesehatan**, **Admin Fasyankes** (RS / Puskesmas / Klinik / Apotek / Praktik Mandiri), dan **Tenaga Kesehatan** untuk mendata, memverifikasi, dan memonitoring legalitas praktik.
+> Platform Digital Pengelolaan Izin Praktik untuk **Dinas Kesehatan Kutai Kartanegara**.
+> Sesuai schema database v1.1 dengan tabel: `pengumuman`, `verval_izin_praktik`, `verval_fasyankes`, `profil_sdmk`, `users`, `logs`, `izin`.
 
 **Versi 3** — No-build, plain HTML/CSS/JS. **Bisa langsung dibuka di browser dengan double-click** tanpa `npm install`, tanpa Vite, tanpa server lokal.
 
@@ -13,8 +12,8 @@
 ### Opsi A: Buka langsung di komputer Anda
 1. Extract file ZIP ke folder mana saja
 2. Double-click file `index.html`
-3. Browser terbuka → **langsung tampil beranda** dengan semua data visible ✅
-4. (Opsional) Klik tombol **"Login Admin"** di header untuk akses penuh (add/edit/delete/download)
+3. Browser terbuka → **langsung tampil beranda** dengan data publik ✅
+4. (Opsional) Klik tombol **"Login Admin"** di header untuk akses input data
 
 ### Opsi B: Upload ke GitHub Pages
 1. Upload semua file ke repository GitHub (drag-drop via web UI juga bisa)
@@ -22,340 +21,174 @@
 3. Tunggu 1-2 menit
 4. Buka `https://USERNAME.github.io/NAMA-REPO/` → **langsung tampil beranda**
 
-**Tidak perlu**:
-- ❌ `npm install`
-- ❌ `npm run dev` / `npm run build`
-- ❌ Node.js
-- ❌ Command line
-- ❌ Server lokal
-- ❌ Login wajib (cukup login jika ingin akses admin)
-
 ---
 
 ## 👥 Dua Mode Akses
 
 ### 1. Mode Pengunjung (Public Viewer) — DEFAULT saat buka aplikasi
-- ✅ Bisa lihat seluruh data (nakes, fasyankes, praktik, dashboard, laporan)
-- ✅ Bisa navigasi semua halaman (kecuali "Manajemen User" — admin only)
-- ✅ Bisa search & filter data
-- ❌ TIDAK bisa: tambah, edit, hapus, download CSV, print, verifikasi, approve/reject
-- ❌ Tombol-tombol aksi otomatis di-hidden
+- ✅ Bisa lihat seluruh data di **Bagian 1 (Overview)**: Dashboard, Pengumuman, Notifikasi Expired
+- ❌ TIDAK bisa akses Bagian 2 (Input Data) & Bagian 3 (Sistem) — akan diminta login
 
-### 2. Mode Admin (Login Dinkes) — setelah klik "Login Admin"
-- ✅ Semua fitur Mode Pengunjung
-- ✅ Bisa: tambah, edit, hapus, download CSV, print, verifikasi, approve/reject
-- ✅ Bisa akses halaman "Manajemen User & Role"
+### 2. Mode Admin/Operator — setelah klik "Login Admin"
+- **Admin** (`admin` / `admin123`): Full access — bisa lihat semua + CRUD di Bagian 2 & 3
+- **Operator** (`operator` / `operator123`): View-only — bisa lihat Bagian 2 & 3 tapi TIDAK bisa tambah/edit/hapus
 
-### Cara Login sebagai Admin
+### Cara Login
 1. Klik tombol **"Login Admin"** di pojok kanan header
 2. Muncul modal login
 3. Klik kartu akun demo (auto-fill) atau ketik manual:
-   - Email: `dinkes@simantri.demo`
-   - Password: `dinkes123`
-4. Klik **"Masuk"** → mendapat full access
-5. Untuk logout: klik icon logout di header (sebelah nama user)
+   - Username: `admin` atau `operator`
+   - Password: `admin123` atau `operator123`
+4. Klik **"Masuk"** → mendapat akses sesuai role
+5. Untuk logout: klik icon logout di header
 
 ---
 
-## 🔐 Akun Demo Admin
+## 📋 Struktur Menu
 
-| Role | Email | Password | Akses |
+### BAGIAN 1: OVERVIEW (Public + Admin)
+- **Dashboard Monitoring** — 5 stat cards + 3 charts + Ringkasan Verval Fasyankes + Pengumuman Terbaru
+- **Pengumuman** — list pengumuman (read-only)
+- **Notifikasi Expired** — daftar STR/SIP yang sudah expired
+
+### BAGIAN 2: INPUT DATA (Admin/Operator only)
+Data yang diinput di sini akan otomatis tampil di Bagian 1:
+- **Input Pengumuman** — CRUD pengumuman (judul, isi, is_penting)
+- **Input Profil SDMK** — CRUD profil SDMK (NIK, nama, jenis tenaga, STR, SIP, unit kerja)
+- **Input Verval Izin Praktik** — CRUD verval izin (27 fields dalam 7 sections)
+- **Input Verval Fasyankes** — CRUD verval fasyankes + SDM
+- **Input Pengajuan Izin** — CRUD pengajuan izin (Baru/Perpanjangan, status approval)
+
+### BAGIAN 3: SISTEM (Admin only)
+- **Manajemen User** — CRUD user (username, password, role, is_active)
+- **Pengaturan & Audit Log** — lihat audit log + info sistem
+
+---
+
+## 🔐 Akun Demo
+
+| Username | Password | Role | Akses |
 |---|---|---|---|
-| **Admin Dinkes** | `dinkes@simantri.demo` | `dinkes123` | Full access — semua menu & semua aksi |
+| `admin` | `admin123` | admin | Full access — semua menu & semua aksi CRUD |
+| `operator` | `operator123` | operator | View-only di Bagian 2 & 3 (tidak bisa CRUD) |
 
-> **Catatan**: Hanya ada 1 role admin (Dinkes). Mode pengunjung tidak perlu login.
+> Login memakai **username** (bukan email). Akun ini sudah di-seed di `supabase/schema.sql` section 10a.
 
 ### Session tidak persisten
-Sesuai kebutuhan, aplikasi **TIDAK menyimpan session** di localStorage. Setiap kali browser ditutup atau di-refresh, user kembali ke **Mode Pengunjung**. Untuk akses admin, klik "Login Admin" lagi.
-
-- ❌ Tidak ada localStorage untuk session
-- ❌ Tidak ada cookie session
-- ✅ Refresh browser = kembali ke Mode Pengunjung
-- ✅ Tutup browser = kembali ke Mode Pengunjung
+Aplikasi **TIDAK menyimpan session** di localStorage. Refresh browser = kembali ke Mode Pengunjung.
 
 ---
 
-## 🎯 Kenapa v3 Berbeda dari v2?
+## 🗄️ Schema Database (v1.1)
 
-| Aspek | v2 (lama) | v3 (baru) |
+Mengikuti schema yang sudah disediakan Dinkes Kutai Kartanegara. Lihat `supabase/schema.sql` untuk detail lengkap.
+
+### Tabel utama:
+| Tabel | Fungsi | Menu terkait |
 |---|---|---|
-| Build tool | Vite + Tailwind CLI | **Tidak ada** (no-build) |
-| Module system | ES Modules (`import/export`) | **Plain JS** (`window.*` globals) |
-| Tailwind | Build-time compile | **Play CDN** (runtime) |
-| Supabase client | npm package | **CDN UMD** |
-| Buka via `file://` | ❌ Tidak bisa | ✅ **Bisa** |
-| Double-click index.html | ❌ Error MIME | ✅ **Langsung jalan** |
-| GitHub Pages setup | GitHub Actions | **Deploy from branch** (lebih simpel) |
-| Edit cepat | Perlu build ulang | **Save & refresh** browser |
+| `pengumuman` | Pengumuman sistem | Dashboard, Pengumuman, Input Pengumuman |
+| `profil_sdmk` | Profil SDMK (NIK, STR, SIP) | Dashboard, Input Profil SDMK |
+| `verval_izin_praktik` | Verval izin praktik (27 fields) | Dashboard, Input Verval Izin |
+| `verval_fasyankes` | Verval fasyankes | Dashboard, Input Verval Fasyankes |
+| `verval_fasyankes_sdm` | SDM per fasyankes (child) | Input Verval Fasyankes |
+| `sdm_standar_fasyankes` | Master SDM standar per jenis fasyankes | Input Verval Fasyankes (checkbox dinamis) |
+| `izin` | Pengajuan izin praktik | Dashboard, Input Pengajuan Izin |
+| `users` | Manajemen user (username/password/role) | Login, Manajemen User |
+| `logs` | Audit log | Pengaturan & Audit Log |
 
----
-
-## 📁 Struktur Proyek
-
-```
-simantri-v3/
-├── index.html                  # Shell utama — TINGGAL DIBUKA di browser
-├── config.js                   # Konfigurasi Supabase (edit di sini)
-├── .nojekyll                   # Disable Jekyll di GitHub Pages
-│
-├── css/
-│   └── style.css               # Custom styles (components, badges, table)
-│
-├── js/
-│   ├── utils.js                # Helper: fmtDate, escapeHtml, toast, dll
-│   ├── supabase.js             # Supabase client & helpers
-│   ├── auth.js                 # Auth (sign in/out/signup + role check)
-│   ├── demo-data.js            # Mock data + loaders (demo & prod)
-│   ├── components.js           # Sidebar, Header, StatCard
-│   ├── app.js                  # Router & bootstrap (load terakhir)
-│   └── pages/                  # 12 halaman modular
-│       ├── dashboard.js
-│       ├── peta-sebaran.js
-│       ├── notifikasi-expired.js
-│       ├── data-nakes.js
-│       ├── data-tenaga-kesehatan.js
-│       ├── data-fasyankes.js
-│       ├── jadwal-praktik.js
-│       ├── verifikasi.js
-│       ├── perpanjangan.js
-│       ├── laporan.js
-│       ├── manajemen-user.js
-│       └── pengaturan.js
-│
-└── supabase/
-    └── schema.sql              # Database schema + RLS (jalankan di Supabase)
-```
+### Views untuk dashboard:
+- `v_dashboard_stats` — agregasi statistik utama
+- `v_vf_summary` — ringkasan verval fasyankes
+- `v_sdmk_per_jenis` — distribusi SDMK per jenis tenaga
+- `v_status_izin` — distribusi status izin
+- `v_sdmk_per_unit` — distribusi SDMK per unit kerja
+- `v_verval_izin_detail` — detail verval izin untuk halaman pencarian
 
 ---
 
 ## 🚀 Setup Production (Opsional — untuk pakai Supabase asli)
 
-Aplikasi sudah jalan di **Demo Mode** tanpa setup apapun. Untuk pakai backend Supabase asli:
+Aplikasi sudah jalan di **Demo Mode** tanpa setup. Untuk pakai Supabase asli:
 
 ### 1. Buat project Supabase
 - Daftar gratis di [supabase.com](https://supabase.com)
-- Buat project baru, tunggu ± 2 menit
+- Buat project baru
 
 ### 2. Setup database
 - Buka **SQL Editor** di dashboard Supabase
 - Paste seluruh isi `supabase/schema.sql`
-- Klik **Run** — semua tabel, RLS, trigger ter-create
+- Klik **Run** — semua tabel, view, trigger, RLS, dan seed data ter-create
 
 ### 3. Edit `config.js`
-Buka file `config.js` dengan text editor (Notepad / VS Code), isi:
-
 ```javascript
 window.SIMANTRI_CONFIG = {
-  SUPABASE_URL: 'https://abcd1234.supabase.co',           // ← ganti
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6...',   // ← ganti
-  // ...lainnya biarkan default
+  SUPABASE_URL: 'https://YOUR-PROJECT.supabase.co',
+  SUPABASE_ANON_KEY: 'YOUR-ANON-KEY',
+  // ...
 };
 ```
 
-Ambil URL & anon key dari: **Supabase Dashboard → Project Settings → API**
+### 4. Login
+Setelah schema.sql dijalankan, 2 user default sudah tersedia:
+- `admin` / `admin123`
+- `operator` / `operator123`
 
-### 4. Setup Multiuser (Custom Auth via tabel profiles)
-
-Aplikasi ini **TIDAK memakai Supabase Auth bawaan** (yang butuh sign-up via Authentication menu). Sebagai gantinya, login divalidasi via fungsi `verify_user(email, password)` yang query tabel `profiles`.
-
-**Default admin sudah di-seed** di `schema.sql`:
-- Email: `dinkes@simantri.demo`
-- Password: `dinkes123`
-
-Anda bisa langsung login dengan akun tersebut setelah menjalankan schema.sql.
-
-**Tambah user baru** (via SQL Editor Supabase):
+### 5. Tambah user baru (via SQL Editor):
 ```sql
-insert into public.profiles (id, email, full_name, role, password_hash, is_active)
-values (
-  uuid_generate_v4(),
-  'admin.baru@dinkes.go.id',
-  'Dr. Admin Baru',
-  'dinkes',
-  public.hash_password('passwordBaru123'),
-  true
-);
+INSERT INTO users (username, password, role, full_name, is_active)
+VALUES ('userbaru', 'password123', 'operator', 'Nama User Baru', true);
 ```
-
-**Ubah password user**:
-```sql
-update public.profiles
-set password_hash = public.hash_password('passwordBaru')
-where email = 'admin.baru@dinkes.go.id';
-```
-
-**Nonaktifkan user** (tidak bisa login):
-```sql
-update public.profiles set is_active = false where email = 'admin.baru@dinkes.go.id';
-```
-
-**Lihat semua user**:
-```sql
-select id, email, full_name, role, is_active, last_login, created_at
-from public.profiles order by created_at;
-```
-
-> 💡 Anda juga bisa CRUD user langsung via UI di halaman **Manajemen User & Role** setelah login sebagai admin.
-
-### 5. Save & refresh
-- Save `config.js`
-- Refresh browser — aplikasi otomatis pakai Supabase (bukan demo lagi)
-- Login dengan email + password dari tabel `profiles` (default: `dinkes@simantri.demo / dinkes123`)
 
 ---
 
-## 🌐 Deploy ke GitHub Pages
+## 🛠️ Troubleshooting
 
-### Cara cepat (2 menit)
+**Q: Buka aplikasi, langsung tampil beranda?**
+A: Ya, itu Mode Pengunjung. Bisa lihat data tanpa login. Klik "Login Admin" untuk CRUD.
 
-1. **Buat repo baru** di GitHub (nama bebas, mis. `simantri-nakes-v3`)
-2. **Upload semua file**:
-   - Via web: klik "uploading an existing file" → drag-drop semua file dari ZIP
-   - Atau via git:
-     ```bash
-     git init
-     git add .
-     git commit -m "SIMANTRI v3"
-     git remote add origin https://github.com/USERNAME/simantri-nakes-v3.git
-     git push -u origin main
-     ```
-3. **Aktifkan Pages**:
-   - Repo → **Settings → Pages**
-   - Source: **Deploy from a branch**
-   - Branch: `main` / `(root)`
-   - Save
-4. **Tunggu 1-2 menit**, lalu buka:
-   ```
-   https://USERNAME.github.io/simantri-nakes-v3/
-   ```
+**Q: Setelah login, sidebar bertambah?**
+A: Ya, dari 3 menu (Overview) jadi 10 menu (+5 Input Data +2 Sistem).
 
-### Catatan tentang file `.nojekyll`
+**Q: Operator tidak bisa tambah data?**
+A: Ya, hanya admin yang bisa CRUD. Operator view-only. Tombol Tambah/Edit/Hapus otomatis di-hidden.
 
-File `.nojekyll` (kosong, tanpa ekstensi) **WAJIB ada** di root repo. Fungsinya:
-- Memberitahu GitHub Pages: "Jangan proses dengan Jekyll"
-- Mencegah file dengan underscore (`_`) atau nama aneh di-drop
-- Pastikan semua file JS/CSS tersaji apa adanya
+**Q: Data input tidak muncul di Dashboard?**
+A: Refresh halaman Dashboard setelah input data. Atau klik tombol Refresh di Dashboard.
 
-Sudah include di project ini ✅
+**Q: Login gagal?**
+A: Pastikan username & password benar. Demo: `admin` / `admin123` (case-sensitive). Untuk production, pastikan schema.sql sudah dijalankan.
 
 ---
 
-## 🔒 Keamanan
+## 📦 Struktur Proyek
 
-### Yang AMAN di frontend:
-- ✅ **Anon key** Supabase — dirancang untuk di-expose. Data dilindungi oleh RLS.
-- ✅ Konfigurasi Tailwind via Play CDN
-- ✅ Library Supabase JS & Chart.js via CDN
-
-### Yang TIDAK boleh di frontend:
-- ❌ **Service role key** Supabase — hanya untuk server/Edge Functions
-- ❌ Password database
-- ❌ Token rahasia lainnya
-
-### Row Level Security (RLS)
-Sudah dikonfigurasi di `supabase/schema.sql`:
-
-| Role | Lihat Semua | Lihat Fasyankes Sendiri | Lihat Diri Sendiri | Manajemen User |
-|---|---|---|---|---|
-| `dinkes`     | ✅ | ✅ | ✅ | ✅ |
-| `fasyankes`  | ❌ | ✅ | ✅ | ❌ |
-| `nakes`      | ❌ | ❌ | ✅ | ❌ |
-
----
-
-## ✨ Fitur Aplikasi
-
-12 halaman modular:
-
-1. **Dashboard Monitoring** — ringkasan real-time: total nakes, fasyankes, status STR/SIP
-2. **Peta Sebaran Praktik** — visualisasi geografis lokasi fasyankes
-3. **Notifikasi Expired** — peringatan dini STR/SIP H-90 (warna amber)
-4. **Data Tenaga Medis** — Dokter, Dokter Gigi, Dokter Spesialis + modal detail + timeline
-5. **Data Tenaga Kesehatan** — Perawat, Bidan, Apoteker, TTK, ATLM, Gizi, Kesling
-6. **Data Fasyankes** — RS, Puskesmas, Klinik, Apotek, Praktik Mandiri (grid view)
-7. **Jadwal Praktik** — tampilan mingguan
-8. **Verifikasi STR & SIP** — kanban board approve/reject
-9. **Perpanjangan & Rekomendasi** — form dengan validasi + dropzone file
-10. **Laporan & Rekap Dinkes** — chart 6 bulan + insight + export CSV
-11. **Manajemen User & Role** — Dinkes-only, dengan matrix permission
-12. **Pengaturan & Audit Log** — preferensi notifikasi + log audit
-
----
-
-## 🎨 Design System
-
-**Style**: Clean Health + Energetic SaaS (referensi: Vercel + Doctolib)
-
-| Token | Warna | Penggunaan |
-|---|---|---|
-| `teal-600`  | `#0D9488` | Primary — tombol, link, active state |
-| `lime-500`  | `#84CC16` | Accent — highlight, badge special |
-| `amber-500` | `#F59E0B` | Alert — H-90 expired warning |
-| `rose-500`  | `#F43F5E` | Danger — expired, error |
-| `ink-900`   | `#0F172A` | Sidebar background, body text |
-| `white`     | `#FFFFFF` | Base background, card |
-
----
-
-## 🆘 Troubleshooting
-
-**Q: Buka `index.html` tapi blank / error MIME type**
-A: Tidak akan terjadi di v3. Pastikan Anda membuka `index.html` yang ada di folder `simantri-v3/` (bukan dari v2).
-
-**Q: Aplikasi tampil tapi data kosong / "Memuat..." terus**
-A: Aplikasi jalan di **Demo Mode** karena `SUPABASE_URL` belum di-set di `config.js`. Ini normal — Anda masih bisa menjelajahi seluruh UI dengan data contoh. Untuk pakai data asli, ikuti langkah "Setup Production" di atas.
-
-**Q: Setelah edit config.js, aplikasi masih demo mode**
-A: Hard refresh browser (Ctrl+Shift+R atau Cmd+Shift+R). Cache mungkin menyimpan versi lama.
-
-**Q: Login gagal setelah Supabase dikonfigurasi**
-A: Pastikan user sudah di-create di Supabase → Authentication → Users. Profile akan auto-create via trigger saat pertama login. Untuk jadi Dinkes, jalankan SQL update `role = 'dinkes'`.
-
-**Q: RLS memblokir akses data**
-A: Cek dengan SQL:
-```sql
-select public.is_dinkes(), public.current_user_role(), public.current_user_fasyankes();
 ```
-Pastikan user login dan role-nya benar.
-
-**Q: Tailwind warning di Console: "should not be used in production"**
-A: Ini hanya warning — Play CDN memang dirancang untuk development/prototyping. Aplikasi tetap berfungsi normal. Jika ingin optimasi production (bundle CSS lebih kecil), lihat bagian "Optimasi Production" di bawah.
-
-**Q: Setelah deploy ke GitHub Pages, halaman blank**
-A: Pastikan:
-- File `.nojekyll` ada di root repo
-- Settings → Pages → Source: **Deploy from a branch** (bukan GitHub Actions)
-- Branch: `main` (atau `master`) / folder: `/ (root)`
-- Tunggu 1-2 menit setelah upload
-
----
-
-## 🔧 Optimasi Production (Opsional)
-
-Setup v3 sudah cukup untuk production skala kecil-menengah. Jika ingin lebih optimal:
-
-### Bundle Tailwind CSS (kurangi ukuran dari ~3MB ke ~50KB)
-```bash
-# Install Tailwind CLI
-npm install -D tailwindcss@3
-
-# Generate CSS only dengan class yang dipakai
-npx tailwindcss -i ./input.css -o ./css/tailwind-bundle.css --minify
-
-# Hapus <script src="https://cdn.tailwindcss.com"></script> dari index.html
-# Tambahkan: <link rel="stylesheet" href="./css/tailwind-bundle.css">
+simantri-v3/
+├── index.html              # Shell + login modal
+├── config.js               # Konfigurasi Supabase
+├── .nojekyll               # GitHub Pages
+├── README.md
+├── css/style.css           # Custom styles
+├── supabase/schema.sql     # Schema v1.1 Dinkes Kukar
+└── js/
+    ├── app.js              # Router + bootstrap
+    ├── auth.js             # Auth (username/password via tabel users)
+    ├── components.js       # Sidebar + Header + StatCard
+    ├── demo-data.js        # Mock data + 27 CRUD functions
+    ├── supabase.js         # Supabase client
+    ├── utils.js            # Helper utilities
+    └── pages/              # 10 halaman modular
+        ├── dashboard.js
+        ├── pengumuman.js
+        ├── notifikasi-expired.js
+        ├── input-pengumuman.js
+        ├── input-profil-sdmk.js
+        ├── input-verval-izin.js
+        ├── input-verval-fasyankes.js
+        ├── input-izin-praktik.js
+        ├── manajemen-user.js
+        └── pengaturan.js
 ```
-
-### Self-host Supabase JS (jika ingin tanpa CDN)
-```bash
-# Download file UMD
-curl -o js/vendor/supabase.js https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js
-
-# Ganti tag di index.html
-<script src="./js/vendor/supabase.js"></script>
-```
-
-Tapi untuk mayoritas kasus — **setup default v3 sudah cukup**.
 
 ---
 
@@ -365,25 +198,4 @@ MIT License — bebas digunakan untuk keperluan pemerintah & non-profit.
 
 ---
 
-## 🆚 Changelog v3 vs v2
-
-### v3.0.0 (versi ini)
-- ✨ No-build architecture (plain JS, no Vite, no ES modules)
-- ✨ Double-click `index.html` langsung jalan
-- ✨ Tailwind via Play CDN
-- ✨ Supabase & Chart.js via CDN UMD
-- ✨ GitHub Pages: deploy from branch (no Actions needed)
-- ✨ `.nojekyll` untuk pastikan semua file tersaji
-- ✨ Config via `config.js` (user edit langsung, no env vars)
-- ✨ Demo mode otomatis jika Supabase belum dikonfigurasi
-
-### v2.0.0 (versi lama)
-- Vite + Tailwind CLI build
-- ES Modules (`import/export`)
-- GitHub Actions deploy
-- `.env` files
-- Memerlukan `npm install` + `npm run build` sebelum deploy
-
----
-
-Dibuat untuk Pemerintah Indonesia • **SIMANTRI v3.0** • 2026
+Dibuat untuk **Dinas Kesehatan Kutai Kartanegara** • **SIMANTRI v3.0** • 2026

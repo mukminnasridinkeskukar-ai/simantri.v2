@@ -1,5 +1,7 @@
 /* ============================================================================
  * SIMANTRI v3 — Page: Pengaturan & Audit Log
+ * Schema v1.1 — two tabs: Audit Log (filter + table) and Info Sistem
+ * (about card, db stats, quick actions: reset demo / export CSV).
  * ============================================================================ */
 
 (function () {
@@ -7,557 +9,294 @@
 
   window.SIMANTRI_PAGES = window.SIMANTRI_PAGES || {};
 
+  const AKSI_OPTS = [
+    'LOGIN', 'LOGOUT',
+    'ADD_PENGUMUMAN', 'UPDATE_PENGUMUMAN', 'DELETE_PENGUMUMAN',
+    'ADD_PROFIL', 'UPDATE_PROFIL', 'DELETE_PROFIL',
+    'ADD_VERVAL_IZIN', 'UPDATE_VERVAL_IZIN', 'DELETE_VERVAL_IZIN',
+    'ADD_VERVAL_FASYANKES', 'UPDATE_VERVAL_FASYANKES', 'DELETE_VERVAL_FASYANKES',
+    'ADD_IZIN', 'UPDATE_IZIN', 'DELETE_IZIN', 'APPROVE_IZIN', 'REJECT_IZIN',
+    'ADD_USER', 'UPDATE_USER', 'DELETE_USER',
+  ];
+
+  function optionsHtml(opts) {
+    return opts.map(function (o) {
+      return '<option value="' + window.SIMANTRI_UTILS.escapeHtml(o) + '">' + window.SIMANTRI_UTILS.escapeHtml(o) + '</option>';
+    }).join('');
+  }
+
+  function aksiBadgeClass(aksi) {
+    if (!aksi) return 'badge-ink';
+    if (aksi.indexOf('ADD_') === 0) return 'badge-teal';
+    if (aksi.indexOf('UPDATE_') === 0) return 'badge-amber';
+    if (aksi.indexOf('DELETE_') === 0) return 'badge-rose';
+    if (aksi.indexOf('APPROVE_') === 0) return 'badge-teal';
+    if (aksi.indexOf('REJECT_') === 0) return 'badge-rose';
+    if (aksi === 'LOGIN' || aksi === 'LOGOUT') return 'badge-ink';
+    return 'badge-ink';
+  }
+
   window.SIMANTRI_PAGES['pengaturan'] = {
     html: function () {
-      return `
-        <div class="space-y-6">
-          <div>
-            <h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Pengaturan &amp; Audit Log</h2>
-            <p class="mt-1 text-sm text-ink-500 max-w-2xl">Kelola profil, preferensi notifikasi, pengaturan sistem, dan riwayat aktivitas (audit log).</p>
-          </div>
+      return ''
+        + '<div class="space-y-6">'
+        +   '<div>'
+        +     '<h2 class="text-2xl font-extrabold text-ink-900 tracking-tight">Pengaturan &amp; Audit Log</h2>'
+        +     '<p class="mt-1 text-sm text-ink-500 max-w-2xl">Pantau aktivitas sistem dan informasi aplikasi SIMANTRI.</p>'
+        +   '</div>'
 
-          <!-- Tabs -->
-          <div class="flex items-center gap-1 border-b border-ink-200">
-            <button type="button" class="pg-tab px-4 py-2.5 text-sm font-semibold border-b-2 border-teal-600 text-teal-700" data-tab="settings">Pengaturan</button>
-            <button type="button" class="pg-tab px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-ink-500 hover:text-ink-800" data-tab="audit">Audit Log</button>
-          </div>
+        // Tabs
+        +   '<div class="flex items-center gap-1 border-b border-ink-200">'
+        +     '<button type="button" class="pg-tab px-4 py-2.5 text-sm font-semibold border-b-2 border-teal-600 text-teal-700" data-tab="audit">Audit Log</button>'
+        +     '<button type="button" class="pg-tab px-4 py-2.5 text-sm font-semibold border-b-2 border-transparent text-ink-500 hover:text-ink-800" data-tab="info">Info Sistem</button>'
+        +   '</div>'
 
-          <!-- Tab: Settings -->
-          <div id="pg-settings-tab" class="space-y-6">
-            <!-- Profil user -->
-            <div class="card p-5">
-              <div class="flex items-center gap-2 mb-4">
-                <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                <h3 class="text-base font-bold text-ink-900">Profil Pengguna</h3>
-              </div>
-              <form id="pg-profile-form" class="space-y-4">
-                <div class="flex items-center gap-4">
-                  <div id="pg-avatar" class="w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold text-ink-900" style="background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);">?</div>
-                  <div>
-                    <button type="button" class="btn btn-outline btn-sm">Ubah Avatar</button>
-                    <p class="text-xs text-ink-500 mt-1">JPG/PNG, maks 2 MB</p>
-                  </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label class="label" for="pg-full-name">Nama Lengkap</label>
-                    <input type="text" id="pg-full-name" class="input" />
-                  </div>
-                  <div>
-                    <label class="label" for="pg-email">Email</label>
-                    <input type="email" id="pg-email" class="input" readonly />
-                  </div>
-                  <div>
-                    <label class="label" for="pg-role">Role</label>
-                    <input type="text" id="pg-role" class="input" readonly />
-                  </div>
-                  <div>
-                    <label class="label" for="pg-fasyankes">Fasyankes</label>
-                    <input type="text" id="pg-fasyankes" class="input" readonly />
-                  </div>
-                </div>
-                <div class="flex justify-end">
-                  <button type="submit" class="btn btn-primary btn-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                    Simpan Profil
-                  </button>
-                </div>
-              </form>
-            </div>
+        // Tab: Audit Log
+        +   '<div id="pg-audit-tab" class="space-y-4">'
+        +     '<div class="card p-4">'
+        +       '<div class="grid grid-cols-1 md:grid-cols-3 gap-3">'
+        +         '<div class="md:col-span-2">'
+        +           '<label class="label" for="pg-log-search">Pencarian</label>'
+        +           '<div class="relative">'
+        +             '<svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>'
+        +             '<input type="search" id="pg-log-search" class="input" style="padding-left:2.25rem;" placeholder="Cari username / aksi / detail..." />'
+        +           '</div>'
+        +         '</div>'
+        +         '<div>'
+        +           '<label class="label" for="pg-log-aksi">Aksi</label>'
+        +           '<select id="pg-log-aksi" class="select"><option value="">Semua</option>' + optionsHtml(AKSI_OPTS) + '</select>'
+        +         '</div>'
+        +       '</div>'
+        +     '</div>'
 
-            <!-- Preferensi notifikasi -->
-            <div class="card p-5">
-              <div class="flex items-center gap-2 mb-4">
-                <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
-                <h3 class="text-base font-bold text-ink-900">Preferensi Notifikasi</h3>
-              </div>
-              <div class="space-y-3">
-                <label class="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" id="pg-notif-email" class="mt-0.5 w-4 h-4 rounded text-teal-600" checked />
-                  <div>
-                    <p class="text-sm font-semibold text-ink-800">Notifikasi via Email</p>
-                    <p class="text-xs text-ink-500">Kirim email saat STR/SIP akan expired atau ada pengajuan baru</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" id="pg-notif-push" class="mt-0.5 w-4 h-4 rounded text-teal-600" checked />
-                  <div>
-                    <p class="text-sm font-semibold text-ink-800">Notifikasi In-App</p>
-                    <p class="text-xs text-ink-500">Tampilkan badge &amp; toast di header aplikasi</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" id="pg-notif-warning" class="mt-0.5 w-4 h-4 rounded text-teal-600" checked />
-                  <div>
-                    <p class="text-sm font-semibold text-ink-800">Pengingat H-90, H-30, H-7</p>
-                    <p class="text-xs text-ink-500">Kirim pengingat bertahap sebelum tanggal expired</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" id="pg-notif-daily" class="mt-0.5 w-4 h-4 rounded text-teal-600" />
-                  <div>
-                    <p class="text-sm font-semibold text-ink-800">Rekap Harian</p>
-                    <p class="text-xs text-ink-500">Ringkasan aktivitas harian dikirim setiap pagi</p>
-                  </div>
-                </label>
-              </div>
-              <div class="flex justify-end mt-4">
-                <button type="button" class="btn btn-primary btn-sm" data-action="save-notif">Simpan Preferensi</button>
-              </div>
-            </div>
+        +     '<div class="card overflow-hidden">'
+        +       '<div class="overflow-x-auto">'
+        +         '<table class="data-table table-sticky">'
+        +           '<thead>'
+        +             '<tr>'
+        +               '<th>Timestamp</th>'
+        +               '<th>Username</th>'
+        +               '<th>Aksi</th>'
+        +               '<th>Detail</th>'
+        +               '<th>IP Address</th>'
+        +             '</tr>'
+        +           '</thead>'
+        +           '<tbody id="pg-log-tbody">'
+        +             '<tr><td colspan="5" class="text-center text-ink-500 py-8"><div class="skeleton h-8"></div></td></tr>'
+        +           '</tbody>'
+        +         '</table>'
+        +       '</div>'
+        +     '</div>'
+        +   '</div>'
 
-            <!-- Pengaturan sistem (Dinkes only) -->
-            <div id="pg-system-settings" class="card p-5 hidden role-dinkes-only">
-              <div class="flex items-center gap-2 mb-4">
-                <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
-                <h3 class="text-base font-bold text-ink-900">Pengaturan Sistem</h3>
-                <span class="badge badge-amber">DINKES ONLY</span>
-              </div>
-              <div class="space-y-4">
-                <div>
-                  <label class="label" for="pg-warning-days">Threshold Warning Expired (hari)</label>
-                  <input type="number" id="pg-warning-days" class="input" min="7" max="365" value="90" />
-                  <p class="text-xs text-ink-500 mt-1">Berapa hari sebelum expired suatu dokumen dianggap "hampir expired"</p>
-                </div>
-                <div>
-                  <label class="label" for="pg-app-name">Nama Aplikasi</label>
-                  <input type="text" id="pg-app-name" class="input" value="SIMANTRI" />
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="pg-maintenance" class="w-4 h-4 rounded text-teal-600" />
-                    <span class="text-sm text-ink-700">Mode Maintenance</span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="pg-registration" class="w-4 h-4 rounded text-teal-600" checked />
-                    <span class="text-sm text-ink-700">Izinkan Registrasi Mandiri</span>
-                  </label>
-                </div>
-                <div class="flex justify-end">
-                  <button type="button" class="btn btn-primary btn-sm" data-action="save-system">Simpan Pengaturan Sistem</button>
-                </div>
-              </div>
-            </div>
+        // Tab: Info Sistem
+        +   '<div id="pg-info-tab" class="hidden space-y-4">'
+        // About app
+        +     '<div class="card p-5">'
+        +       '<div class="flex items-center gap-2 mb-3">'
+        +         '<svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+        +         '<h3 class="text-base font-bold text-ink-900">Tentang Aplikasi</h3>'
+        +       '</div>'
+        +       '<dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">'
+        +         '<div><dt class="text-xs text-ink-400 uppercase tracking-wide font-semibold">Nama</dt><dd class="text-ink-800 font-semibold">SIMANTRI</dd></div>'
+        +         '<div><dt class="text-xs text-ink-400 uppercase tracking-wide font-semibold">Versi</dt><dd class="text-ink-800 font-mono">v1.1</dd></div>'
+        +         '<div><dt class="text-xs text-ink-400 uppercase tracking-wide font-semibold">Instansi</dt><dd class="text-ink-800">Dinas Kesehatan Kutai Kartanegara</dd></div>'
+        +         '<div><dt class="text-xs text-ink-400 uppercase tracking-wide font-semibold">Schema</dt><dd class="text-ink-800 font-mono">v1.1 (SIMANTRI v1.1)</dd></div>'
+        +         '<div class="sm:col-span-2"><dt class="text-xs text-ink-400 uppercase tracking-wide font-semibold">Deskripsi</dt><dd class="text-ink-700 mt-0.5">Sistem Informasi &amp; Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes &amp; Praktik Mandiri wilayah kerja Dinkes Kukar.</dd></div>'
+        +       '</dl>'
+        +     '</div>'
 
-            <!-- Keamanan -->
-            <div class="card p-5">
-              <div class="flex items-center gap-2 mb-4">
-                <svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                <h3 class="text-base font-bold text-ink-900">Keamanan</h3>
-              </div>
-              <div class="space-y-4">
-                <div>
-                  <label class="label" for="pg-current-pass">Password Saat Ini</label>
-                  <input type="password" id="pg-current-pass" class="input" placeholder="••••••••" />
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label class="label" for="pg-new-pass">Password Baru</label>
-                    <input type="password" id="pg-new-pass" class="input" placeholder="Minimal 8 karakter" />
-                  </div>
-                  <div>
-                    <label class="label" for="pg-confirm-pass">Konfirmasi Password Baru</label>
-                    <input type="password" id="pg-confirm-pass" class="input" placeholder="Ulangi password baru" />
-                  </div>
-                </div>
-                <p class="field-error hidden" id="pg-pass-err"></p>
-                <div class="flex justify-end">
-                  <button type="button" class="btn btn-primary btn-sm" data-action="change-pass">Ubah Password</button>
-                </div>
-              </div>
-            </div>
-          </div>
+        // DB Stats
+        +     '<div class="card p-5">'
+        +       '<div class="flex items-center gap-2 mb-3">'
+        +         '<svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>'
+        +         '<h3 class="text-base font-bold text-ink-900">Statistik Database</h3>'
+        +       '</div>'
+        +       '<div id="pg-db-stats" class="grid grid-cols-2 sm:grid-cols-4 gap-3">'
+        +         '<div class="skeleton h-20"></div>'
+        +         '<div class="skeleton h-20"></div>'
+        +         '<div class="skeleton h-20"></div>'
+        +         '<div class="skeleton h-20"></div>'
+        +       '</div>'
+        +     '</div>'
 
-          <!-- Tab: Audit Log -->
-          <div id="pg-audit-tab" class="hidden space-y-4">
-            <div class="card p-4">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label class="label" for="pg-audit-search">Pencarian</label>
-                  <div class="relative">
-                    <svg class="w-4 h-4 text-ink-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input type="search" id="pg-audit-search" class="input" style="padding-left:2.25rem;" placeholder="Cari aktivitas / user..." />
-                  </div>
-                </div>
-                <div>
-                  <label class="label" for="pg-audit-action">Jenis Aksi</label>
-                  <select id="pg-audit-action" class="select">
-                    <option value="">Semua Aksi</option>
-                    <option value="login">Login</option>
-                    <option value="logout">Logout</option>
-                    <option value="create">Create</option>
-                    <option value="update">Update</option>
-                    <option value="delete">Delete</option>
-                    <option value="approve">Approve</option>
-                    <option value="reject">Reject</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="label" for="pg-audit-date">Tanggal</label>
-                  <input type="date" id="pg-audit-date" class="input" />
-                </div>
-              </div>
-            </div>
-
-            <div class="card overflow-hidden">
-              <div class="overflow-x-auto" style="max-height:560px;">
-                <table class="data-table table-sticky">
-                  <thead>
-                    <tr>
-                      <th>Timestamp</th>
-                      <th>User</th>
-                      <th>Aksi</th>
-                      <th>Modul</th>
-                      <th>Detail</th>
-                      <th>IP</th>
-                    </tr>
-                  </thead>
-                  <tbody id="pg-audit-tbody">
-                    <tr><td colspan="6" class="text-center text-ink-500 py-8">Memuat audit log...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
+        // Quick Actions
+        +     '<div class="card p-5">'
+        +       '<div class="flex items-center gap-2 mb-3">'
+        +         '<svg class="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>'
+        +         '<h3 class="text-base font-bold text-ink-900">Aksi Cepat</h3>'
+        +       '</div>'
+        +       '<div class="flex flex-wrap gap-2">'
+        +         '<button type="button" class="btn btn-outline btn-sm" data-action="reset-demo">'
+        +           '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>'
+        +           'Reset Demo Data'
+        +         '</button>'
+        +         '<button type="button" class="btn btn-outline btn-sm" data-action="export-log" data-role-action="export">'
+        +           '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>'
+        +           'Export Audit Log CSV'
+        +         '</button>'
+        +       '</div>'
+        +       '<p class="mt-3 text-xs text-ink-500">Reset demo data akan memuat ulang seluruh data mock ke kondisi awal. Export Audit Log menghasilkan file CSV berisi seluruh entri log.</p>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>';
     },
 
     init: async function () {
       const utils = window.SIMANTRI_UTILS;
-      const auth = window.SIMANTRI_AUTH;
       const data = window.SIMANTRI_DATA;
+      const auth = window.SIMANTRI_AUTH;
 
-      let _activeTab = 'settings';
-      let _auditSearch = '';
-      let _auditAction = '';
-      let _auditDate = '';
-      let _auditLogs = [];
+      let _logFilters = { search: '', aksi: '' };
+      let _logsCache = [];
 
-      // Tabs
-      document.querySelectorAll('.pg-tab').forEach(function (tab) {
-        tab.addEventListener('click', function () {
-          _activeTab = tab.dataset.tab;
-          document.querySelectorAll('.pg-tab').forEach(function (t) {
-            const isActive = t === tab;
-            t.classList.toggle('border-teal-600', isActive);
-            t.classList.toggle('text-teal-700', isActive);
-            t.classList.toggle('border-transparent', !isActive);
-            t.classList.toggle('text-ink-500', !isActive);
+      // Tab switching
+      document.querySelectorAll('.pg-tab').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const tab = btn.getAttribute('data-tab');
+          document.querySelectorAll('.pg-tab').forEach(function (b) {
+            const isActive = b === btn;
+            b.classList.toggle('border-teal-600', isActive);
+            b.classList.toggle('text-teal-700', isActive);
+            b.classList.toggle('border-transparent', !isActive);
+            b.classList.toggle('text-ink-500', !isActive);
+            b.classList.toggle('hover:text-ink-800', !isActive);
           });
-          const settingsEl = document.getElementById('pg-settings-tab');
-          const auditEl = document.getElementById('pg-audit-tab');
-          if (settingsEl) settingsEl.classList.toggle('hidden', _activeTab !== 'settings');
-          if (auditEl) auditEl.classList.toggle('hidden', _activeTab !== 'audit');
+          const auditTab = document.getElementById('pg-audit-tab');
+          const infoTab = document.getElementById('pg-info-tab');
+          if (auditTab) auditTab.classList.toggle('hidden', tab !== 'audit');
+          if (infoTab) infoTab.classList.toggle('hidden', tab !== 'info');
+          if (tab === 'info') renderDbStats();
         });
       });
 
-      // Profile form
-      const profile = auth.getProfile();
-      const fullNameInput = document.getElementById('pg-full-name');
-      const emailInput = document.getElementById('pg-email');
-      const roleInput = document.getElementById('pg-role');
-      const fasyankesInput = document.getElementById('pg-fasyankes');
-      const avatarEl = document.getElementById('pg-avatar');
-
-      if (profile) {
-        if (fullNameInput) fullNameInput.value = profile.full_name || '';
-        if (emailInput) emailInput.value = profile.email || '';
-        if (roleInput) {
-          roleInput.value = ({ dinkes: 'Admin Dinkes', fasyankes: 'Admin Fasyankes', nakes: 'Tenaga Kesehatan' })[profile.role] || profile.role || '-';
-        }
-        if (avatarEl) avatarEl.textContent = utils.initials(profile.full_name || profile.email || '?');
+      // Audit log filter
+      const logSearch = document.getElementById('pg-log-search');
+      if (logSearch) {
+        logSearch.addEventListener('input', utils.debounce(function (e) {
+          _logFilters.search = e.target.value.trim();
+          renderLogs();
+        }, 300));
       }
-
-      // Load fasyankes name
-      async function loadFasyankes() {
-        try {
-          const fasyankes = await data.loadFasyankes();
-          if (profile && profile.fasyankes_id && fasyankesInput) {
-            const f = fasyankes.find(function (x) { return x.id === profile.fasyankes_id; });
-            fasyankesInput.value = f ? f.nama : '-';
-          } else if (fasyankesInput) {
-            fasyankesInput.value = '-';
-          }
-        } catch (e) { /* ignore */ }
-      }
-
-      const profileForm = document.getElementById('pg-profile-form');
-      if (profileForm) {
-        profileForm.addEventListener('submit', function (e) {
-          e.preventDefault();
-          const newName = fullNameInput.value.trim();
-          if (!newName) {
-            utils.toast('Nama lengkap wajib diisi', 'error');
-            return;
-          }
-          if (profile) profile.full_name = newName;
-          if (avatarEl) avatarEl.textContent = utils.initials(newName);
-          utils.toast('Profil berhasil disimpan', 'success');
-          // Update sidebar
-          const sidebarName = document.getElementById('sidebar-user-name');
-          const headerName = document.getElementById('header-user-name');
-          const sidebarAvatar = document.getElementById('sidebar-avatar');
-          const headerAvatar = document.getElementById('header-avatar');
-          if (sidebarName) sidebarName.textContent = newName;
-          if (headerName) headerName.textContent = newName;
-          if (sidebarAvatar) sidebarAvatar.textContent = utils.initials(newName);
-          if (headerAvatar) headerAvatar.textContent = utils.initials(newName);
+      const logAksi = document.getElementById('pg-log-aksi');
+      if (logAksi) {
+        logAksi.addEventListener('change', function (e) {
+          _logFilters.aksi = e.target.value;
+          renderLogs();
         });
       }
 
-      // Load settings from store and populate form
-      async function loadSettingsForm() {
-        try {
-          const s = await data.loadSettings();
-          const setChk = function (id, val) { const el = document.getElementById(id); if (el) el.checked = !!val; };
-          const setVal = function (id, val) { const el = document.getElementById(id); if (el) el.value = val != null ? val : ''; };
-          setChk('pg-notif-email', s.notifikasi_h90_str || s.notifikasi_h90_sip);
-          setChk('pg-notif-push', s.notifikasi_h30);
-          setChk('pg-notif-warning', s.notifikasi_h90_str || s.notifikasi_h90_sip || s.notifikasi_h30);
-          setChk('pg-notif-daily', s.email_digest === 'daily');
-          setVal('pg-warning-days', s.expiry_threshold_days || 90);
-          setChk('pg-maintenance', s.auto_disable_expired === true && s.expiry_threshold_days === -1);
-          setChk('pg-registration', s.integrasi_email !== false ? false : true);
-        } catch (e) {
-          /* ignore — keep defaults */
-        }
+      // Quick actions
+      const resetBtn = document.querySelector('[data-action="reset-demo"]');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', function () {
+          if (confirm('Reset seluruh data demo ke kondisi awal? Perubahan yang belum tersimpan akan hilang.')) {
+            utils.toast('Halaman akan dimuat ulang untuk mereset data demo.', 'info');
+            setTimeout(function () { window.location.reload(); }, 800);
+          }
+        });
       }
-
-      // Save notification preferences
-      const saveNotifBtn = document.querySelector('[data-action="save-notif"]');
-      if (saveNotifBtn) {
-        saveNotifBtn.addEventListener('click', async function () {
-          const notifEmail = document.getElementById('pg-notif-email') ? document.getElementById('pg-notif-email').checked : true;
-          const notifPush = document.getElementById('pg-notif-push') ? document.getElementById('pg-notif-push').checked : true;
-          const notifWarning = document.getElementById('pg-notif-warning') ? document.getElementById('pg-notif-warning').checked : true;
-          const notifDaily = document.getElementById('pg-notif-daily') ? document.getElementById('pg-notif-daily').checked : false;
-          const payload = {
-            notifikasi_h90_str: notifWarning,
-            notifikasi_h90_sip: notifWarning,
-            notifikasi_h30: notifPush,
-            email_digest: notifDaily ? 'daily' : 'off',
-            integrasi_email: notifEmail
-          };
+      const exportBtn = document.querySelector('[data-action="export-log"]');
+      if (exportBtn) {
+        exportBtn.addEventListener('click', async function () {
           try {
-            await data.saveSettings(payload);
-            const profile = auth.getProfile();
-            await data.addAuditLog({
-              user_id: profile.id,
-              user_name: profile.full_name,
-              action: 'UPDATE',
-              entity: 'settings',
-              entity_id: '-',
-              detail: 'Update preferensi notifikasi'
+            const logs = await data.loadLogs({});
+            const rows = [['Timestamp', 'Username', 'Aksi', 'Detail', 'IP Address']];
+            logs.forEach(function (l) {
+              rows.push([
+                l.created_at || '',
+                l.username || '',
+                l.aksi || '',
+                (l.detail || '').replace(/"/g, '""'),
+                l.ip_address || '',
+              ]);
             });
-            utils.toast('Preferensi notifikasi disimpan', 'success');
-          } catch (e) {
-            utils.toast('Error: ' + e.message, 'error');
+            const csv = rows.map(function (r) {
+              return r.map(function (c) { return '"' + String(c) + '"'; }).join(',');
+            }).join('\n');
+            utils.downloadFile('simantri-audit-log-' + Date.now() + '.csv', csv, 'text/csv');
+            utils.toast('Audit log diexport ke CSV (' + logs.length + ' entri)', 'success');
+          } catch (err) {
+            utils.toast('Gagal export: ' + err.message, 'error');
+            console.error('[pengaturan] export error:', err);
           }
         });
       }
 
-      // Show system settings for Dinkes
-      if (auth.isDinkes()) {
-        const sysSettings = document.getElementById('pg-system-settings');
-        if (sysSettings) sysSettings.classList.remove('hidden');
-      }
-      const saveSystemBtn = document.querySelector('[data-action="save-system"]');
-      if (saveSystemBtn) {
-        saveSystemBtn.addEventListener('click', async function () {
-          const warningDays = parseInt(document.getElementById('pg-warning-days') ? document.getElementById('pg-warning-days').value : '90', 10);
-          const appName = document.getElementById('pg-app-name') ? document.getElementById('pg-app-name').value : 'SIMANTRI';
-          const maintenance = document.getElementById('pg-maintenance') ? document.getElementById('pg-maintenance').checked : false;
-          const registration = document.getElementById('pg-registration') ? document.getElementById('pg-registration').checked : true;
-          const payload = {
-            expiry_threshold_days: isNaN(warningDays) ? 90 : warningDays,
-            app_name: appName,
-            auto_disable_expired: maintenance,
-            allow_registration: registration
-          };
-          try {
-            await data.saveSettings(payload);
-            const profile = auth.getProfile();
-            await data.addAuditLog({
-              user_id: profile.id,
-              user_name: profile.full_name,
-              action: 'UPDATE',
-              entity: 'settings',
-              entity_id: '-',
-              detail: 'Update pengaturan sistem (threshold=' + payload.expiry_threshold_days + ' hari)'
-            });
-            utils.toast('Pengaturan sistem disimpan', 'success');
-          } catch (e) {
-            utils.toast('Error: ' + e.message, 'error');
-          }
-        });
-      }
-
-      // Change password
-      const changePassBtn = document.querySelector('[data-action="change-pass"]');
-      if (changePassBtn) {
-        changePassBtn.addEventListener('click', async function () {
-          const current = document.getElementById('pg-current-pass').value;
-          const newP = document.getElementById('pg-new-pass').value;
-          const confirmP = document.getElementById('pg-confirm-pass').value;
-          const errEl = document.getElementById('pg-pass-err');
-          if (errEl) errEl.classList.add('hidden');
-          if (!current || !newP || !confirmP) {
-            if (errEl) { errEl.textContent = 'Semua field password wajib diisi'; errEl.classList.remove('hidden'); }
-            utils.toast('Lengkapi semua field password', 'error');
-            return;
-          }
-          if (newP.length < 8) {
-            if (errEl) { errEl.textContent = 'Password baru minimal 8 karakter'; errEl.classList.remove('hidden'); }
-            utils.toast('Password baru terlalu pendek', 'error');
-            return;
-          }
-          if (newP !== confirmP) {
-            if (errEl) { errEl.textContent = 'Konfirmasi password tidak cocok'; errEl.classList.remove('hidden'); }
-            utils.toast('Konfirmasi password tidak cocok', 'error');
-            return;
-          }
-          try {
-            const profile = auth.getProfile();
-            await data.addAuditLog({
-              user_id: profile.id,
-              user_name: profile.full_name,
-              action: 'UPDATE',
-              entity: 'auth',
-              entity_id: profile.id || '-',
-              detail: 'Ubah password user'
-            });
-            utils.toast('Password berhasil diubah', 'success');
-            document.getElementById('pg-current-pass').value = '';
-            document.getElementById('pg-new-pass').value = '';
-            document.getElementById('pg-confirm-pass').value = '';
-          } catch (e) {
-            utils.toast('Error: ' + e.message, 'error');
-          }
-        });
-      }
-
-      // Audit log filters
-      const auditSearch = document.getElementById('pg-audit-search');
-      if (auditSearch) {
-        auditSearch.addEventListener('input', utils.debounce(function (e) {
-          _auditSearch = e.target.value.trim();
-          renderAudit();
-        }, 250));
-      }
-      const auditActionSel = document.getElementById('pg-audit-action');
-      if (auditActionSel) {
-        auditActionSel.addEventListener('change', function (e) {
-          _auditAction = e.target.value;
-          renderAudit();
-        });
-      }
-      const auditDate = document.getElementById('pg-audit-date');
-      if (auditDate) {
-        auditDate.addEventListener('change', function (e) {
-          _auditDate = e.target.value;
-          renderAudit();
-        });
-      }
-
-      function actionBadge(action) {
-        const a = String(action || '').toLowerCase();
-        const map = {
-          login: 'badge-teal',
-          logout: 'badge-ink',
-          create: 'badge-lime',
-          update: 'badge-amber',
-          delete: 'badge-rose',
-          approve: 'badge-teal',
-          reject: 'badge-rose'
-        };
-        return map[a] || 'badge-ink';
-      }
-      function actionLabel(action) {
-        const a = String(action || '').toLowerCase();
-        const map = {
-          login: 'Login',
-          logout: 'Logout',
-          create: 'Create',
-          update: 'Update',
-          delete: 'Delete',
-          approve: 'Approve',
-          reject: 'Reject'
-        };
-        return map[a] || (action || '-');
-      }
-
-      async function loadAudit() {
-        try {
-          const opts = {};
-          if (_auditAction) opts.action = _auditAction.toUpperCase();
-          if (_auditSearch) opts.search = _auditSearch;
-          const items = await data.loadAuditLog(opts);
-          _auditLogs = (items || []).map(function (l) {
-            return {
-              id: l.id,
-              timestamp: l.created_at,
-              user: l.user_name || l.user_id || '-',
-              action: String(l.action || '').toLowerCase(),
-              module: l.entity || '-',
-              detail: l.detail || '-',
-              ip: l.ip_address || '-'
-            };
-          });
-        } catch (e) {
-          utils.toast('Gagal memuat audit log: ' + e.message, 'error');
-          _auditLogs = [];
-        }
-        renderAudit();
-      }
-
-      function renderAudit() {
-        const tbody = document.getElementById('pg-audit-tbody');
+      async function renderLogs() {
+        const tbody = document.getElementById('pg-log-tbody');
         if (!tbody) return;
-        let filtered = _auditLogs.slice();
-        if (_auditAction) filtered = filtered.filter(function (l) { return l.action === _auditAction; });
-        if (_auditDate) {
-          filtered = filtered.filter(function (l) {
-            const d = new Date(l.timestamp);
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const dd = String(d.getDate()).padStart(2, '0');
-            return (y + '-' + m + '-' + dd) === _auditDate;
-          });
+        try {
+          const list = await data.loadLogs(_logFilters);
+          _logsCache = list;
+          if (!list.length) {
+            tbody.innerHTML = '<tr><td colspan="5">' + emptyStateRow('Belum ada log aktivitas.') + '</td></tr>';
+            return;
+          }
+          tbody.innerHTML = list.map(function (l) {
+            const badge = aksiBadgeClass(l.aksi);
+            return '<tr>'
+                 +   '<td class="whitespace-nowrap text-xs text-ink-500">' + utils.fmtDate(l.created_at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + '</td>'
+                 +   '<td class="font-mono font-semibold text-ink-900">' + utils.escapeHtml(l.username || '-') + '</td>'
+                 +   '<td><span class="badge ' + badge + '">' + utils.escapeHtml(l.aksi || '-') + '</span></td>'
+                 +   '<td class="text-ink-600 text-xs max-w-md">' + utils.escapeHtml(l.detail || '-') + '</td>'
+                 +   '<td class="font-mono text-xs text-ink-500">' + utils.escapeHtml(l.ip_address || '-') + '</td>'
+                 + '</tr>';
+          }).join('');
+        } catch (err) {
+          utils.toast('Gagal memuat log: ' + err.message, 'error');
+          console.error('[pengaturan] renderLogs error:', err);
+          tbody.innerHTML = '<tr><td colspan="5">' + emptyStateRow('Gagal memuat data.') + '</td></tr>';
         }
-        if (_auditSearch) {
-          const q = _auditSearch.toLowerCase();
-          filtered = filtered.filter(function (l) {
-            return (l.user || '').toLowerCase().indexOf(q) >= 0
-              || (l.detail || '').toLowerCase().indexOf(q) >= 0
-              || (l.module || '').toLowerCase().indexOf(q) >= 0;
-          });
-        }
-        if (!filtered.length) {
-          tbody.innerHTML = '<tr><td colspan="6"><div class="text-center py-10">'
-            + '<div class="w-12 h-12 mx-auto rounded-xl bg-ink-100 text-ink-400 flex items-center justify-center mb-3">'
-            + '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>'
-            + '</div>'
-            + '<p class="text-sm font-semibold text-ink-700">Tidak ada audit log yang cocok</p>'
-            + '</div></td></tr>';
-          return;
-        }
-        tbody.innerHTML = filtered.map(function (l) {
-          const colorAvatar = utils.avatarColor(l.user);
-          return '<tr>'
-               + '<td><div class="text-xs text-ink-700">' + utils.fmtDate(l.timestamp) + '</div><div class="text-[10px] text-ink-400">' + new Date(l.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + '</div></td>'
-               + '<td><div class="flex items-center gap-2"><div class="w-6 h-6 rounded-full ' + colorAvatar + ' text-white flex items-center justify-center text-[9px] font-bold flex-shrink-0">' + utils.escapeHtml(utils.initials(l.user)) + '</div><span class="text-xs font-medium text-ink-800 truncate">' + utils.escapeHtml(l.user) + '</span></div></td>'
-               + '<td><span class="badge ' + actionBadge(l.action) + '">' + actionLabel(l.action) + '</span></td>'
-               + '<td><span class="text-xs text-ink-700">' + utils.escapeHtml(l.module || '-') + '</span></td>'
-               + '<td><span class="text-xs text-ink-600">' + utils.escapeHtml(l.detail || '-') + '</span></td>'
-               + '<td><span class="text-xs font-mono text-ink-500">' + utils.escapeHtml(l.ip || '-') + '</span></td>'
-               + '</tr>';
-        }).join('');
       }
 
-      await loadFasyankes();
-      await loadSettingsForm();
-      await loadAudit();
+      function emptyStateRow(message) {
+        return '<div class="text-center py-8 text-sm text-ink-500">' + utils.escapeHtml(message) + '</div>';
+      }
+
+      async function renderDbStats() {
+        const container = document.getElementById('pg-db-stats');
+        if (!container) return;
+        try {
+          const [users, profil, vervalIzin, vervalFasyankes, izin, pengumuman, logs] = await Promise.all([
+            data.loadUsers({}),
+            data.loadProfilSdmk({}),
+            data.loadVervalIzin({}),
+            data.loadVervalFasyankes({}),
+            data.loadIzin({}),
+            data.loadPengumuman({}),
+            data.loadLogs({}),
+          ]);
+          const cards = [
+            { label: 'Users', value: users.length, color: 'teal' },
+            { label: 'Profil SDMK', value: profil.length, color: 'teal' },
+            { label: 'Verval Izin', value: vervalIzin.length, color: 'lime' },
+            { label: 'Verval Fasyankes', value: vervalFasyankes.length, color: 'lime' },
+            { label: 'Pengajuan Izin', value: izin.length, color: 'amber' },
+            { label: 'Pengumuman', value: pengumuman.length, color: 'amber' },
+            { label: 'Logs', value: logs.length, color: 'ink' },
+            { label: 'Total Records', value: users.length + profil.length + vervalIzin.length + vervalFasyankes.length + izin.length + pengumuman.length + logs.length, color: 'teal' },
+          ];
+          const colorClass = {
+            teal: 'bg-teal-50 text-teal-700',
+            lime: 'bg-lime-50 text-lime-700',
+            amber: 'bg-amber-50 text-amber-700',
+            ink: 'bg-ink-100 text-ink-700',
+          };
+          container.innerHTML = cards.map(function (c) {
+            return '<div class="rounded-xl border border-ink-100 p-4 text-center">'
+                 + '<p class="text-2xl font-extrabold tabular-nums ' + (colorClass[c.color] || colorClass.ink) + '">' + utils.fmtNumber(c.value) + '</p>'
+                 + '<p class="text-xs text-ink-500 font-semibold uppercase tracking-wide mt-1">' + utils.escapeHtml(c.label) + '</p>'
+                 + '</div>';
+          }).join('');
+        } catch (err) {
+          utils.toast('Gagal memuat statistik: ' + err.message, 'error');
+          console.error('[pengaturan] renderDbStats error:', err);
+          container.innerHTML = '<div class="col-span-full text-center py-4 text-sm text-ink-500">Gagal memuat statistik database.</div>';
+        }
+      }
+
+      await renderLogs();
     },
   };
 })();

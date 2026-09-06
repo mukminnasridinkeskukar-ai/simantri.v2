@@ -30,10 +30,14 @@
       console.warn('[navigateTo] route "' + routeId + '" tidak ditemukan');
       return;
     }
-    // Permission check: manajemen-user hanya untuk admin yang sudah login
-    if (route.dinkesOnly && !auth.isAuthenticated()) {
-      utils.toast('Akses ditolak: halaman ini hanya untuk Admin Dinkes. Silakan login terlebih dahulu.', 'warning');
+    // Permission check: Bagian 2 (Input Data) & Bagian 3 (Sistem) hanya untuk admin/operator
+    if ((route.group === 'input' || route.group === 'sistem') && !auth.canAccessSection2()) {
+      utils.toast('Akses ditolak: halaman ini hanya untuk Admin/Operator. Silakan login terlebih dahulu.', 'warning');
       openLoginModal();
+      return;
+    }
+    if (route.adminOnly && !auth.isAdmin()) {
+      utils.toast('Akses ditolak: halaman ini hanya untuk Admin.', 'error');
       return;
     }
 
@@ -157,11 +161,11 @@
     if (form) {
       form.addEventListener('submit', async function (e) {
         e.preventDefault();
-        const email = document.getElementById('login-email').value.trim();
+        const username = document.getElementById('login-email').value.trim();
         const password = document.getElementById('login-password').value;
-        if (!email || !password) {
+        if (!username || !password) {
           if (errBox) {
-            errBox.textContent = 'Email dan password wajib diisi';
+            errBox.textContent = 'Username dan password wajib diisi';
             errBox.classList.remove('hidden');
           }
           return;
@@ -172,13 +176,11 @@
           submitBtn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9"/></svg> Memproses...';
         }
         try {
-          await auth.signIn(email, password);
+          await auth.signIn(username, password);
           utils.toast('Selamat datang, ' + (auth.getProfile().full_name || 'Admin'), 'success');
           closeLoginModal();
-          // Re-render sidebar & header untuk update UI (ganti tombol "Login Admin" jadi user info)
           components.renderSidebar('sidebar-slot');
           components.renderHeader('header-slot', components.ROUTES.find(function (r) { return r.id === _currentRouteId; }) || components.ROUTES[0]);
-          // Re-navigate untuk apply permissions
           await navigateTo(_currentRouteId || 'dashboard');
         } catch (err) {
           if (errBox) {
@@ -207,11 +209,11 @@
     // Demo account quick-fill
     document.querySelectorAll('.demo-account').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        const email = btn.getAttribute('data-email');
+        const username = btn.getAttribute('data-username') || btn.getAttribute('data-email');
         const password = btn.getAttribute('data-password');
-        const emailInput = document.getElementById('login-email');
+        const userInput = document.getElementById('login-email');
         const pwdInput = document.getElementById('login-password');
-        if (emailInput) emailInput.value = email;
+        if (userInput) userInput.value = username;
         if (pwdInput) pwdInput.value = password;
         if (errBox) errBox.classList.add('hidden');
         if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
