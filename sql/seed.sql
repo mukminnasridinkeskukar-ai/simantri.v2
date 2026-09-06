@@ -137,3 +137,27 @@ on conflict (id) do nothing;
 
 select setval(pg_get_serial_sequence('public.verval_izin_praktik', 'id'),
               coalesce((select max(id) from public.verval_izin_praktik), 0) + 1, false);
+
+-- ---------- VERVAL FASYANKES ----------
+insert into public.verval_fasyankes
+  (id, kode_verval, tanggal_verval, nomor_unit, nama_fasyankes, jenis_fasyankes,
+   nama_pemilik, penanggung_jawab, alamat_lengkap, kelurahan, kecamatan, nomor_hp,
+   email, sdm_kesehatan, status_verifikasi, catatan_verifikasi, verifikator)
+overriding system value
+values
+  (1, 'VF-20260901-DEMO1', '2026-09-01', '446/RS/2020', 'RSUD Samarinda', 'Rumah Sakit',
+   'Pemerintah Kota Samarinda', 'drg. Ida Farida, M.Kes',
+   'Jl. Milono No. 1', 'Sidodamai', 'Samarinda Ilir', '0541738541', 'rsud@samarindakota.go.id',
+   'Dokter Umum; Dokter Spesialis; Dokter Gigi; Perawat; Apoteker; ATLM',
+   'Layak', 'Fasilitas lengkap, SDM sesuai standar, arsip izin tertib.',
+   'verifikator@dinkes.go.id'),
+  (2, 'VF-20260903-DEMO2', '2026-09-03', 'KLN-221/2024', 'Klinik Pratama Sehat Sentosa', 'Klinik',
+   'CV Sehat Sentosa', 'dr. Rina Kartika',
+   'Jl. Ir. H. Juanda No. 45', 'Pelabuhan', 'Samarinda Tengah', '081250012345', 'sehatsentosa@mail.com',
+   'Dokter; Perawat',
+   'Perbaikan', 'SIP satu perawat belum diperbarui; apoteker belum tersedia tetap.',
+   'verifikator@dinkes.go.id')
+on conflict (id) do nothing;
+
+select setval(pg_get_serial_sequence('public.verval_fasyankes', 'id'),
+              coalesce((select max(id) from public.verval_fasyankes), 0) + 1, false);

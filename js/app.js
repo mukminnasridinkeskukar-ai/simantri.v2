@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.1.0';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.2.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -872,7 +872,7 @@ function renderPetunjuk() {
     },
     {
       t: '5. Verifikasi Perizinan (Bagian 3)',
-      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 28 field verifikasi &amp; validasi izin praktik dengan pencarian NIK otomatis (mengisi form dari data verval/tenaga medis sebelumnya) serta <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> menangani persetujuan pengajuan fasyankes. Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> dengan memasukkan NIK atau nama.</p>`,
+      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 28 field verifikasi &amp; validasi izin praktik dengan pencarian NIK otomatis (mengisi form dari data verval/tenaga medis sebelumnya) serta <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> juga tiga tab: <b>Formulir Verval Fasyankes</b> — ID verval otomatis (VF-tanggal-kode), data fasilitas, alamat &amp; kontak, daftar <b>SDM Kesehatan dinamis</b> mengikuti jenis fasyankes (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, plus draf otomatis; <b>Riwayat Verval</b> (detail lengkap, hapus khusus admin); dan <b>Pengajuan Faskes</b> (setujui/tolak). Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> dengan memasukkan NIK atau nama.</p>`,
     },
     {
       t: '6. Monev Izin & Upload Foto',
@@ -1348,7 +1348,7 @@ function setDraftStatus(html, mode = 'ok') {
 function vervalLoginNotice() {
   return `<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-xs text-sky-800 flex gap-2.5 items-start mb-4">
     ${icon('info', 'w-4 h-4 mt-0.5 flex-none')}
-    <span>Formulir ini untuk kegiatan <b>verifikasi &amp; validasi izin praktik</b>. Masuk dengan akun
+    <span>Formulir ini untuk kegiatan <b>verifikasi &amp; validasi</b> oleh petugas berwenang. Masuk dengan akun
     <b>Verifikator</b> atau <b>Admin</b> (tombol <b>Masuk</b> di kanan atas) untuk mengirim data.
     Riwayat &amp; detail verval tetap dapat dilihat tanpa masuk.</span></div>`;
 }
@@ -1593,7 +1593,7 @@ async function simpanDraftVerval() {
   setDraftStatus(`${icon('save', 'w-3.5 h-3.5')} Menyimpan draf…`, 'saving');
   try {
     const { error } = await supabase.from('verval_draft')
-      .upsert({ user_id: state.user.id, data, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      .upsert({ user_id: state.user.id, form: 'praktik', data, updated_at: new Date().toISOString() }, { onConflict: 'user_id,form' });
     if (error) throw error;
     setDraftStatus(`${icon('check', 'w-3.5 h-3.5')} Draf tersimpan otomatis • ${new Date().toLocaleTimeString('id-ID')}`);
   } catch (e) {
@@ -1609,7 +1609,7 @@ async function muatDraftVerval() {
   }
   try {
     const { data, error } = await supabase.from('verval_draft')
-      .select('data, updated_at').eq('user_id', state.user.id).maybeSingle();
+      .select('data, updated_at').eq('user_id', state.user.id).eq('form', 'praktik').maybeSingle();
     if (error) throw error;
     if (data?.data && Object.keys(data.data).length) {
       Object.entries(data.data).forEach(([id, v]) => {
@@ -1630,7 +1630,7 @@ async function muatDraftVerval() {
 async function hapusDraftVerval(silent = false) {
   if (!SUPABASE_TERKONFIGURASI || !state.user) return;
   try {
-    await supabase.from('verval_draft').delete().eq('user_id', state.user.id);
+    await supabase.from('verval_draft').delete().eq('user_id', state.user.id).eq('form', 'praktik');
   } catch (e) {
     if (!silent) toast(friendlyError(e), 'error');
   }
@@ -1815,6 +1815,445 @@ function detailVervalModal(r, onDeleted = null) {
           const { error } = await supabase.from('verval_izin_praktik').delete().eq('id', r.id);
           if (error) throw error;
           toast('Catatan verval dihapus.');
+          if (onDeleted) onDeleted();
+        },
+      }));
+    },
+  });
+}
+
+/* =========================================================
+ * 13C. VERIFIKASI FASKES — FORMULIR VERVAL FASYANKES
+ *      ID otomatis VF-YYYYMMDD-XXXXX • SDM Kesehatan dinamis
+ *      per jenis • draf tersinkron ke verval_draft (form=faskes)
+ *      • hasil ke tabel verval_fasyankes
+ * ========================================================= */
+
+let vfTab = 'form';
+let vfDraftTimer = null;
+
+const VERVAL_FAS_BADGE = {
+  'Layak': 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200',
+  'Tidak Layak': 'bg-rose-100 text-rose-700 ring-1 ring-rose-200',
+  'Perbaikan': 'bg-amber-100 text-amber-700 ring-1 ring-amber-200',
+  'Pending': 'bg-sky-100 text-sky-700 ring-1 ring-sky-200',
+  'Tidak Valid': 'bg-slate-200 text-slate-700 ring-1 ring-slate-300',
+};
+
+/* Standar SDM Kesehatan per jenis fasyankes (dinamis mengikuti pilihan jenis) */
+const SDM_FASYANKES = {
+  'Rumah Sakit': ['Dokter Umum', 'Dokter Spesialis', 'Dokter Gigi', 'Perawat', 'Bidan', 'Apoteker', 'ATLM', 'Nutrisionis / Ahli Gizi', 'Fisioterapis', 'Sanitarian'],
+  'Puskesmas': ['Dokter', 'Dokter Gigi', 'Perawat', 'Bidan', 'Apoteker / TTF', 'ATLM', 'Nutrisionis / Ahli Gizi', 'Sanitarian', 'Petugas Promosi Kesehatan'],
+  'Klinik': ['Dokter', 'Dokter Gigi', 'Perawat', 'Bidan', 'Apoteker', 'ATLM', 'Nutrisionis / Ahli Gizi', 'Fisioterapis'],
+  'Apotik': ['Apoteker', 'Tenaga Teknis Farmasi (TTF)'],
+  'Toko Obat': ['Tenaga Teknis Farmasi (TTF)'],
+  'Optik': ['Optometris', 'Tenaga Teknis Alat Kesehatan'],
+  'PBF (Pedagang Besar Farmasi)': ['Apoteker PBF', 'Tenaga Teknis Farmasi (TTF)'],
+  'Tempat Praktik Mandiri': ['Dokter', 'Dokter Gigi', 'Bidan', 'Perawat', 'Fisioterapis'],
+};
+
+/* Pasangan kolom-DB → label (untuk modal detail riwayat) */
+const VERVAL_FAS_FIELDS = [
+  ['kode_verval', 'ID Verval'], ['tanggal_verval', 'Tanggal Verval'],
+  ['nomor_unit', 'Nomor Unit'], ['nama_fasyankes', 'Nama Fasyankes'],
+  ['jenis_fasyankes', 'Jenis Fasyankes'], ['nama_pemilik', 'Nama Pemilik'],
+  ['penanggung_jawab', 'Penanggung Jawab'], ['alamat_lengkap', 'Alamat Lengkap'],
+  ['kelurahan', 'Kelurahan / Desa'], ['kecamatan', 'Kecamatan'],
+  ['nomor_hp', 'Nomor HP/WA'], ['email', 'Email'],
+  ['sdm_kesehatan', 'SDM Kesehatan Terverifikasi'],
+  ['status_verifikasi', 'Hasil Verifikasi'], ['catatan_verifikasi', 'Catatan Verifikasi'],
+  ['verifikator', 'Verifikator'], ['created_at', 'Waktu Disimpan'],
+];
+
+function genKodeVf() {
+  const n = new Date();
+  const p = (x) => String(x).padStart(2, '0');
+  const rand = Math.random().toString(36).slice(2, 7).toUpperCase();
+  return `VF-${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${rand}`;
+}
+
+function setDraftStatusVf(html, mode = 'ok') {
+  const st = $('#draft-status-vf');
+  if (!st) return;
+  st.classList.toggle('saving', mode === 'saving');
+  st.classList.toggle('verval-status-warn', mode === 'warn');
+  st.innerHTML = html;
+}
+
+/* ---------- Halaman Verifikasi Faskes (3 tab) ---------- */
+
+async function mountVervalFaskes() {
+  const tabs = [
+    ['form', 'Formulir Verval', 'faskes'],
+    ['riwayat', 'Riwayat Verval', 'cek'],
+    ['pengajuan', 'Pengajuan Faskes', 'shield'],
+  ];
+  $('#page-content').innerHTML = `
+    ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="vfc-tabs">
+      ${tabs.map(([k, l, ic]) => `<button class="chip ${vfTab === k ? 'active' : ''}" data-tab="${k}">${icon(ic, 'w-4 h-4')} ${l}</button>`).join('')}
+    </div>
+    <div id="vfc-content"></div>`;
+  $$('#vfc-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+    if (vfTab === b.dataset.tab) return;
+    vfTab = b.dataset.tab;
+    $$('#vfc-tabs [data-tab]').forEach((x) => x.classList.toggle('active', x.dataset.tab === vfTab));
+    renderVfTab();
+  }));
+  renderVfTab();
+}
+
+function renderVfTab() {
+  if (vfTab === 'riwayat') return renderRiwayatVf();
+  if (vfTab === 'pengajuan') return mountVerifikasi('faskes', '#vfc-content');
+  renderVfForm();
+}
+
+/* ---------- Tab 1: FORMULIR VERVAL FASYANKES ---------- */
+
+function renderVfForm() {
+  const kode = genKodeVf();
+  const now = new Date();
+  const tglPanjang = now.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const verifikatorAwal = esc(state.profile?.nama || state.user?.email || '');
+  $('#vfc-content').innerHTML = `
+    ${canVerify() ? '' : vervalLoginNotice()}
+    <div class="card p-5 sm:p-7">
+      <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div class="flex items-start gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-xl bg-teal-600 text-white grid place-items-center flex-none">${icon('faskes', 'w-5 h-5')}</div>
+          <div class="min-w-0">
+            <p class="text-lg font-extrabold text-teal-800 leading-tight">Formulir Verval Fasyankes</p>
+            <p class="text-xs text-slate-500 mt-0.5">Verifikasi &amp; Validasi Fasilitas Pelayanan Kesehatan &bull; SIMANTRI Dinkes Kota Samarinda</p>
+          </div>
+        </div>
+        <span class="vf-id-badge">ID Verval<br><code>${kode}</code></span>
+      </div>
+
+      <div class="vf-info-panel">
+        <div>
+          <p class="vf-info-label">ID Pendaftaran</p>
+          <p class="vf-info-value">${kode}</p>
+        </div>
+        <div class="vf-info-sep"></div>
+        <div>
+          <p class="vf-info-label">Tanggal Input</p>
+          <p class="vf-info-value tanggal">${esc(tglPanjang)}</p>
+        </div>
+      </div>
+
+      <div id="draft-status-vf" class="draft-status mb-4"></div>
+
+      <form id="vf-form" autocomplete="off" novalidate>
+        <div class="verval-grid">
+
+          <div class="verval-section"><span class="verval-section-title">1 &bull; Data Fasilitas Kesehatan</span></div>
+
+          <div class="verval-field"><label>Nomor Unit <span class="req">*</span></label><input type="text" id="vf-nomor-unit" class="input" placeholder="Contoh: UNIT-001 / No. Izin Operasional"></div>
+          <div class="verval-field"><label>Nama Fasyankes <span class="req">*</span></label><input type="text" id="vf-nama-fasyankes" class="input" placeholder="Nama lengkap fasilitas kesehatan"></div>
+          <div class="verval-field"><label>Jenis Fasyankes <span class="req">*</span></label><select id="vf-jenis-fasyankes" class="input">
+            <option value="">— Pilih Jenis Fasyankes —</option>
+            ${Object.keys(SDM_FASYANKES).map((j) => `<option value="${esc(j)}">${esc(j)}</option>`).join('')}
+          </select></div>
+          <div class="verval-field"><label>Nama Pemilik <span class="req">*</span></label><input type="text" id="vf-pemilik" class="input" placeholder="Nama lengkap pemilik/usaha"></div>
+          <div class="verval-field"><label>Nama Penanggung Jawab <span class="req">*</span></label><input type="text" id="vf-pj" class="input" placeholder="Nama penanggung jawab operasional"></div>
+
+          <div class="verval-section"><span class="verval-section-title">2 &bull; Alamat &amp; Kontak</span></div>
+
+          <div class="verval-field verval-span"><label>Alamat Lengkap <span class="req">*</span></label><textarea id="vf-alamat" class="input" rows="2" placeholder="Jalan, RT/RW, kelompok perumahan, dll."></textarea></div>
+          <div class="verval-field"><label>Kelurahan / Desa <span class="req">*</span></label><input type="text" id="vf-kelurahan" class="input" placeholder="Nama Kelurahan/Desa"></div>
+          <div class="verval-field"><label>Kecamatan <span class="req">*</span></label><input type="text" id="vf-kecamatan" class="input" list="daftar-kecamatan" placeholder="Nama Kecamatan">
+            <datalist id="daftar-kecamatan">${KECAMATAN_SAMARINDA.map((k) => `<option value="${esc(k)}"></option>`).join('')}</datalist>
+            <small class="verval-hint">Ketik untuk saran kecamatan di Kota Samarinda</small>
+          </div>
+          <div class="verval-field"><label>Nomor HP/WA <span class="req">*</span></label><input type="tel" id="vf-hp" class="input" placeholder="08xxxxxxxxxx"></div>
+          <div class="verval-field"><label>Email</label><input type="email" id="vf-email" class="input" placeholder="email@contoh.com"></div>
+
+          <div class="verval-section"><span class="verval-section-title">3 &bull; Data SDM Kesehatan</span></div>
+
+          <div class="verval-field verval-span">
+            <label>SDM Kesehatan Terverifikasi <span class="verval-hint" style="display:inline;margin-left:.35rem;font-style:italic">sesuai standar jenis fasyankes</span></label>
+            <div class="vf-sdm-box" id="vf-sdm-container"></div>
+          </div>
+
+          <div class="verval-section"><span class="verval-section-title">4 &bull; Hasil Verifikasi</span></div>
+
+          <div class="verval-field"><label>Hasil Verifikasi <span class="req">*</span></label><select id="vf-status-verifikasi" class="input">
+            <option value="">— Pilih Hasil Verifikasi —</option>
+            <option value="Layak">Layak / Memenuhi Syarat</option>
+            <option value="Tidak Layak">Tidak Layak / Tidak Memenuhi Syarat</option>
+            <option value="Perbaikan">Perbaikan / Revisi Data</option>
+            <option value="Pending">Pending / Menunggu Kelengkapan</option>
+            <option value="Tidak Valid">Tidak Valid / Data Palsu</option>
+          </select></div>
+          <div class="verval-field"><label>Nama Verifikator Dinkes <span class="req">*</span></label><input type="text" id="vf-verifikator" class="input" value="${verifikatorAwal}" placeholder="Nama lengkap verifikator"></div>
+          <div class="verval-field verval-span"><label>Catatan Verifikasi</label><textarea id="vf-catatan" class="input" rows="3" placeholder="Temuan di lapangan, rekomendasi, atau hal yang perlu diperbaiki…"></textarea></div>
+        </div>
+
+        <input type="hidden" id="vf-id" value="${kode}">
+        <input type="hidden" id="vf-tanggal" value="${todayISO()}">
+
+        <div class="verval-actions">
+          <button type="submit" class="btn btn-primary btn-submit" ${canVerify() ? '' : 'disabled title="Masuk sebagai Verifikator/Admin dulu"'}>${icon('save', 'w-4 h-4')} Simpan &amp; Kirim Verval Fasyankes</button>
+          <button type="button" class="btn btn-ghost" id="btn-vf-reset">${icon('undo', 'w-4 h-4')} Reset Formulir</button>
+        </div>
+      </form>
+    </div>
+    <p class="text-center text-[.7rem] text-slate-400 mt-3">Data tersimpan ke tabel <b>verval_fasyankes</b> &bull; draf formulir otomatis tersinkron ke database per pengguna</p>`;
+
+  renderSdmVf('');
+  const form = $('#vf-form');
+  form.addEventListener('submit', (e) => { e.preventDefault(); submitVfForm(); });
+  $('#vf-jenis-fasyankes').addEventListener('change', () => renderSdmVf($('#vf-jenis-fasyankes').value));
+  $('#btn-vf-reset').addEventListener('click', resetVfForm);
+  form.addEventListener('input', jadwalkanDraftVf);
+  form.addEventListener('change', jadwalkanDraftVf);
+  muatDraftVf();
+}
+
+/* Daftar SDM Kesehatan dinamis mengikuti jenis fasyankes terpilih */
+function renderSdmVf(jenis, checked = []) {
+  const box = $('#vf-sdm-container');
+  if (!box) return;
+  if (!jenis || !SDM_FASYANKES[jenis]) {
+    box.innerHTML = `<p class="text-xs text-slate-400 italic">Pilih <b>Jenis Fasyankes</b> terlebih dahulu — daftar standar SDM Kesehatan yang wajib diverifikasi akan tampil otomatis di sini.</p>`;
+    return;
+  }
+  box.innerHTML = `
+    <p class="text-[.68rem] text-slate-400 mb-2">Centang SDM Kesehatan yang terverifikasi sesuai standar <b>${esc(jenis)}</b>:</p>
+    <div class="vf-sdm-grid">${SDM_FASYANKES[jenis].map((o) => `
+      <label class="vf-sdm-item"><input type="checkbox" name="sdm-faskes" value="${esc(o)}" ${checked.includes(o) ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}</div>`;
+}
+
+/* ---------- Draf otomatis (verval_draft, form='faskes') ---------- */
+
+function jadwalkanDraftVf() {
+  clearTimeout(vfDraftTimer);
+  vfDraftTimer = setTimeout(simpanDraftVf, 1500);
+}
+
+async function simpanDraftVf() {
+  const form = $('#vf-form');
+  if (!form) return;
+  if (!SUPABASE_TERKONFIGURASI || !state.user) {
+    setDraftStatusVf(`${icon('info', 'w-3.5 h-3.5')} Masuk untuk mengaktifkan simpan-otomatis draf`, 'warn');
+    return;
+  }
+  const data = {};
+  form.querySelectorAll('input, select, textarea').forEach((el) => {
+    if (!el.id || ['vf-id', 'vf-tanggal'].includes(el.id)) return;
+    if (el.type === 'checkbox') return;
+    data[el.id] = el.value;
+  });
+  data['__sdm'] = $$('input[name="sdm-faskes"]:checked').map((c) => c.value).join('; ');
+  setDraftStatusVf(`${icon('save', 'w-3.5 h-3.5')} Menyimpan draf…`, 'saving');
+  try {
+    const { error } = await supabase.from('verval_draft')
+      .upsert({ user_id: state.user.id, form: 'faskes', data, updated_at: new Date().toISOString() }, { onConflict: 'user_id,form' });
+    if (error) throw error;
+    setDraftStatusVf(`${icon('check', 'w-3.5 h-3.5')} Draf tersimpan otomatis • ${new Date().toLocaleTimeString('id-ID')}`);
+  } catch (e) {
+    console.warn('Draft verval faskes gagal:', e.message);
+    setDraftStatusVf(`${icon('alert', 'w-3.5 h-3.5')} Draf gagal tersimpan: ${esc(friendlyError(e))}`, 'warn');
+  }
+}
+
+async function muatDraftVf() {
+  if (!SUPABASE_TERKONFIGURASI || !state.user) {
+    setDraftStatusVf(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai verifikator/admin untuk mengaktifkan draf otomatis`, 'warn');
+    return;
+  }
+  try {
+    const { data, error } = await supabase.from('verval_draft')
+      .select('data, updated_at').eq('user_id', state.user.id).eq('form', 'faskes').maybeSingle();
+    if (error) throw error;
+    if (data?.data && Object.keys(data.data).length) {
+      const saved = data.data;
+      Object.entries(saved).forEach(([id, v]) => {
+        if (id === '__sdm') return;
+        const el = document.getElementById(id);
+        if (el && v != null) el.value = v;
+      });
+      renderSdmVf(document.getElementById('vf-jenis-fasyankes')?.value || '', String(saved['__sdm'] || '').split('; ').filter(Boolean));
+      setDraftStatusVf(`${icon('check', 'w-3.5 h-3.5')} Draf dipulihkan otomatis • tersimpan ${fmtDateTime(data.updated_at)}`);
+    } else {
+      setDraftStatusVf(`${icon('save', 'w-3.5 h-3.5')} Simpan-otomatis draf aktif (tersinkron ke database)`);
+    }
+  } catch (e) {
+    console.warn('Muat draft verval faskes gagal:', e.message);
+    setDraftStatusVf(`${icon('alert', 'w-3.5 h-3.5')} Draf tidak dapat dimuat`, 'warn');
+  }
+}
+
+async function hapusDraftVf(silent = false) {
+  if (!SUPABASE_TERKONFIGURASI || !state.user) return;
+  try {
+    await supabase.from('verval_draft').delete().eq('user_id', state.user.id).eq('form', 'faskes');
+  } catch (e) {
+    if (!silent) toast(friendlyError(e), 'error');
+  }
+}
+
+function resetVfForm() {
+  confirmDialog({
+    title: 'Reset Formulir Verval Fasyankes',
+    message: 'Seluruh isian formulir dan draf yang tersimpan akan dihapus, ID verval diperbarui. Lanjutkan?',
+    onYes: async () => {
+      await hapusDraftVf(true);
+      renderVfForm();
+      toast('Formulir dikosongkan dengan ID baru.');
+    },
+  });
+}
+
+/* ---------- Kumpul & submit ---------- */
+
+function kumpulDataVf() {
+  const g = (id) => document.getElementById(id)?.value.trim() || '';
+  return {
+    kode_verval: g('vf-id'), tanggal_verval: g('vf-tanggal') || todayISO(),
+    nomor_unit: g('vf-nomor-unit'), nama_fasyankes: g('vf-nama-fasyankes'),
+    jenis_fasyankes: g('vf-jenis-fasyankes'), nama_pemilik: g('vf-pemilik'),
+    penanggung_jawab: g('vf-pj'), alamat_lengkap: g('vf-alamat'),
+    kelurahan: g('vf-kelurahan'), kecamatan: g('vf-kecamatan'),
+    nomor_hp: g('vf-hp'), email: g('vf-email') || null,
+    sdm_kesehatan: $$('input[name="sdm-faskes"]:checked').map((c) => c.value).join('; ') || null,
+    status_verifikasi: g('vf-status-verifikasi'),
+    catatan_verifikasi: g('vf-catatan') || null,
+    verifikator: g('vf-verifikator'),
+  };
+}
+
+async function submitVfForm() {
+  const d = kumpulDataVf();
+  const errors = [];
+  if (!d.nomor_unit) errors.push('Nomor Unit wajib diisi');
+  if (!d.nama_fasyankes) errors.push('Nama Fasyankes wajib diisi');
+  if (!d.jenis_fasyankes) errors.push('Jenis Fasyankes wajib dipilih');
+  if (!d.nama_pemilik) errors.push('Nama Pemilik wajib diisi');
+  if (!d.penanggung_jawab) errors.push('Penanggung Jawab wajib diisi');
+  if (!d.alamat_lengkap) errors.push('Alamat Lengkap wajib diisi');
+  if (!d.kelurahan) errors.push('Kelurahan/Desa wajib diisi');
+  if (!d.kecamatan) errors.push('Kecamatan wajib diisi');
+  if (!d.nomor_hp) errors.push('Nomor HP wajib diisi');
+  if (!d.status_verifikasi) errors.push('Hasil Verifikasi wajib dipilih');
+  if (!d.verifikator) errors.push('Nama Verifikator wajib diisi');
+  if (errors.length) { toast(errors.join(' • '), 'error'); return; }
+  if (!SUPABASE_TERKONFIGURASI) { toast('Supabase belum dikonfigurasi — isi js/config.js.', 'error'); return; }
+  if (!canVerify()) { toast('Hanya Verifikator/Admin yang dapat mengirim verval. Silakan masuk dahulu.', 'error'); return; }
+
+  const btns = $$('#vf-form button');
+  btns.forEach((b) => { b.disabled = true; });
+  try {
+    const { error } = await supabase.from('verval_fasyankes').insert(d);
+    if (error) throw error;
+    await hapusDraftVf(true);
+    toast('Data verval fasyankes berhasil disimpan ke database.');
+    showVfSukses(d);
+  } catch (err) {
+    toast(friendlyError(err), 'error');
+    btns.forEach((b) => { b.disabled = false; });
+  }
+}
+
+function showVfSukses(d) {
+  openModal({
+    title: 'Verval Fasyankes Berhasil Disimpan', size: 'sm',
+    body: `<div class="text-center py-2">
+      <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 grid place-items-center mx-auto mb-3">${icon('check', 'w-8 h-8')}</div>
+      <p class="font-extrabold text-slate-800 mb-1">Data verval fasyankes berhasil disimpan!</p>
+      <p class="text-xs text-slate-500 leading-relaxed mb-4">Hasil verifikasi tercatat di database SIMANTRI dan dapat dilihat pada tab Riwayat Verval.</p>
+      <div class="rounded-xl bg-slate-50 border border-slate-100 p-4 text-left text-[.78rem] space-y-1.5">
+        <p><span class="text-slate-400">ID Verval:</span> <span class="kode-chip">${esc(d.kode_verval)}</span></p>
+        <p><span class="text-slate-400">Fasyankes:</span> <b>${esc(d.nama_fasyankes)}</b></p>
+        <p><span class="text-slate-400">Jenis:</span> ${esc(d.jenis_fasyankes)}</p>
+        <p><span class="text-slate-400">Hasil:</span> <b>${esc(d.status_verifikasi)}</b></p>
+        <p><span class="text-slate-400">Tanggal:</span> ${fmtDate(d.tanggal_verval)}</p>
+      </div>
+    </div>`,
+    footer: `<button class="btn btn-primary" id="btn-vf-selesai">Isi Formulir Baru</button>`,
+    onOpen: (root) => root.querySelector('#btn-vf-selesai').addEventListener('click', () => {
+      closeModal();
+      renderVfForm();
+    }),
+  });
+}
+
+/* ---------- Tab 2: RIWAYAT VERVAL FASYANKES ---------- */
+
+function renderRiwayatVf() {
+  $('#vfc-content').innerHTML = `
+    <div class="card p-4 sm:p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
+        <div>
+          <p class="text-sm font-extrabold text-slate-800">Riwayat Verval Fasyankes</p>
+          <p class="text-xs text-slate-400">Seluruh hasil pengisian formulir verval fasyankes. Klik baris untuk detail lengkap.</p>
+        </div>
+        <div class="search-box">${icon('search', 'w-4 h-4 text-slate-400')}<input id="rvf-q" placeholder="Cari nama / nomor unit / kecamatan…"></div>
+      </div>
+      <div id="rvf-count"></div>
+      <div id="rvf-list">${skeletonRows(4)}</div>
+    </div>`;
+  const q = $('#rvf-q');
+  q.addEventListener('input', debounce(() => muatRiwayatVf(q.value.trim()), 350));
+  muatRiwayatVf('');
+}
+
+async function muatRiwayatVf(q) {
+  const list = $('#rvf-list');
+  if (!list) return;
+  try {
+    const rows = await fetchRows('verval_fasyankes', {
+      search: q, searchCols: ['nama_fasyankes', 'nomor_unit', 'kecamatan'], limit: 100,
+    });
+    const cnt = $('#rvf-count');
+    if (cnt) cnt.innerHTML = `<p class="text-[.7rem] text-slate-400 mb-2">Menampilkan ${rows.length} catatan verval fasyankes${q ? ` untuk pencarian “${esc(q)}”` : ''}.</p>`;
+    if (!rows.length) { list.innerHTML = emptyState('Belum ada catatan verval fasyankes.'); return; }
+    list.innerHTML = `<div class="space-y-2.5">${rows.map((r) => `
+      <div class="rv-row card p-3.5 flex flex-col sm:flex-row sm:items-center gap-3" data-id="${r.id}">
+        <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 grid place-items-center flex-none">${icon('faskes', 'w-5 h-5')}</div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-[.84rem] text-slate-700">${esc(r.nama_fasyankes)}</p>
+          <p class="text-xs text-slate-500 truncate">${esc(r.jenis_fasyankes)} &bull; ${esc(r.kelurahan || '—')}, ${esc(r.kecamatan || '—')} &bull; PJ: ${esc(r.penanggung_jawab || '—')}</p>
+          <p class="text-[.66rem] text-slate-400 mt-0.5">${esc(r.kode_verval || '-')} &bull; ${fmtDate(r.tanggal_verval)}${r.verifikator ? ' • verifikator: ' + esc(r.verifikator) : ''}</p>
+        </div>
+        <div class="flex items-center gap-2 flex-none flex-wrap">
+          <span class="badge ${VERVAL_FAS_BADGE[r.status_verifikasi] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">${esc(r.status_verifikasi || '-')}</span>
+        </div>
+      </div>`).join('')}</div>`;
+    $$('#rvf-list .rv-row').forEach((el) => el.addEventListener('click', () => {
+      const row = rows.find((r) => String(r.id) === el.dataset.id);
+      if (row) detailVfModal(row, () => muatRiwayatVf($('#rvf-q')?.value.trim() || ''));
+    }));
+  } catch (e) {
+    list.innerHTML = errorBlock(e);
+  }
+}
+
+function detailVfModal(r, onDeleted = null) {
+  const rows = VERVAL_FAS_FIELDS.map(([k, label]) => {
+    let v = r[k];
+    if (k === 'tanggal_verval') v = fmtDate(v);
+    if (k === 'created_at') v = fmtDateTime(v);
+    if (k === 'status_verifikasi' && v) return `<div class="detail-label">${label}</div><div class="detail-value"><span class="badge ${VERVAL_FAS_BADGE[v] || ''}">${esc(v)}</span></div>`;
+    if (k === 'kode_verval' && v) return `<div class="detail-label">${label}</div><div class="detail-value"><span class="kode-chip">${esc(v)}</span></div>`;
+    if (k === 'sdm_kesehatan' && v) return `<div class="detail-label">${label}</div><div class="detail-value">${v.split('; ').map((s) => `<span class="badge bg-teal-50 text-teal-700 ring-1 ring-teal-100" style="margin:0 .25rem .35rem 0">${esc(s)}</span>`).join('')}</div>`;
+    return `<div class="detail-label">${label}</div><div class="detail-value">${esc(v || '—')}</div>`;
+  }).join('');
+  openModal({
+    title: `Detail Verval: ${esc(r.nama_fasyankes)}`, size: 'xl',
+    body: `<div class="detail-grid">${rows}</div>`,
+    footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-vf">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
+             <button class="btn btn-ghost" data-close="1">Tutup</button>`,
+    onOpen: (root) => {
+      const del = root.querySelector('#btn-del-vf');
+      if (del) del.addEventListener('click', () => confirmDialog({
+        title: 'Hapus Catatan Verval Fasyankes',
+        message: `Yakin menghapus verval <b>${esc(r.nama_fasyankes)}</b> (${esc(r.kode_verval || '-')})? Tindakan ini tidak dapat dibatalkan.`,
+        onYes: async () => {
+          const { error } = await supabase.from('verval_fasyankes').delete().eq('id', r.id);
+          if (error) throw error;
+          toast('Catatan verval fasyankes dihapus.');
           if (onDeleted) onDeleted();
         },
       }));
@@ -2212,13 +2651,13 @@ const ROUTES = {
   'fasyankes': { t: 'Data Fasyankes', s: 'Kelola data RS, Puskesmas & Klinik', render: () => mountCrud('fasyankes') },
   'praktik-mandiri': { t: 'Data Praktik Mandiri', s: 'Kelola data pengajuan praktik mandiri', render: () => mountCrud('praktik-mandiri') },
   'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan', render: mountVervalPraktik },
-  'verifikasi-faskes': { t: 'Verifikasi Fasyankes', s: 'Setujui / tolak pengajuan dengan catatan', render: () => mountVerifikasi('faskes') },
+  'verifikasi-faskes': { t: 'Verifikasi Faskes', s: 'Formulir verval fasyankes, riwayat & persetujuan pengajuan', render: mountVervalFaskes },
   'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Pencarian status berdasarkan NIK / Nama', render: mountCekVerifikasi },
   'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto', render: mountMonev },
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.1.0';
+const VERSI_SIMANTRI = '1.2.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,

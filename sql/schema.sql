@@ -228,15 +228,50 @@ create table if not exists public.verval_izin_praktik (
 );
 
 -- =========================================================
--- 7C. TABEL VERVAL DRAFT (draf formulir per pengguna)
+-- 7C. TABEL VERVAL DRAFT (draf formulir per pengguna per form)
 --     Pengganti localStorage: draf form tersinkron otomatis
 --     ke Supabase sehingga aman dibuka lintas perangkat.
+--     Kolom `form` memisahkan draf "praktik" dan "faskes".
 -- =========================================================
 
 create table if not exists public.verval_draft (
-  user_id    uuid primary key references auth.users (id) on delete cascade,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  form       text not null default 'praktik',
   data       jsonb       not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  primary key (user_id, form)
+);
+
+-- =========================================================
+-- 7D. TABEL VERVAL FASYANKES (Verifikasi & Validasi Faskes)
+--     Hasil pengisian Formulir Verval Fasyankes pada menu
+--     Verifikasi Faskes (1 baris = 1 verval fasilitas).
+-- =========================================================
+
+create table if not exists public.verval_fasyankes (
+  id                 bigint generated always as identity primary key,
+  kode_verval        text unique,
+  tanggal_verval     date        not null default current_date,
+  nomor_unit         text        not null,
+  nama_fasyankes     text        not null,
+  jenis_fasyankes    text        not null
+                     check (jenis_fasyankes in (
+                       'Rumah Sakit', 'Puskesmas', 'Klinik', 'Apotik', 'Toko Obat',
+                       'Optik', 'PBF (Pedagang Besar Farmasi)', 'Tempat Praktik Mandiri')),
+  nama_pemilik       text        not null,
+  penanggung_jawab   text        not null,
+  alamat_lengkap     text        not null,
+  kelurahan          text        not null,
+  kecamatan          text        not null,
+  nomor_hp           text        not null,
+  email              text,
+  sdm_kesehatan      text,
+  status_verifikasi  text not null default 'Pending'
+                     check (status_verifikasi in ('Layak', 'Tidak Layak', 'Perbaikan', 'Pending', 'Tidak Valid')),
+  catatan_verifikasi text,
+  verifikator        text        not null,
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
 );
 
 -- =========================================================
@@ -258,7 +293,7 @@ declare t text;
 begin
   foreach t in array array['profiles', 'tenaga_medis', 'tenaga_kesehatan',
                            'fasyankes', 'praktik_mandiri', 'monev_izin',
-                           'verval_izin_praktik', 'verval_draft']
+                           'verval_izin_praktik', 'verval_draft', 'verval_fasyankes']
   loop
     execute format('drop trigger if exists trg_updated_at on public.%I', t);
     execute format('create trigger trg_updated_at before update on public.%I
@@ -313,6 +348,9 @@ create index if not exists idx_monev_tanggal on public.monev_izin (tanggal_kunju
 create index if not exists idx_verval_nik on public.verval_izin_praktik (nik);
 create index if not exists idx_verval_nama on public.verval_izin_praktik (nama_lengkap);
 create index if not exists idx_verval_unit on public.verval_izin_praktik (unit_kerja);
+create index if not exists idx_vervalfas_nama      on public.verval_fasyankes (nama_fasyankes);
+create index if not exists idx_vervalfas_status    on public.verval_fasyankes (status_verifikasi);
+create index if not exists idx_vervalfas_kecamatan on public.verval_fasyankes (kecamatan);
 
 -- =========================================================
 -- 11. ROW LEVEL SECURITY
@@ -337,6 +375,7 @@ alter table public.praktik_mandiri enable row level security;
 alter table public.monev_izin      enable row level security;
 alter table public.verval_izin_praktik enable row level security;
 alter table public.verval_draft    enable row level security;
+alter table public.verval_fasyankes enable row level security;
 
 -- ---------- profiles ----------
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
@@ -481,6 +520,24 @@ create policy "verval_draft_update" on public.verval_draft for update
 drop policy if exists "verval_draft_delete" on public.verval_draft;
 create policy "verval_draft_delete" on public.verval_draft for delete
   using (user_id = auth.uid());
+
+-- ---------- verval_fasyankes ----------
+-- Hasil verval fasyankes dapat dilihat publik; penulisan hanya oleh
+-- verifikator/admin; hapus hanya admin.
+drop policy if exists "vervalfas_select" on public.verval_fasyankes;
+create policy "vervalfas_select" on public.verval_fasyankes for select using (true);
+
+drop policy if exists "vervalfas_insert" on public.verval_fasyankes;
+create policy "vervalfas_insert" on public.verval_fasyankes for insert
+  with check (auth.uid() is not null and public.is_verifikator());
+
+drop policy if exists "vervalfas_update" on public.verval_fasyankes;
+create policy "vervalfas_update" on public.verval_fasyankes for update
+  using (auth.uid() is not null and public.is_verifikator());
+
+drop policy if exists "vervalfas_delete" on public.verval_fasyankes;
+create policy "vervalfas_delete" on public.verval_fasyankes for delete
+  using (public.is_admin());
 
 -- =========================================================
 -- 12. STORAGE BUCKET "monev" (foto dokumentasi monev)
