@@ -942,18 +942,16 @@ const CRUD = {
   'tenaga-kesehatan': {
     key: 'tenaga-kesehatan', table: 'tenaga_kesehatan', title: 'Data Tenaga Kesehatan',
     desc: 'Perawat, bidan, Apoteker dan profesi tenaga kesehatan lainnya',
-    searchCols: ['nama_lengkap', 'nik', 'no_str', 'no_sip', 'profesi', 'tempat_praktik'],
+    searchCols: ['nama_lengkap', 'no_str', 'no_sip', 'profesi', 'tempat_praktik'],
     rowTitle: (r) => r.nama_lengkap,
     columns: [
-      { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.profesi || '')}</span>` },
-      { k: 'nik', label: 'NIK' },
+      { k: 'nama_lengkap', label: 'Nama Lengkap', render: (v, r) => `<span class="font-semibold text-slate-700">${esc(v)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.profesi || '')}</span>` },     
       { k: 'no_str', label: 'STR / SIP', render: (v, r) => `${esc(v || '—')}<br><span class="text-[.68rem] text-slate-400">${esc(r.no_sip || '')}</span>` },
       { k: 'tempat_praktik', label: 'Tempat Praktik' },
       { k: 'masa_berlaku_sip', label: 'Masa Berlaku SIP', render: (v) => fmtDate(v) },
       { k: 'status', label: 'Status', render: (v) => badge(v) },
     ],
     form: [
-      { k: 'nik', label: 'NIK', required: true, max: 16 },
       { k: 'nama_lengkap', label: 'Nama Lengkap', required: true },
       { k: 'no_str', label: 'No. STR' },
       { k: 'no_sip', label: 'No. SIP' },
@@ -963,7 +961,7 @@ const CRUD = {
       { k: 'status', label: 'Status', type: 'select', options: ['aktif', 'nonaktif'] },
     ],
     detail: (r) => [
-      ['NIK', esc(r.nik || '—')], ['Nama Lengkap', esc(r.nama_lengkap || '—')],
+      ['Nama Lengkap', esc(r.nama_lengkap || '—')],
       ['No. STR', esc(r.no_str || '—')], ['No. SIP', esc(r.no_sip || '—')],
       ['Profesi', esc(r.profesi || '—')], ['Tempat Praktik', esc(r.tempat_praktik || '—')],
       ['Masa Berlaku SIP', fmtDate(r.masa_berlaku_sip)], ['Status', badge(r.status)],
@@ -972,7 +970,7 @@ const CRUD = {
   },
   'fasyankes': {
     key: 'fasyankes', table: 'fasyankes', title: 'Data Fasyankes',
-    desc: 'Rumah sakit, puskesmas, dan klinik di Kota Samarinda',
+    desc: 'Rumah sakit, Puskesmas, klinik dan Fasyankes lainnya di Kabupaten Kutai Kartanegara',
     searchCols: ['nama_fasyankes', 'jenis', 'alamat', 'kecamatan'],
     rowTitle: (r) => r.nama_fasyankes,
     columns: [
