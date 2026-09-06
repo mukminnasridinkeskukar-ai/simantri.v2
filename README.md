@@ -1,6 +1,6 @@
 # SIMANTRI
 
-**Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri — Kota Samarinda**
+**Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri — Kabupaten Kutai Kartanegara**
 
 Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supabase** murni — semua data live dari Supabase via `supabase-js v2`. Tanpa mock data, tanpa localStorage untuk data. Siap deploy ke **GitHub Pages**.
 
@@ -20,9 +20,10 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ├── assets/
 │   └── logo.svg        # Logo SIMANTRI
 ├── sql/
-│   ├── schema.sql         # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru)
-│   ├── migrasi_verval.sql # Migrasi v1.1.0+v1.2.0: tabel verval praktik & fasyankes (untuk database yang SUDAH berjalan)
-│   └── seed.sql           # Data demo opsional (fasyankes/praktik Samarinda + koordinat)
+│   ├── schema.sql            # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru)
+│   ├── migrasi_verval.sql    # Migrasi v1.1.0+v1.2.0+v1.2.1: tabel verval praktik & fasyankes + nik nullable (untuk database yang SUDAH berjalan)
+│   ├── migrasi_hapus_nik.sql # Migrasi v1.2.1 saja: kolom nik tidak wajib (database lama, tanpa rerun migrasi lengkap)
+│   └── seed.sql              # Data demo opsional (fasyankes/praktik Kab. Kutai Kartanegara + koordinat, tanpa NIK)
 └── README.md
 ```
 
@@ -37,9 +38,11 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ### 2. Jalankan Skema Database
 1. Buka **SQL Editor → New query**.
 2. Salin seluruh isi `sql/schema.sql` → klik **Run**.
-3. (Opsional) Salin isi `sql/seed.sql` → **Run** untuk data demo (RSUD Samarinda, Puskesmas, praktik bidan, dll. — lengkap dengan koordinat agar peta langsung tampil).
+3. (Opsional) Salin isi `sql/seed.sql` → **Run** untuk data demo (RSUD Tenggarong, Puskesmas, praktik bidan, dll. — lengkap dengan koordinat agar peta langsung tampil).
 
-> **Database sudah berjalan dari versi lama (≤ v1.1.0)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_verval.sql` sekali untuk menambah tabel **verval_izin_praktik**, **verval_fasyankes**, **verval_draft** (draf otomatis multi-form) beserta RLS-nya. Script ini idempotent — aman juga dijalankan pada database yang sudah pernah dimigrasi sebagian.
+> **Database sudah berjalan dari versi lama (≤ v1.1.0)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_verval.sql` sekali untuk menambah tabel **verval_izin_praktik**, **verval_fasyankes**, **verval_draft** (draf otomatis multi-form) beserta RLS-nya, sekaligus membuat kolom `nik` tidak wajib (v1.2.1). Script ini idempotent — aman juga dijalankan pada database yang sudah pernah dimigrasi sebagian.
+>
+> **Database dari versi lama dan hanya ingin efek v1.2.1 (NIK tidak wajib)?** Jalankan `sql/migrasi_hapus_nik.sql` saja.
 
 ### 3. Konfigurasi Auth
 1. Buka **Authentication → Sign In / Providers → Email**.
@@ -118,9 +121,9 @@ python3 -m http.server 8080
 
 - **Landing splash** 3 detik dengan logo + progress bar → fade otomatis ke `#beranda` tanpa reload.
 - **Layout**: sidebar kiri fixed 280px (collapsible di mobile) + topbar + content.
-- **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (accordion), Peta Sebaran Praktik (Leaflet, pusat −0.502, 117.154), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30).
+- **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (accordion), Peta Sebaran Praktik (Leaflet, pusat Tenggarong −0.4419, 117.0861), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30).
 - **Bagian 2 — Manajemen Data**: CRUD penuh Tenaga Medis, Tenaga Kesehatan, Fasyankes, Praktik Mandiri — form tambah/edit via modal, klik baris → modal detail.
-- **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 28 field — pencarian NIK otomatis dari data verval/tenaga medis, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan) dan **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject), Cek Hasil Verifikasi (NIK/nama), Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
+- **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 27 field — tanpa data NIK, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan) dan **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject), Cek Hasil Verifikasi (nama), Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
 - **Bagian 4 — Manajemen User**: hanya admin — CRUD pengguna, assign role (admin/verifikator/operator).
 - Semua kartu statistik & baris tabel membuka **modal detail live** dari Supabase (bukan alert).
 
@@ -128,6 +131,7 @@ python3 -m http.server 8080
 
 ## Riwayat Versi
 
+- **v1.2.1** — Pembersihan data NIK: seluruh form/tabel/riwayat/pencarian tidak lagi mengumpulkan atau menampilkan NIK (kolom `nik` di DB menjadi opsional — jalankan `sql/migrasi_hapus_nik.sql` atau `sql/migrasi_verval.sql` terbaru pada database lama), kode verifikasi menjadi `SIMANTRI-VERVAL-<timestamp>`, dan seluruh penamaan wilayah diganti dari Kota Samarinda ke **Kabupaten Kutai Kartanegara** (20 kecamatan resmi, pusat peta Tenggarong, data demo seed disesuaikan).
 - **v1.2.0** — Menu Verifikasi Faskes dikembangkan: Formulir Verval Fasyankes (ID otomatis VF-, SDM Kesehatan dinamis per jenis fasyankes, 5 hasil verifikasi), tabel baru `verval_fasyankes`, tabel `verval_draft` menjadi multi-form (praktik & faskes, PK komposit user_id+form), data demo verval fasyankes pada `seed.sql`.
 - **v1.1.0** — Menu Verifikasi Praktik dikembangkan: Formulir Verval Izin Praktik 28 field (adaptasi formulir verval SatuSehat SDMK), tabel baru `verval_izin_praktik` + `verval_draft` (draf otomatis per pengguna — pengganti localStorage), migrasi terpisah `sql/migrasi_verval.sql`, data demo verval pada `seed.sql`.
 - **v1.0.3** — Perbaikan seed.sql (overriding system value + sinkronisasi sequence identity).

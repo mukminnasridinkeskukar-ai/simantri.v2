@@ -84,7 +84,7 @@ $$;
 
 create table if not exists public.tenaga_medis (
   id               bigint generated always as identity primary key,
-  nik              varchar(16) not null,
+  nik              varchar(16),        -- tidak lagi diisi aplikasi (v1.2.1); ditonjolkan agar data lama tetap tersimpan
   nama_lengkap     text        not null,
   no_str           text,
   no_sip           text,
@@ -103,7 +103,7 @@ create table if not exists public.tenaga_medis (
 
 create table if not exists public.tenaga_kesehatan (
   id               bigint generated always as identity primary key,
-  nik              varchar(16) not null,
+  nik              varchar(16),        -- tidak lagi diisi aplikasi (v1.2.1); ditonjolkan agar data lama tetap tersimpan
   nama_lengkap     text        not null,
   no_str           text,
   no_sip           text,
@@ -191,12 +191,12 @@ create table if not exists public.monev_izin (
 -- =========================================================
 -- 7B. TABEL VERVAL IZIN PRAKTIK (Verifikasi & Validasi)
 --     Hasil pengisian Formulir Verval Izin Praktik pada menu
---     Verifikasi Praktik (28 field, 1 baris = 1 verval nakes).
+--     Verifikasi Praktik (27 field, 1 baris = 1 verval nakes).
 -- =========================================================
 
 create table if not exists public.verval_izin_praktik (
   id                 bigint generated always as identity primary key,
-  nik                varchar(16) not null,
+  nik                varchar(16),       -- tidak lagi diisi aplikasi (v1.2.1); ditonjolkan agar data lama tetap tersimpan
   nama_lengkap       text        not null,
   jenis_kelamin      text check (jenis_kelamin in ('Laki-laki', 'Perempuan')),
   tempat_lahir       text,

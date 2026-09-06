@@ -12,17 +12,18 @@
 -- Isi:
 --   1-5   (v1.1.0) tabel verval izin praktik + draft + RLS
 --   6     (v1.2.0) tabel verval fasyankes + draf multi-form
+--   7     (v1.2.1) kolom nik tidak wajib (drop not null)
 -- =========================================================
 
 -- =========================================================
 -- 1. TABEL VERVAL IZIN PRAKTIK
 --    Hasil pengisian Formulir Verval Izin Praktik pada menu
---    Verifikasi Praktik (28 field, 1 baris = 1 verval nakes).
+--    Verifikasi Praktik (27 field, 1 baris = 1 verval nakes).
 -- =========================================================
 
 create table if not exists public.verval_izin_praktik (
   id                 bigint generated always as identity primary key,
-  nik                varchar(16) not null,
+  nik                varchar(16),       -- v1.2.1: tidak lagi diisi aplikasi
   nama_lengkap       text        not null,
   jenis_kelamin      text check (jenis_kelamin in ('Laki-laki', 'Perempuan')),
   tempat_lahir       text,
@@ -214,6 +215,18 @@ begin
     alter table public.verval_draft add constraint verval_draft_form_pkey primary key (user_id, form);
   end if;
 end $$;
+
+-- ---------------------------------------------------------
+-- 7. (v1.2.1) NIK TIDAK LAGI WAJIB
+--     Aplikasi v1.2.1 tidak lagi mengumpulkan/menampilkan
+--     NIK. Kolom tetap ada agar data lama tidak hilang,
+--     tetapi boleh kosong. ALTER ... DROP NOT NULL aman
+--     dijalankan berulang (idempotent).
+-- ---------------------------------------------------------
+
+alter table public.tenaga_medis        alter column nik drop not null;
+alter table public.tenaga_kesehatan    alter column nik drop not null;
+alter table public.verval_izin_praktik alter column nik drop not null;
 
 -- =========================================================
 -- SELESAI. Tidak perlu restart apa pun — menu Verifikasi

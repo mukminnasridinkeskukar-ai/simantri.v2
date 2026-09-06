@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SIMANTRI — Sistem Informasi &amp; Manajemen Praktik Tenaga Medis &amp; Tenaga Kesehatan</title>
-  <meta name="description" content="SIMANTRI: Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri Kota Samarinda. Data live Supabase." />
-  <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=1.2.0" />
+  <meta name="description" content="SIMANTRI: Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri Kabupaten Kutai Kartanegara. Data live Supabase." />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg?v=1.2.1" />
 
   <!-- Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -19,7 +19,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <!-- Style kustom SIMANTRI -->
-  <link rel="stylesheet" href="css/style.css?v=1.2.0" />
+  <link rel="stylesheet" href="css/style.css?v=1.2.1" />
 </head>
 <body class="bg-slate-100 text-slate-800 antialiased">
   <noscript>
@@ -35,12 +35,12 @@
       <h1 class="splash-title">SIMANTRI</h1>
       <p class="splash-sub">
         Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
-        di Fasyankes dan Praktik Mandiri — Kota Samarinda
+        di Fasyankes dan Praktik Mandiri — Kabupaten Kutai Kartanegara
       </p>
       <div class="splash-bar"><span class="splash-bar-fill"></span></div>
       <p id="splash-status" class="splash-status">Memuat sistem…</p>
     </div>
-    <p class="splash-foot">Dinas Kesehatan Kota Samarinda</p>
+    <p class="splash-foot">Dinas Kesehatan Kabupaten Kutai Kartanegara</p>
   </div>
 
   <!-- ============ APLIKASI UTAMA ============ -->
@@ -51,7 +51,7 @@
         <img src="assets/logo.svg" alt="Logo SIMANTRI" class="brand-logo" />
         <div class="min-w-0">
           <p class="brand-title">SIMANTRI</p>
-          <p class="brand-sub">Kesehatan Kota Samarinda</p>
+          <p class="brand-sub">Kesehatan Kutai Kartanegara</p>
         </div>
         <button id="sidebar-close" class="icon-btn lg:hidden" aria-label="Tutup menu">
           <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
@@ -59,7 +59,7 @@
       </div>
       <nav id="sidebar-nav" class="sidebar-nav"></nav>
       <div class="sidebar-foot">
-        <p>SIMANTRI v1.2 &bull; Data live Supabase</p>
+        <p>SIMANTRI v1.2.1 &bull; Data live Supabase</p>
       </div>
     </aside>
     <div id="sidebar-overlay"></div>
@@ -73,7 +73,7 @@
           </button>
           <div class="min-w-0">
             <h2 id="page-title" class="page-title">Dashboard</h2>
-            <p id="page-sub" class="page-sub">Ringkasan data Kota Samarinda</p>
+            <p id="page-sub" class="page-sub">Ringkasan data Kab. Kutai Kartanegara</p>
           </div>
         </div>
         <div id="topbar-user" class="flex items-center gap-2"></div>
@@ -82,7 +82,7 @@
       <main id="page-content" class="page-content"></main>
 
       <footer class="app-foot">
-        SIMANTRI &copy; 2026 Dinas Kesehatan Kota Samarinda &bull; Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
+        SIMANTRI &copy; 2026 Dinas Kesehatan Kabupaten Kutai Kartanegara &bull; Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
       </footer>
     </div>
   </div>
@@ -96,8 +96,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 
   <!-- Konfigurasi Supabase di-load terpisah (TIDAK di-hardcode di HTML) -->
-  <script src="js/config.js?v=1.2.0"></script>
+  <script src="js/config.js?v=1.2.1"></script>
   <!-- Logic aplikasi (ES module, meng-import js/supabase.js) -->
-  <script type="module" src="js/app.js?v=1.2.0"></script>
+  <script type="module" src="js/app.js?v=1.2.1"></script>
 </body>
 </html>
