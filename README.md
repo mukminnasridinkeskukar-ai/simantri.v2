@@ -35,15 +35,21 @@
 
 ## 🔐 Akun Demo (untuk testing)
 
-Saat aplikasi pertama dibuka, akan muncul **halaman login**. Klik salah satu akun demo di bawah untuk isi otomatis:
+Saat aplikasi pertama dibuka, akan muncul **halaman login**. Klik kartu akun demo di bawah untuk isi otomatis:
 
 | Role | Email | Password | Akses |
 |---|---|---|---|
-| **Admin Dinkes** | `dinkes@simantri.demo` | `dinkes123` | Full access — semua menu, semua aksi (add, edit, delete, download, print, verify, approve, manajemen user) |
-| **Admin Fasyankes** | `fasyankes@simantri.demo` | `fasyankes123` | Akses terbatas — bisa add & edit data, bisa print laporan. TIDAK bisa: download CSV regional, verifikasi, approve/reject, manajemen user, pengaturan sistem |
-| **Tenaga Kesehatan** | `nakes@simantri.demo` | `nakes123` | View only — lihat data saja. TIDAK bisa: add, edit, delete, download, print, verify, approve/reject, manajemen user, pengaturan sistem |
+| **Admin Dinkes** | `dinkes@simantri.demo` | `dinkes123` | Full access — semua menu & semua aksi |
 
-> **Tip**: Klik kartu akun demo di halaman login → form terisi otomatis → klik "Masuk"
+> **Catatan**: Aplikasi ini menggunakan **single-role system** (Admin Dinkes saja). Semua user yang login otomatis memiliki akses penuh ke seluruh fitur.
+
+### Session tidak persisten
+Sesuai kebutuhan, aplikasi **TIDAK menyimpan session** di localStorage. Setiap kali browser ditutup atau di-refresh, user harus login kembali. Ini berlaku baik di mode demo maupun production (Supabase).
+
+- ❌ Tidak ada localStorage untuk session
+- ❌ Tidak ada cookie session
+- ✅ Refresh browser = logout otomatis
+- ✅ Tutup browser = logout otomatis
 
 ---
 

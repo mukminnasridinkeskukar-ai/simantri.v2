@@ -2,8 +2,12 @@
  * SIMANTRI v3 — Auth helpers
  * Plain JS. Pakai window.SIMANTRI_DB.getClient() untuk auth Supabase.
  *
- * Demo mode: 3 user predefined (dinkes, fasyankes, nakes) — login pakai password
- * Production: pakai Supabase Auth (signInWithPassword)
+ * SINGLE ROLE: Admin Dinkes saja (full access)
+ * Demo mode: 1 user predefined (dinkes)
+ * Production: pakai Supabase Auth
+ *
+ * TIDAK ADA PENYIMPANAN SESSION — refresh browser = logout
+ * (Sesuai kebutuhan: pakai mock data, integrasi Supabase saja)
  * ============================================================================ */
 
 (function () {
@@ -13,11 +17,11 @@
   const utils = window.SIMANTRI_UTILS;
 
   let _session = null;
-  let _profile = null;
+  let _profile = null;       // In-memory only — TIDAK disimpan ke localStorage
   let _ready = false;
   let _readyResolvers = [];
 
-  // === Demo users — predefined untuk demo mode ===
+  // === Demo user — hanya Admin Dinkes ===
   const DEMO_USERS = [
     {
       id: 'demo-dinkes',
@@ -28,38 +32,12 @@
       fasyankes_id: null,
       avatar_url: null,
     },
-    {
-      id: 'demo-fasyankes',
-      email: 'fasyankes@simantri.demo',
-      password: 'fasyankes123',
-      full_name: 'Admin Puskesmas Gundih',
-      role: 'fasyankes',
-      fasyankes_id: 'f-002', // Puskesmas Gundih
-      avatar_url: null,
-    },
-    {
-      id: 'demo-nakes',
-      email: 'nakes@simantri.demo',
-      password: 'nakes123',
-      full_name: 'Dr. Siti Aminah',
-      role: 'nakes',
-      fasyankes_id: 'f-002',
-      avatar_url: null,
-    },
   ];
 
   // === Init — subscribe auth state change (production only) ===
   function initAuth() {
-    // Cek apakah ada session demo yang tersimpan di localStorage
-    const savedDemo = localStorage.getItem('simantri_demo_session');
-    if (savedDemo) {
-      try {
-        const userId = JSON.parse(savedDemo).id;
-        _profile = DEMO_USERS.find(function (u) { return u.id === userId; }) || null;
-      } catch (e) { _profile = null; }
-    }
-
     if (db.isDemoMode()) {
+      // Demo mode: tidak restore session. User harus login setiap kali buka aplikasi.
       _markReady();
       return;
     }
@@ -69,6 +47,9 @@
       _markReady();
       return;
     }
+
+    // Production: Supabase auth state change
+    // Catatan: persistSession sudah diset false di supabase.js — refresh = logout
     client.auth.onAuthStateChange(async function (_event, session) {
       _session = session;
       if (session && session.user) {
@@ -105,7 +86,7 @@
           id: userId,
           email: (user && user.user && user.user.email) || '',
           full_name: meta.full_name || meta.name || 'Pengguna Baru',
-          role: meta.role || 'nakes',
+          role: 'dinkes', // Default ke dinkes (single-role system)
           fasyankes_id: meta.fasyankes_id || null,
           avatar_url: meta.avatar_url || null,
         };
@@ -128,10 +109,10 @@
         return u.email.toLowerCase() === (email || '').toLowerCase() && u.password === password;
       });
       if (!user) {
-        throw new Error('Email atau password salah. Coba akun demo yang tersedia di bawah.');
+        throw new Error('Email atau password salah. Gunakan akun demo: dinkes@simantri.demo / dinkes123');
       }
-      // Buat profile tanpa password
-      const profile = {
+      // Set profile in-memory (TIDAK disimpan ke localStorage)
+      _profile = {
         id: user.id,
         email: user.email,
         full_name: user.full_name,
@@ -139,8 +120,6 @@
         fasyankes_id: user.fasyankes_id,
         avatar_url: user.avatar_url,
       };
-      _profile = profile;
-      localStorage.setItem('simantri_demo_session', JSON.stringify({ id: user.id }));
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: _profile } }));
       return _profile;
     }
@@ -157,7 +136,7 @@
     const { data, error } = await client.auth.signUp({
       email: opts.email,
       password: opts.password,
-      options: { data: { full_name: opts.fullName, role: opts.role || 'nakes', fasyankes_id: opts.fasyankesId || null } },
+      options: { data: { full_name: opts.fullName, role: 'dinkes', fasyankes_id: opts.fasyankesId || null } },
     });
     if (error) throw error;
     return data;
@@ -165,8 +144,8 @@
 
   async function signOut() {
     if (db.isDemoMode()) {
+      // Demo mode: clear in-memory only (tidak ada localStorage untuk dihapus)
       _profile = null;
-      localStorage.removeItem('simantri_demo_session');
       document.dispatchEvent(new CustomEvent('simantri:auth-change', { detail: { profile: null } }));
       return;
     }
@@ -185,44 +164,39 @@
   }
   function getRole() { return _profile ? _profile.role : null; }
   function getFasyankesId() { return _profile ? _profile.fasyankes_id : null; }
-  function isDinkes() { return _profile && _profile.role === 'dinkes'; }
-  function isFasyankes() { return _profile && _profile.role === 'fasyankes'; }
-  function isNakes() { return _profile && _profile.role === 'nakes'; }
-  function canViewAll() { return isDinkes(); }
 
-  // === PERMISSION HELPERS — untuk hide/show action buttons ===
-  // Dinkes: semua bisa
-  // Fasyankes: bisa add/edit data di fasyankesnya, bisa print laporan, TIDAK bisa download CSV regional, TIDAK bisa manajemen user
-  // Nakes: VIEW ONLY — tidak bisa add/download/print/verify/approve/delete
+  // === ROLE CHECKS — semua user adalah Dinkes (single-role) ===
+  // Dipertahankan untuk kompatibilitas dengan kode existing, tapi selalu sama
+  function isDinkes()     { return isAuthenticated(); }
+  function isFasyankes()  { return false; } // Role ini sudah dihapus
+  function isNakes()      { return false; } // Role ini sudah dihapus
+  function canViewAll()   { return isAuthenticated(); }
 
-  function canAdd()       { return isDinkes() || isFasyankes(); }
-  function canEdit()      { return isDinkes() || isFasyankes(); }
-  function canDelete()    { return isDinkes(); }
-  function canDownload()  { return isDinkes(); }
-  function canPrint()     { return isDinkes() || isFasyankes(); }
-  function canVerify()    { return isDinkes(); }
-  function canApprove()   { return isDinkes(); }
-  function canReject()    { return isDinkes(); }
-  function canManageUser() { return isDinkes(); }
-  function canExport()    { return isDinkes(); }
+  // === PERMISSION HELPERS — semua user (Dinkes) punya full access ===
+  function canAdd()       { return isAuthenticated(); }
+  function canEdit()      { return isAuthenticated(); }
+  function canDelete()    { return isAuthenticated(); }
+  function canDownload()  { return isAuthenticated(); }
+  function canPrint()     { return isAuthenticated(); }
+  function canVerify()    { return isAuthenticated(); }
+  function canApprove()   { return isAuthenticated(); }
+  function canReject()    { return isAuthenticated(); }
+  function canManageUser() { return isAuthenticated(); }
+  function canExport()    { return isAuthenticated(); }
 
   /**
    * Cek apakah user boleh melakukan aksi tertentu.
-   * Action: 'add' | 'edit' | 'delete' | 'download' | 'print' | 'verify' | 'approve' | 'reject' | 'manage-user' | 'export'
+   * Single-role: semua user adalah Dinkes → semua aksi diizinkan jika login.
    */
   function can(action) {
+    if (!isAuthenticated()) return false;
     switch (action) {
-      case 'add':         return canAdd();
-      case 'edit':        return canEdit();
-      case 'delete':      return canDelete();
-      case 'download':    return canDownload();
-      case 'print':       return canPrint();
-      case 'verify':      return canVerify();
-      case 'approve':     return canApprove();
-      case 'reject':      return canReject();
-      case 'manage-user': return canManageUser();
-      case 'export':      return canExport();
-      default:            return false;
+      case 'add': case 'edit': case 'delete': case 'download':
+      case 'print': case 'verify': case 'approve': case 'reject':
+      case 'manage-user': case 'export':
+        return true;
+      default:
+        return false;
     }
   }
 

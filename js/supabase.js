@@ -45,9 +45,11 @@
     try {
       _client = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY, {
         auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
+          // TIDAK persist session — refresh browser = logout
+          // (Sesuai kebutuhan: hapus semua penyimpanan localStorage)
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
         },
         realtime: { params: { eventsPerSecond: 5 } },
       });
