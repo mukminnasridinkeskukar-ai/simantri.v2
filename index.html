@@ -3,306 +3,101 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="SIMANTRI — Sistem Informasi & Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes & Praktik Mandiri." />
-  <meta name="theme-color" content="#0D9488" />
+  <title>SIMANTRI — Sistem Informasi &amp; Manajemen Praktik Tenaga Medis &amp; Tenaga Kesehatan</title>
+  <meta name="description" content="SIMANTRI: Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan di Fasyankes dan Praktik Mandiri Kota Samarinda. Data live Supabase." />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
 
-  <title>SIMANTRI • Platform Pengelolaan Izin Praktik Nakes</title>
-
-  <!-- Favicon (inline SVG data URI — works on file:// AND web) -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%230D9488'/%3E%3Cstop offset='1' stop-color='%2384CC16'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='url(%23g)'/%3E%3Cpath d='M32 16v32M16 32h32' stroke='%230F172A' stroke-width='6' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%230F172A'/%3E%3C/svg%3E" />
-
-  <!-- Google Fonts -->
+  <!-- Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  <!-- ============================================================================
-       Tailwind CSS via Play CDN
-       Catatan: Play CDN cocok untuk no-build setup. Untuk production scale,
-       bisa generate Tailwind via CLI build (lihat README bagian "Production Optim").
-       ============================================================================ -->
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    // Tailwind config — palette SIMANTRI (Teal + Lime + Amber + Rose)
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            base: '#FFFFFF',
-            ink: {
-              50: '#F8FAFC', 100: '#F1F5F9', 200: '#E2E8F0', 300: '#CBD5E1',
-              400: '#94A3B8', 500: '#64748B', 600: '#475569', 700: '#334155',
-              800: '#1E293B', 900: '#0F172A',
-            },
-            teal: {
-              50:'#F0FDFA',100:'#CCFBF1',200:'#99F6E4',300:'#5EEAD4',400:'#2DD4BF',
-              500:'#14B8A6',600:'#0D9488',700:'#0F766E',800:'#115E59',900:'#134E4A',
-            },
-            lime: {
-              50:'#F7FEE7',100:'#ECFCCB',200:'#D9F99D',300:'#BEF264',400:'#A3E635',
-              500:'#84CC16',600:'#65A30D',700:'#4D7C0F',
-            },
-            amber: {
-              50:'#FFFBEB',100:'#FEF3C7',200:'#FDE68A',300:'#FCD34D',400:'#FBBF24',
-              500:'#F59E0B',600:'#D97706',700:'#B45309',
-            },
-            rose: {
-              50:'#FFF1F2',100:'#FFE4E6',200:'#FECDD3',300:'#FDA4AF',400:'#FB7185',
-              500:'#F43F5E',600:'#E11D48',700:'#BE123C',
-            },
-          },
-          fontFamily: {
-            sans: ['Inter', 'Plus Jakarta Sans', 'system-ui', 'sans-serif'],
-            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
-          },
-          boxShadow: {
-            'soft': '0 1px 2px 0 rgba(15,23,42,0.04), 0 4px 16px -2px rgba(15,23,42,0.06)',
-            'card': '0 1px 3px 0 rgba(15,23,42,0.05), 0 10px 30px -10px rgba(15,23,42,0.10)',
-            'glow': '0 0 0 3px rgba(13,148,136,0.18), 0 8px 24px -8px rgba(13,148,136,0.35)',
-            'lime': '0 0 0 3px rgba(132,204,22,0.20), 0 8px 24px -8px rgba(132,204,22,0.35)',
-          },
-          borderRadius: { 'xl2': '1.25rem' },
-          transitionTimingFunction: { 'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)' },
-          keyframes: {
-            'fade-in': { '0%': { opacity: 0, transform: 'translateY(6px)' }, '100%': { opacity: 1, transform: 'translateY(0)' } },
-            'shimmer': { '0%': { backgroundPosition: '-468px 0' }, '100%': { backgroundPosition: '468px 0' } },
-            'pulse-dot': { '0%,100%': { opacity: 1 }, '50%': { opacity: 0.4 } },
-          },
-          animation: {
-            'fade-in': 'fade-in 0.4s cubic-bezier(0.16,1,0.3,1) both',
-            'shimmer': 'shimmer 1.4s linear infinite',
-            'pulse-dot': 'pulse-dot 1.4s ease-in-out infinite',
-          },
-        },
-      },
-    };
-  </script>
 
-  <!-- Custom styles -->
-  <link rel="stylesheet" href="./css/style.css" />
+  <!-- Leaflet (Peta) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Style kustom SIMANTRI -->
+  <link rel="stylesheet" href="css/style.css" />
 </head>
-<body class="h-full bg-ink-50 text-ink-800 font-sans antialiased">
-
-  <!-- ============================================================================
-       Loading screen awal — disembunyikan setelah app.js selesai init
-       ============================================================================ -->
-  <div id="initial-loader" aria-label="Memuat aplikasi" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F8FAFC;z-index:9999;transition:opacity .3s ease;">
-    <div style="text-align:center;padding:2rem;">
-      <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#0D9488 0%,#84CC16 100%);display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;animation:sim-pulse 2s ease-in-out infinite;">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16m8-8H4"/></svg>
-      </div>
-      <p style="font-size:1.25rem;font-weight:700;color:#0F172A;margin:0 0 0.25rem;">SIMANTRI</p>
-      <p style="font-size:0.875rem;color:#64748B;margin:0;">Memuat platform pengelolaan izin praktik...</p>
-      <div style="width:200px;height:3px;background:#E2E8F0;border-radius:9999px;margin:1.5rem auto 0;overflow:hidden;position:relative;">
-        <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,#0D9488,transparent);animation:sim-bar 1.5s linear infinite;"></div>
-      </div>
-    </div>
-  </div>
-  <style>
-    @keyframes sim-pulse { 0%,100%{transform:scale(1);opacity:1;} 50%{transform:scale(0.95);opacity:0.8;} }
-    @keyframes sim-bar { 0%{transform:translateX(-100%);} 100%{transform:translateX(100%);} }
-  </style>
-
-  <!-- ============================================================================
-       Error screen — tampil jika JS gagal load
-       ============================================================================ -->
-  <div id="load-error" role="alert" style="position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#F8FAFC;padding:1rem;z-index:10000;">
-    <div style="max-width:540px;width:100%;background:white;border-radius:16px;border:1px solid #FECDD3;box-shadow:0 10px 40px -10px rgba(244,63,94,0.2);padding:2rem;">
-      <div style="width:48px;height:48px;border-radius:12px;background:#FFF1F2;color:#F43F5E;display:inline-flex;align-items:center;justify-content:center;margin-bottom:1rem;">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-      </div>
-      <p style="font-size:1.125rem;font-weight:700;color:#0F172A;margin:0 0 0.5rem;">Aplikasi gagal dimuat</p>
-      <p style="font-size:0.875rem;color:#475569;line-height:1.5;margin:0 0 1rem;" id="error-message-text">Terjadi kesalahan saat memuat aplikasi.</p>
-      <pre id="error-detail" style="font-family:ui-monospace,monospace;font-size:0.75rem;background:#F1F5F9;padding:0.75rem 1rem;border-radius:8px;color:#475569;margin:1rem 0;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto;"></pre>
-      <button onclick="location.reload()" style="display:inline-flex;align-items:center;gap:0.5rem;padding:0.625rem 1.25rem;background:#0D9488;color:white;border:none;border-radius:10px;font-size:0.875rem;font-weight:600;cursor:pointer;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-        Coba muat ulang
-      </button>
-    </div>
-  </div>
-
-  <!-- ============================================================================
-       LOGIN MODAL — dipopup saat user klik "Login Admin" di header
-       ============================================================================ -->
-  <div id="login-modal" class="fixed inset-0 z-[90] hidden">
-    <div class="absolute inset-0 bg-ink-900/60 backdrop-blur-sm" data-login-close></div>
-    <div class="absolute inset-0 flex items-center justify-center p-4">
-      <div class="card w-full max-w-md max-h-[90vh] overflow-y-auto" id="login-modal-content">
-        <!-- Header -->
-        <div class="p-6 bg-gradient-to-br from-teal-600 to-teal-700 text-white rounded-t-xl2 relative">
-          <button type="button" data-login-close class="absolute top-4 right-4 text-white/70 hover:text-white p-1" aria-label="Tutup">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-          <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center flex-shrink-0">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16m8-8H4"/></svg>
-            </div>
-            <div>
-              <h2 class="text-xl font-bold">Login Admin</h2>
-              <p class="text-teal-100 text-sm">Akses penuh untuk Admin Dinkes</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Body -->
-        <div class="p-6">
-          <form id="login-form" class="space-y-4">
-            <div>
-              <label class="label" for="login-email">Email</label>
-              <input type="email" id="login-email" class="input" placeholder="anda@domain.go.id" required autocomplete="email" />
-            </div>
-            <div>
-              <label class="label" for="login-password">Password</label>
-              <div class="relative">
-                <input type="password" id="login-password" class="input pr-10" placeholder="••••••••" required autocomplete="current-password" />
-                <button type="button" id="toggle-password" class="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 hover:text-ink-700" aria-label="Tampilkan password">
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-                </button>
-              </div>
-            </div>
-
-            <div id="login-error" class="hidden text-sm text-rose-600 bg-rose-50 border border-rose-200 rounded-lg p-3"></div>
-
-            <button type="submit" id="login-submit" class="btn-primary w-full" style="padding: 0.75rem 1.5rem; font-size: 0.95rem;">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
-              Masuk
-            </button>
-          </form>
-
-          <!-- Demo credentials info -->
-          <div class="mt-6 pt-6 border-t border-ink-100">
-            <p class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Akun Demo (klik untuk isi otomatis)</p>
-            <div class="space-y-2">
-              <button type="button" class="demo-account w-full text-left p-3 rounded-lg border border-ink-200 hover:border-teal-300 hover:bg-teal-50/50 transition-colors" data-email="dinkes@simantri.demo" data-password="dinkes123">
-                <div class="flex items-center justify-between">
-                  <div>
-                    <p class="font-semibold text-sm text-ink-800">Admin Dinkes</p>
-                    <p class="text-xs text-ink-500">dinkes@simantri.demo • dinkes123</p>
-                  </div>
-                  <span class="badge-teal">Full Access</span>
-                </div>
-              </button>
-            </div>
-            <p class="text-xs text-ink-400 mt-3 leading-relaxed">
-              Mode demo pakai data mock (tanpa Supabase). Untuk production, isi <code class="bg-ink-100 px-1 py-0.5 rounded">config.js</code> dengan kredensial Supabase Anda.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============================================================================
-       App root — langsung tampil saat dibuka (public viewer mode)
-       ============================================================================ -->
-  <div id="app" class="min-h-full flex">
-    <aside id="sidebar-slot" class="hidden lg:block"></aside>
-
-    <div id="sidebar-drawer" class="fixed inset-0 z-50 hidden">
-      <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-drawer-close></div>
-      <div class="absolute inset-y-0 left-0 w-72 max-w-[80vw]" id="sidebar-drawer-content"></div>
-    </div>
-
-    <div class="flex-1 min-w-0 flex flex-col">
-      <header id="header-slot"></header>
-      <main id="view-slot" class="flex-1 p-4 sm:p-6 lg:p-8">
-        <!-- Skeleton awal -->
-        <div class="space-y-4">
-          <div class="skeleton" style="height:2rem;width:16rem;"></div>
-          <div class="skeleton" style="height:1rem;width:100%;max-width:32rem;"></div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(16rem,1fr));gap:1rem;margin-top:1.5rem;">
-            <div class="skeleton" style="height:8rem;"></div>
-            <div class="skeleton" style="height:8rem;"></div>
-            <div class="skeleton" style="height:8rem;"></div>
-          </div>
-        </div>
-      </main>
-    </div>
-  </div>
-
-  <div id="modal-portal"></div>
-  <div id="toast-portal" class="fixed bottom-4 right-4 z-[100] space-y-2"></div>
-
+<body class="bg-slate-100 text-slate-800 antialiased">
   <noscript>
-    <div style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F8FAFC;padding:2rem;text-align:center;font-family:system-ui,sans-serif;">
-      <div style="max-width:480px;">
-        <h1 style="font-size:1.5rem;font-weight:700;color:#0F172A;margin:0 0 0.5rem;">JavaScript Diperlukan</h1>
-        <p style="color:#64748B;line-height:1.6;">Aplikasi SIMANTRI memerlukan JavaScript. Mohon aktifkan JavaScript di browser Anda.</p>
-      </div>
+    <div style="padding:2rem;text-align:center;font-family:sans-serif">
+      <b>SIMANTRI</b> memerlukan JavaScript. Silakan aktifkan JavaScript pada peramban Anda.
     </div>
   </noscript>
 
-  <!-- ============================================================================
-       Error handler — tangkap error script loading
-       ============================================================================ -->
-  <script>
-    window.addEventListener('error', function (e) {
-      if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
-        console.error('[SIMANTRI] Resource gagal dimuat:', e.target.src || e.target.href);
-        var loader = document.getElementById('initial-loader');
-        if (loader) loader.style.display = 'none';
-        var errBox = document.getElementById('load-error');
-        var detail = document.getElementById('error-detail');
-        var msg = document.getElementById('error-message-text');
-        if (errBox) errBox.style.display = 'flex';
-        if (msg) msg.textContent = 'File JavaScript/CSS gagal dimuat. Pastikan semua file ada di folder yang benar.';
-        if (detail) detail.textContent = 'URL: ' + (e.target.src || e.target.href) + '\n\nPastikan file ini ada di lokasi yang benar relatif terhadap index.html';
-      }
-    }, true);
+  <!-- ============ LANDING / SPLASH (3 detik) ============ -->
+  <div id="splash">
+    <div class="splash-inner">
+      <img src="assets/logo.svg" alt="Logo SIMANTRI" class="splash-logo" />
+      <h1 class="splash-title">SIMANTRI</h1>
+      <p class="splash-sub">
+        Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
+        di Fasyankes dan Praktik Mandiri — Kota Samarinda
+      </p>
+      <div class="splash-bar"><span class="splash-bar-fill"></span></div>
+      <p id="splash-status" class="splash-status">Memuat sistem…</p>
+    </div>
+    <p class="splash-foot">Dinas Kesehatan Kota Samarinda</p>
+  </div>
 
-    window.SIMANTRI_HIDE_LOADER = function () {
-      var loader = document.getElementById('initial-loader');
-      if (loader) { loader.style.opacity = '0'; setTimeout(function(){ loader.remove(); }, 350); }
-    };
+  <!-- ============ APLIKASI UTAMA ============ -->
+  <div id="app" class="hidden">
+    <!-- Sidebar kiri fixed 280px, collapsible di mobile -->
+    <aside id="sidebar" aria-label="Menu navigasi SIMANTRI">
+      <div class="sidebar-brand">
+        <img src="assets/logo.svg" alt="Logo SIMANTRI" class="brand-logo" />
+        <div class="min-w-0">
+          <p class="brand-title">SIMANTRI</p>
+          <p class="brand-sub">Kesehatan Kota Samarinda</p>
+        </div>
+        <button id="sidebar-close" class="icon-btn lg:hidden" aria-label="Tutup menu">
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <nav id="sidebar-nav" class="sidebar-nav"></nav>
+      <div class="sidebar-foot">
+        <p>SIMANTRI v1.0 &bull; Data live Supabase</p>
+      </div>
+    </aside>
+    <div id="sidebar-overlay"></div>
 
-    // Safety timeout
-    setTimeout(function () {
-      var loader = document.getElementById('initial-loader');
-      if (loader && loader.style.display !== 'none') {
-        console.warn('[SIMANTRI] App tidak siap dalam 20 detik');
-        loader.style.display = 'none';
-        var errBox = document.getElementById('load-error');
-        if (errBox) errBox.style.display = 'flex';
-        var detail = document.getElementById('error-detail');
-        if (detail) detail.textContent = 'Aplikasi tidak merespon dalam 20 detik. Periksa koneksi internet atau buka Console (F12) untuk detail.';
-      }
-    }, 20000);
-  </script>
+    <!-- Area utama: Topbar + Content -->
+    <div class="main-wrap">
+      <header id="topbar">
+        <div class="flex items-center gap-3 min-w-0">
+          <button id="btn-menu" class="icon-btn lg:hidden" aria-label="Buka menu">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+          </button>
+          <div class="min-w-0">
+            <h2 id="page-title" class="page-title">Dashboard</h2>
+            <p id="page-sub" class="page-sub">Ringkasan data Kota Samarinda</p>
+          </div>
+        </div>
+        <div id="topbar-user" class="flex items-center gap-2"></div>
+      </header>
 
-  <!-- ============================================================================
-       Library CDN — load BEFORE app scripts
-       ============================================================================ -->
-  <!-- Supabase JS client (UMD build — exposes window.supabase) -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-  <!-- Chart.js (UMD build — exposes window.Chart) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.js"></script>
+      <main id="page-content" class="page-content"></main>
 
-  <!-- ============================================================================
-       App scripts — plain JS (NOT type="module"), load berurutan
-       Order PENTING: config → utils → supabase → auth → demo-data → components → pages → app
-       ============================================================================ -->
-  <script src="./config.js"></script>
-  <script src="./js/utils.js"></script>
-  <script src="./js/supabase.js"></script>
-  <script src="./js/auth.js"></script>
-  <script src="./js/demo-data.js"></script>
-  <script src="./js/components.js"></script>
+      <footer class="app-foot">
+        SIMANTRI &copy; 2026 Dinas Kesehatan Kota Samarinda &bull; Sistem Informasi dan Manajemen Praktik Tenaga Medis dan Tenaga Kesehatan
+      </footer>
+    </div>
+  </div>
 
-  <!-- Pages (12) — each attaches to window.SIMANTRI_PAGES -->
-  <script src="./js/pages/dashboard.js"></script>
-  <script src="./js/pages/peta-sebaran.js"></script>
-  <script src="./js/pages/notifikasi-expired.js"></script>
-  <script src="./js/pages/data-nakes.js"></script>
-  <script src="./js/pages/data-tenaga-kesehatan.js"></script>
-  <script src="./js/pages/data-fasyankes.js"></script>
-  <script src="./js/pages/jadwal-praktik.js"></script>
-  <script src="./js/pages/verifikasi.js"></script>
-  <script src="./js/pages/perpanjangan.js"></script>
-  <script src="./js/pages/laporan.js"></script>
-  <script src="./js/pages/manajemen-user.js"></script>
-  <script src="./js/pages/pengaturan.js"></script>
+  <!-- Wadah modal & toast global -->
+  <div id="modal-root"></div>
+  <div id="toast-root"></div>
 
-  <!-- App bootstrap — MUST load last -->
-  <script src="./js/app.js"></script>
+  <!-- Leaflet JS + Chart.js (global) -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <!-- Konfigurasi Supabase di-load terpisah (TIDAK di-hardcode di HTML) -->
+  <script src="js/config.js"></script>
+  <!-- Logic aplikasi (ES module, meng-import js/supabase.js) -->
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

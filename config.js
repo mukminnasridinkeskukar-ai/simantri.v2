@@ -1,43 +1,21 @@
-/* ============================================================================
- * SIMANTRI v3 — Konfigurasi Aplikasi
- * ============================================================================
+/* =========================================================
+ * SIMANTRI — KONFIGURASI SUPABASE
+ * ---------------------------------------------------------
+ * Cara mengisi:
+ * 1. Buat project di https://supabase.com
+ * 2. Buka Project Settings → API:
+ *    - "Project URL"            → isi ke SUPABASE_URL
+ *    - "anon / public" key      → isi ke SUPABASE_ANON_KEY
+ * 3. Simpan file ini. TIDAK perlu mengubah file lain.
  *
- * File ini berisi semua konfigurasi yang mungkin perlu Anda ubah.
- * Edit nilai di bawah sesuai kebutuhan.
- *
- * CARA PAKAI:
- *   1. Untuk DEMO MODE (tanpa Supabase): biarkan SUPABASE_URL kosong ('').
- *      Aplikasi akan pakai data contoh (mock) — cocok untuk preview UI.
- *
- *   2. Untuk PRODUCTION (dengan Supabase):
- *      - Isi SUPABASE_URL dengan URL project Supabase Anda
- *        (contoh: https://abcd1234.supabase.co)
- *      - Isi SUPABASE_ANON_KEY dengan "anon public" key
- *        (BUKAN service_role key! Lihat dashboard Supabase → Settings → API)
- *      - Jalankan supabase/schema.sql di SQL Editor Supabase
- *
- * KEAMANAN:
- *   - Anon key AMAN di-expose di frontend — keamanan data dijamin oleh RLS
- *     (Row Level Security) yang sudah dikonfigurasi di schema.sql
- *   - JANGAN PERNAH taruh service_role key di sini!
- * ============================================================================ */
+ * Catatan keamanan:
+ * - anon key memang dipublikasikan di frontend (bukan
+ *   service_role). Keamanan data diatur lewat Row Level
+ *   Security (RLS) — lihat sql/schema.sql.
+ * - JANGAN pernah menaruh service_role key di file ini.
+ * ========================================================= */
 
 window.SIMANTRI_CONFIG = {
-  // === SUPABASE ===
-  // Dapatkan dari: Supabase Dashboard → Project Settings → API
-  SUPABASE_URL: 'https://kyxclotcblbkzrilldru.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt5eGNsb3RjYmxia3pyaWxsZHJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyODIzMjcsImV4cCI6MjEwMTg1ODMyN30.aUrEK8JLCia3vkg8nxin0wmgJw_o92Kia2T5zZM7Gwo',
-
-  // === APP INFO ===
-  APP_NAME: 'SIMANTRI',
-  APP_TAGLINE: 'Sistem Informasi & Manajemen Praktik Nakes',
-  APP_VERSION: '3.0.0',
-
-  // === NOTIFICATION ===
-  // Threshold hari untuk warning expired (default: 90 hari = H-90)
-  EXPIRY_WARNING_DAYS: 90,
-
-  // === DEMO MODE ===
-  // Jika true, pakai data mock meskipun Supabase sudah dikonfigurasi
-  FORCE_DEMO_MODE: false,
+  SUPABASE_URL: 'https://GANTI-DENGAN-PROJECT-URL.supabase.co',
+  SUPABASE_ANON_KEY: 'GANTI-DENGAN-ANON-KEY',
 };
