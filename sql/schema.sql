@@ -13,7 +13,25 @@
 -- =========================================================
 
 -- =========================================================
--- 1. FUNGSI BANTU (untuk kebijakan RLS berbasis role)
+-- 1. TABEL PROFILES (id = auth.users.id)
+--    ⚠ DIBUAT PALING AWAL: fungsi bantu & kebijakan RLS di
+--    bawah ini merujuk ke tabel profiles, sehingga tabel
+--    wajib ada lebih dulu (mencegah error 42P01
+--    "relation public.profiles does not exist").
+-- =========================================================
+
+create table if not exists public.profiles (
+  id         uuid primary key references auth.users (id) on delete cascade,
+  email      text        not null,
+  nama       text        not null default '',
+  role       text        not null default 'operator'
+             check (role in ('admin', 'verifikator', 'operator')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- =========================================================
+-- 2. FUNGSI BANTU (untuk kebijakan RLS berbasis role)
 -- =========================================================
 
 -- Ambil role pengguna yang sedang login dari tabel profiles.
@@ -59,20 +77,6 @@ set search_path = public, pg_temp
 as $$
   select coalesce((select role from public.profiles where id = auth.uid()) in ('admin', 'operator'), false)
 $$;
-
--- =========================================================
--- 2. TABEL PROFILES (id = auth.users.id)
--- =========================================================
-
-create table if not exists public.profiles (
-  id         uuid primary key references auth.users (id) on delete cascade,
-  email      text        not null,
-  nama       text        not null default '',
-  role       text        not null default 'operator'
-             check (role in ('admin', 'verifikator', 'operator')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
 
 -- =========================================================
 -- 3. TABEL TENAGA MEDIS

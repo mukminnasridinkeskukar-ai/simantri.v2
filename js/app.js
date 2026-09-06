@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.0.2';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -570,8 +570,19 @@ async function mountDashboard() {
     </div>`;
 
   if (!SUPABASE_TERKONFIGURASI) {
-    $('#stat-grid').innerHTML = '';
-    $('#quick-panel').innerHTML = '<p class="text-xs text-slate-400">Data akan tampil setelah konfigurasi Supabase di js/config.js.</p>';
+    // Placeholder kartu statistik (tidak menghilang — agar layout tetap utuh)
+    $('#stat-grid').innerHTML = STAT_CARDS.map((c) => `
+      <div class="card p-4 flex items-center gap-3 opacity-50">
+        <div class="w-11 h-11 rounded-xl grid place-items-center flex-none ${c.color}">${icon(c.icon, 'w-5 h-5')}</div>
+        <div class="min-w-0">
+          <p class="text-2xl font-extrabold text-slate-300 leading-none">&ndash;</p>
+          <p class="text-[.7rem] text-slate-400 mt-1 truncate">${esc(c.label)}</p>
+        </div>
+      </div>`).join('');
+    $('#chart-sebaran').closest('.h-72').innerHTML =
+      emptyState('Grafik akan tampil otomatis setelah js/config.js diisi dan sql/schema.sql dijalankan.');
+    $('#quick-panel').innerHTML =
+      '<p class="text-xs text-slate-400 leading-relaxed">Panel aksi cepat akan aktif setelah koneksi Supabase berhasil.</p>';
     return;
   }
 
@@ -1672,7 +1683,12 @@ const ROUTES = {
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
+const VERSI_SIMANTRI = '1.0.2';
+
 async function boot() {
+  // Penanda versi: bila baris ini TIDAK muncul di console,
+  // berarti peramban masih memuat file lama (cache).
+  console.info(`[SIMANTRI] v${VERSI_SIMANTRI} — file terbaru berhasil dimuat`);
   bindShell();
   buildNav();
   renderTopbarUser();
@@ -1705,5 +1721,17 @@ async function boot() {
   }, 3000);
 }
 
-boot();
+boot().catch((e) => {
+  console.error('[SIMANTRI] Gagal memuat aplikasi:', e);
+  const sp = document.querySelector('#splash');
+  if (sp) {
+    sp.innerHTML =
+      '<div style="max-width:440px;text-align:center;padding:2rem;font-family:inherit">' +
+      '<p style="font-weight:800;color:#0f766e;font-size:1.05rem;margin:0 0 .5rem">SIMANTRI gagal dimuat</p>' +
+      '<p style="font-size:.875rem;color:#475569;margin:0">' + String((e && e.message) || e) + '</p>' +
+      '<p style="font-size:.75rem;color:#94a3b8;margin:1rem 0 0">Pastikan seluruh file (index.html, css/, js/, assets/) terunggah lengkap, ' +
+      'lalu muat ulang dengan Ctrl+Shift+R (hard refresh).</p>' +
+      '</div>';
+  }
+});
 
