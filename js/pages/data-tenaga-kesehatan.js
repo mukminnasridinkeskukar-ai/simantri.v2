@@ -97,9 +97,11 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
       const components = window.SIMANTRI_COMPONENTS;
 
-      const JENIS_FILTER = ['Perawat', 'Bidan', 'Apoteker', 'TTK', 'ATLM', 'Gizi', 'Kesling'];
+      const JENIS_OPTIONS = ['Perawat', 'Bidan', 'Apoteker', 'TTK', 'ATLM', 'Gizi', 'Kesling'];
+      const JENIS_FILTER = JENIS_OPTIONS.slice();
       // chip definitions with icon paths
       const CHIPS = [
         { jenis: 'Perawat', label: 'Perawat', icon: 'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z' },
@@ -191,9 +193,7 @@
         });
       }
       const addBtn = document.querySelector('[data-action="add"]');
-      if (addBtn) addBtn.addEventListener('click', function () {
-        utils.toast('Form tambah nakes akan tersedia di modul produksi', 'info');
-      });
+      if (addBtn) addBtn.addEventListener('click', function () { openFormModal(); });
       const exportBtn = document.querySelector('[data-action="export"]');
       if (exportBtn) exportBtn.addEventListener('click', exportCsv);
 
@@ -294,16 +294,24 @@
                + '<td><span class="text-xs text-ink-700">' + utils.escapeHtml(fasyankesName(n.fasyankes_id)) + '</span></td>'
                + '<td><span class="badge ' + badgeClass + '">' + statusLabel + '</span></td>'
                + '<td class="text-right">'
+               + '<div class="flex items-center justify-end gap-1">'
                + '<button class="btn btn-ghost btn-sm" data-action="detail" data-id="' + utils.escapeHtml(n.id) + '" aria-label="Detail">'
                + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>'
                + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="edit" data-id="' + utils.escapeHtml(n.id) + '" data-role-action="edit" aria-label="Edit">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
+               + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="delete" data-id="' + utils.escapeHtml(n.id) + '" data-role-action="delete" aria-label="Hapus">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>'
+               + '</button>'
+               + '</div>'
                + '</td>'
                + '</tr>';
         }).join('');
 
         tbody.querySelectorAll('tr[data-nakes-id]').forEach(function (tr) {
           tr.addEventListener('click', function (e) {
-            if (e.target.closest('[data-action="detail"]')) return;
+            if (e.target.closest('[data-action]')) return;
             const id = tr.dataset.nakesId;
             const n = _allNakes.find(function (x) { return x.id === id; });
             if (n) openDetail(n);
@@ -315,6 +323,19 @@
             const id = btn.dataset.id;
             const n = _allNakes.find(function (x) { return x.id === id; });
             if (n) openDetail(n);
+          });
+        });
+        tbody.querySelectorAll('[data-action="edit"]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openFormModal(btn.dataset.id);
+          });
+        });
+        tbody.querySelectorAll('[data-action="delete"]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const n = _allNakes.find(function (x) { return x.id === btn.dataset.id; });
+            if (n) handleDelete(n);
           });
         });
       }
@@ -454,6 +475,221 @@
           });
         }
         document.addEventListener('keydown', escClose);
+      }
+
+      function openFormModal(id) {
+        const isEdit = !!id;
+        const n = isEdit ? _allNakes.find(function (x) { return x.id === id; }) : null;
+        const fasyankesOptions = '<option value="">-- Pilih Fasyankes --</option>'
+          + _allFasyankes.map(function (f) {
+              const sel = n && n.fasyankes_id === f.id ? ' selected' : '';
+              return '<option value="' + utils.escapeHtml(f.id) + '"' + sel + '>' + utils.escapeHtml(f.nama) + '</option>';
+            }).join('');
+        const jenisOptions = JENIS_OPTIONS.map(function (j) {
+          const sel = n && n.jenis === j ? ' selected' : '';
+          return '<option value="' + utils.escapeHtml(j) + '"' + sel + '>' + utils.escapeHtml(j) + '</option>';
+        }).join('');
+
+        const modalHtml = `
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" data-modal>
+            <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-modal-close></div>
+            <div class="relative card w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto" style="border-radius:1.25rem;">
+              <div class="sticky top-0 bg-white p-5 border-b border-ink-100 flex items-center justify-between z-10">
+                <h3 class="text-base font-bold text-ink-900">` + (isEdit ? 'Edit Tenaga Kesehatan' : 'Tambah Tenaga Kesehatan') + `</h3>
+                <button class="btn btn-ghost btn-sm" data-modal-close aria-label="Tutup">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <form id="dtk-form" class="p-5 space-y-4" novalidate>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="sm:col-span-2">
+                    <label class="label" for="dtk-nama">Nama Lengkap <span class="text-rose-500">*</span></label>
+                    <input type="text" id="dtk-nama" class="input" value="` + utils.escapeHtml(n ? n.nama : '') + `" required />
+                    <p class="field-error hidden" id="dtk-nama-err">Nama wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-nik">NIK (16 digit) <span class="text-rose-500">*</span></label>
+                    <input type="text" id="dtk-nik" class="input" maxlength="16" inputmode="numeric" value="` + utils.escapeHtml(n ? n.nik : '') + `" required />
+                    <p class="field-error hidden" id="dtk-nik-err">NIK harus 16 digit angka</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-jenis">Jenis <span class="text-rose-500">*</span></label>
+                    <select id="dtk-jenis" class="select" required>` + jenisOptions + `</select>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-profesi">Profesi <span class="text-rose-500">*</span></label>
+                    <input type="text" id="dtk-profesi" class="input" value="` + utils.escapeHtml(n ? n.profesi : '') + `" required />
+                    <p class="field-error hidden" id="dtk-profesi-err">Profesi wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-no-str">No. STR <span class="text-rose-500">*</span></label>
+                    <input type="text" id="dtk-no-str" class="input" value="` + utils.escapeHtml(n ? n.no_str : '') + `" required />
+                    <p class="field-error hidden" id="dtk-no-str-err">No. STR wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-tgl-terbit">Tanggal Terbit STR <span class="text-rose-500">*</span></label>
+                    <input type="date" id="dtk-tgl-terbit" class="input" value="` + utils.escapeHtml(n ? n.tgl_terbit_str : '') + `" required />
+                    <p class="field-error hidden" id="dtk-tgl-terbit-err">Tanggal terbit wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-tgl-akhir">Tanggal Akhir STR <span class="text-rose-500">*</span></label>
+                    <input type="date" id="dtk-tgl-akhir" class="input" value="` + utils.escapeHtml(n ? n.tgl_akhir_str : '') + `" required />
+                    <p class="field-error hidden" id="dtk-tgl-akhir-err">Tanggal akhir harus setelah tanggal terbit</p>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="label" for="dtk-fasyankes-form">Fasyankes <span class="text-rose-500">*</span></label>
+                    <select id="dtk-fasyankes-form" class="select" required>` + fasyankesOptions + `</select>
+                    <p class="field-error hidden" id="dtk-fasyankes-err">Fasyankes wajib dipilih</p>
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-phone">No. Telepon</label>
+                    <input type="tel" id="dtk-phone" class="input" value="` + utils.escapeHtml(n ? (n.phone || '') : '') + `" />
+                  </div>
+                  <div>
+                    <label class="label" for="dtk-email">Email</label>
+                    <input type="email" id="dtk-email" class="input" value="` + utils.escapeHtml(n ? (n.email || '') : '') + `" />
+                    <p class="field-error hidden" id="dtk-email-err">Format email tidak valid</p>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="label" for="dtk-status-form">Status</label>
+                    <select id="dtk-status-form" class="select">
+                      <option value="aktif"` + (!n || n.status === 'aktif' ? ' selected' : '') + `>Aktif</option>
+                      <option value="nonaktif"` + (n && n.status === 'nonaktif' ? ' selected' : '') + `>Nonaktif</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
+                  <button type="button" class="btn btn-outline btn-sm" data-modal-close>Batal</button>
+                  <button type="submit" class="btn btn-primary btn-sm">` + (isEdit ? 'Simpan Perubahan' : 'Tambah Nakes') + `</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        portal.innerHTML = modalHtml;
+        portal.querySelectorAll('[data-modal-close]').forEach(function (el) {
+          el.addEventListener('click', closeModal);
+        });
+        const form = portal.querySelector('#dtk-form');
+        if (form) {
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            handleSubmit(id);
+          });
+        }
+        const nikInput = portal.querySelector('#dtk-nik');
+        if (nikInput) {
+          nikInput.addEventListener('input', function (e) {
+            e.target.value = e.target.value.replace(/\D/g, '').substring(0, 16);
+          });
+        }
+        document.addEventListener('keydown', escClose);
+      }
+
+      function handleSubmit(id) {
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        const val = function (sel) { const el = portal.querySelector(sel); return el ? el.value.trim() : ''; };
+        const nama = val('#dtk-nama');
+        const nik = val('#dtk-nik');
+        const profesi = val('#dtk-profesi');
+        const jenis = val('#dtk-jenis');
+        const noStr = val('#dtk-no-str');
+        const tglTerbitEl = portal.querySelector('#dtk-tgl-terbit');
+        const tglAkhirEl = portal.querySelector('#dtk-tgl-akhir');
+        const tglTerbit = tglTerbitEl ? tglTerbitEl.value : '';
+        const tglAkhir = tglAkhirEl ? tglAkhirEl.value : '';
+        const fasyankesId = val('#dtk-fasyankes-form');
+        const phone = val('#dtk-phone');
+        const email = val('#dtk-email');
+        const status = val('#dtk-status-form');
+
+        portal.querySelectorAll('.field-error').forEach(function (el) { el.classList.add('hidden'); });
+        let valid = true;
+        const err = function (sel) { const el = portal.querySelector(sel); if (el) el.classList.remove('hidden'); };
+        if (!nama) { err('#dtk-nama-err'); valid = false; }
+        if (!/^\d{16}$/.test(nik)) { err('#dtk-nik-err'); valid = false; }
+        if (!profesi) { err('#dtk-profesi-err'); valid = false; }
+        if (!noStr) { err('#dtk-no-str-err'); valid = false; }
+        if (!tglTerbit) { err('#dtk-tgl-terbit-err'); valid = false; }
+        if (!tglAkhir || !tglTerbit || new Date(tglAkhir) <= new Date(tglTerbit)) { err('#dtk-tgl-akhir-err'); valid = false; }
+        if (!fasyankesId) { err('#dtk-fasyankes-err'); valid = false; }
+        if (email && !utils.isEmail(email)) { err('#dtk-email-err'); valid = false; }
+
+        if (!valid) {
+          utils.toast('Periksa kembali isian form', 'error');
+          return;
+        }
+
+        const payload = {
+          nama: nama,
+          nik: nik,
+          profesi: profesi,
+          jenis: jenis,
+          no_str: noStr,
+          tgl_terbit_str: tglTerbit,
+          tgl_akhir_str: tglAkhir,
+          fasyankes_id: fasyankesId,
+          phone: phone || null,
+          email: email || null,
+          status: status
+        };
+
+        (async function () {
+          try {
+            const profile = auth.getProfile();
+            if (id) {
+              await data.updateNakes(id, payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'tenaga_kesehatan',
+                entity_id: id,
+                detail: 'Update nakes: ' + nama
+              });
+              utils.toast('Data berhasil diperbarui', 'success');
+            } else {
+              const item = await data.addNakes(payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'CREATE',
+                entity: 'tenaga_kesehatan',
+                entity_id: item.id,
+                detail: 'Tambah nakes: ' + nama
+              });
+              utils.toast('Data berhasil ditambahkan', 'success');
+            }
+            closeModal();
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
+      }
+
+      async function handleDelete(n) {
+        if (!confirm('Hapus nakes "' + n.nama + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+        try {
+          await data.deleteNakes(n.id);
+          const profile = auth.getProfile();
+          await data.addAuditLog({
+            user_id: profile.id,
+            user_name: profile.full_name,
+            action: 'DELETE',
+            entity: 'tenaga_kesehatan',
+            entity_id: n.id,
+            detail: 'Hapus nakes: ' + n.nama
+          });
+          utils.toast('Data nakes dihapus', 'success');
+          await load();
+        } catch (e) {
+          utils.toast('Error: ' + e.message, 'error');
+        }
       }
 
       function escClose(e) {

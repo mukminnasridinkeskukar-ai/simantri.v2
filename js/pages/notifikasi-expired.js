@@ -98,9 +98,43 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
 
       let _allItems = [];
+      let _nakesCache = [];
+      let _praktikCache = [];
       let _activeChip = 'all';
+
+      // Inject "Tandai semua dibaca" button if not exists
+      const headerActions = document.querySelector('[data-action="refresh"]') ? document.querySelector('[data-action="refresh"]').parentElement : null;
+      let markAllBtn = null;
+      if (headerActions) {
+        markAllBtn = document.createElement('button');
+        markAllBtn.className = 'btn btn-outline btn-sm role-dinkes-only';
+        markAllBtn.setAttribute('type', 'button');
+        markAllBtn.setAttribute('data-role-action', 'edit');
+        markAllBtn.setAttribute('data-action', 'mark-all-read');
+        markAllBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg> Tandai semua dibaca';
+        headerActions.appendChild(markAllBtn);
+        markAllBtn.addEventListener('click', async function () {
+          try {
+            await data.markAllNotificationsRead();
+            const profile = auth.getProfile();
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'UPDATE',
+              entity: 'notifications',
+              entity_id: '-',
+              detail: 'Tandai semua notifikasi sebagai dibaca'
+            });
+            utils.toast('Semua notifikasi ditandai dibaca', 'success');
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        });
+      }
 
       // Bind chips
       document.querySelectorAll('.chip').forEach(function (chip) {
@@ -138,52 +172,50 @@
             data.loadPraktik(),
             data.loadNotifications(),
           ]);
+          _nakesCache = nakes || [];
+          _praktikCache = praktik || [];
 
-          const items = [];
-          // STR items
-          nakes.forEach(function (n) {
-            const status = n.expire_status || db.calcExpireStatus(n.tgl_akhir_str);
-            if (status === db.STATUS.HAMPIR_EXPIRED || status === db.STATUS.EXPIRED) {
-              items.push({
-                id: 'str-' + n.id,
-                tenaga_id: n.id,
-                nama: n.nama,
-                profesi: n.profesi,
-                tipe: 'STR',
-                no_dok: n.no_str,
-                tgl_akhir: n.tgl_akhir_str,
-                status: status,
-                isRead: false,
-              });
+          // Build display items from notifications
+          const items = (notifs || []).map(function (notif) {
+            const tipe = (notif.type || '').indexOf('sip') === 0 ? 'SIP' : 'STR';
+            const isExpired = (notif.type || '').indexOf('expired') >= 0 && (notif.type || '').indexOf('hampir') < 0;
+            const status = isExpired ? db.STATUS.EXPIRED : db.STATUS.HAMPIR_EXPIRED;
+            // Find related nakes & dokumen info
+            const n = _nakesCache.find(function (x) { return x.id === notif.tenaga_id; });
+            const p = _praktikCache.find(function (x) { return x.id === notif.tenaga_id || x.tenaga_id === notif.tenaga_id; });
+            let noDok = '-';
+            let tglAkhir = null;
+            if (tipe === 'STR' && n) {
+              noDok = n.no_str || '-';
+              tglAkhir = n.tgl_akhir_str;
+            } else if (tipe === 'SIP' && p) {
+              noDok = p.no_sip || '-';
+              tglAkhir = p.tgl_akhir_sip;
+            } else if (n) {
+              noDok = n.no_str || '-';
+              tglAkhir = n.tgl_akhir_str;
             }
-          });
-          // SIP items
-          praktik.forEach(function (p) {
-            const status = p.expire_status || db.calcExpireStatus(p.tgl_akhir_sip);
-            if (status === db.STATUS.HAMPIR_EXPIRED || status === db.STATUS.EXPIRED) {
-              const n = nakes.find(function (x) { return x.id === p.tenaga_id; });
-              items.push({
-                id: 'sip-' + p.id,
-                tenaga_id: p.tenaga_id,
-                nama: n ? n.nama : 'Nakes',
-                profesi: n ? n.profesi : '-',
-                tipe: 'SIP',
-                no_dok: p.no_sip,
-                tgl_akhir: p.tgl_akhir_sip,
-                status: status,
-                isRead: false,
-              });
-            }
-          });
-          // Mark items mentioned in notifications as ditindaklanjuti (mock)
-          const followedIds = new Set(notifs.map(function (n) { return n.tenaga_id; }));
-          items.forEach(function (it) {
-            if (followedIds.has(it.tenaga_id) && it.tipe === 'STR') {
-              it.ditindaklanjuti = true;
-            }
+            return {
+              id: notif.id,
+              tenaga_id: notif.tenaga_id,
+              nama: n ? n.nama : (notif.title || 'Nakes').replace(/^(STR|SIP)\s+/i, '').replace(/\s+(telah|akan).*$/i, ''),
+              profesi: n ? n.profesi : '-',
+              tipe: tipe,
+              no_dok: noDok,
+              tgl_akhir: tglAkhir,
+              status: status,
+              isRead: !!notif.is_read,
+              title: notif.title,
+              message: notif.message,
+              created_at: notif.created_at
+            };
           });
 
-          items.sort(function (a, b) { return new Date(a.tgl_akhir) - new Date(b.tgl_akhir); });
+          items.sort(function (a, b) {
+            // Unread first, then by date asc
+            if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
+            return new Date(a.tgl_akhir || a.created_at) - new Date(b.tgl_akhir || b.created_at);
+          });
           _allItems = items;
           renderCounts();
           renderList();
@@ -194,9 +226,9 @@
       }
 
       function renderCounts() {
-        const hampir = _allItems.filter(function (i) { return i.status === db.STATUS.HAMPIR_EXPIRED && !i.ditindaklanjuti; }).length;
-        const expired = _allItems.filter(function (i) { return i.status === db.STATUS.EXPIRED && !i.ditindaklanjuti; }).length;
-        const ditindak = _allItems.filter(function (i) { return i.ditindaklanjuti; }).length;
+        const hampir = _allItems.filter(function (i) { return i.status === db.STATUS.HAMPIR_EXPIRED && !i.isRead; }).length;
+        const expired = _allItems.filter(function (i) { return i.status === db.STATUS.EXPIRED && !i.isRead; }).length;
+        const ditindak = _allItems.filter(function (i) { return i.isRead; }).length;
         const set = function (id, v) { const e = document.getElementById(id); if (e) e.textContent = v; };
         set('count-hampir', hampir);
         set('count-expired', expired);
@@ -208,9 +240,9 @@
           switch (_activeChip) {
             case 'str': return it.tipe === 'STR';
             case 'sip': return it.tipe === 'SIP';
-            case 'hampir': return it.status === db.STATUS.HAMPIR_EXPIRED && !it.ditindaklanjuti;
-            case 'expired': return it.status === db.STATUS.EXPIRED && !it.ditindaklanjuti;
-            case 'ditindaklanjuti': return it.ditindaklanjuti;
+            case 'hampir': return it.status === db.STATUS.HAMPIR_EXPIRED && !it.isRead;
+            case 'expired': return it.status === db.STATUS.EXPIRED && !it.isRead;
+            case 'ditindaklanjuti': return it.isRead;
             default: return true;
           }
         });
@@ -235,24 +267,62 @@
           const days = utils.daysUntil(it.tgl_akhir);
           const isExpired = days < 0;
           const badgeClass = isExpired ? 'badge-rose' : 'badge-amber';
-          const dayText = isExpired ? 'Expired ' + (-days) + ' hari lalu' : 'H-' + days;
+          const dayText = it.tgl_akhir ? (isExpired ? 'Expired ' + (-days) + ' hari lalu' : 'H-' + days) : '-';
           const colorClass = utils.avatarColor(it.nama);
-          const actionBtn = it.ditindaklanjuti
-            ? '<span class="badge badge-teal">Ditindaklanjuti</span>'
+          const unreadDot = !it.isRead ? '<span class="w-2 h-2 rounded-full bg-rose-500 inline-block" title="Belum dibaca"></span>' : '';
+          const actionBtn = it.isRead
+            ? '<span class="badge badge-teal">Dibaca</span>'
             : '<button class="btn btn-primary btn-sm" data-action="perpanjang" data-id="' + utils.escapeHtml(it.id) + '" data-tenaga-id="' + utils.escapeHtml(it.tenaga_id) + '" data-tipe="' + it.tipe + '"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>Perpanjang</button>';
-          return '<div class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3">'
-               + '<div class="w-10 h-10 rounded-full ' + colorClass + ' text-white flex items-center justify-center text-sm font-bold flex-shrink-0">' + utils.escapeHtml(utils.initials(it.nama)) + '</div>'
+          return '<div class="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 ' + (!it.isRead ? 'bg-amber-50/30' : '') + '">'
+               + '<div class="flex items-center gap-2 flex-shrink-0">'
+               + '<div class="w-10 h-10 rounded-full ' + colorClass + ' text-white flex items-center justify-center text-sm font-bold">' + utils.escapeHtml(utils.initials(it.nama)) + '</div>'
+               + unreadDot
+               + '</div>'
                + '<div class="flex-1 min-w-0">'
                + '<div class="flex flex-wrap items-center gap-2">'
                + '<p class="text-sm font-semibold text-ink-900">' + utils.escapeHtml(it.nama) + '</p>'
                + '<span class="badge ' + (it.tipe === 'STR' ? 'badge-teal' : 'badge-lime') + '">' + it.tipe + '</span>'
                + '<span class="badge ' + badgeClass + '">' + dayText + '</span>'
                + '</div>'
-               + '<p class="text-xs text-ink-500 mt-0.5">' + utils.escapeHtml(it.profesi || '-') + ' &middot; No. ' + utils.escapeHtml(it.no_dok || '-') + ' &middot; Berakhir ' + utils.fmtDate(it.tgl_akhir) + '</p>'
+               + '<p class="text-xs text-ink-500 mt-0.5">' + utils.escapeHtml(it.profesi || '-') + ' &middot; No. ' + utils.escapeHtml(it.no_dok || '-') + (it.tgl_akhir ? ' &middot; Berakhir ' + utils.fmtDate(it.tgl_akhir) : '') + '</p>'
+               + (it.message ? '<p class="text-xs text-ink-600 mt-1">' + utils.escapeHtml(it.message) + '</p>' : '')
                + '</div>'
-               + '<div class="flex items-center gap-2 flex-shrink-0">' + actionBtn + '</div>'
+               + '<div class="flex items-center gap-2 flex-shrink-0">'
+               + '<button class="btn btn-outline btn-sm" data-action="detail" data-id="' + utils.escapeHtml(it.id) + '" data-tenaga-id="' + utils.escapeHtml(it.tenaga_id) + '" data-tipe="' + it.tipe + '"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>Detail</button>'
+               + actionBtn
+               + '</div>'
                + '</div>';
         }).join('');
+
+        container.querySelectorAll('[data-action="detail"]').forEach(function (btn) {
+          btn.addEventListener('click', async function () {
+            const id = btn.dataset.id;
+            const tenagaId = btn.dataset.tenagaId;
+            const tipe = btn.dataset.tipe;
+            try {
+              await data.markNotificationRead(id);
+              const profile = auth.getProfile();
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'notifications',
+                entity_id: id,
+                detail: 'Tandai notifikasi ' + tipe + ' sebagai dibaca'
+              });
+              utils.toast('Notifikasi ditandai dibaca', 'success');
+            } catch (e) {
+              utils.toast('Error: ' + e.message, 'error');
+            }
+            // Navigate to data-nakes
+            setTimeout(function () {
+              window.SIMANTRI.navigateTo('data-nakes');
+              setTimeout(function () {
+                document.dispatchEvent(new CustomEvent('simantri:open-nakes', { detail: { id: tenagaId } }));
+              }, 200);
+            }, 200);
+          });
+        });
 
         container.querySelectorAll('[data-action="perpanjang"]').forEach(function (btn) {
           btn.addEventListener('click', function () {

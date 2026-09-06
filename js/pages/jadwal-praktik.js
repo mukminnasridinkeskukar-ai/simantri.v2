@@ -69,6 +69,7 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
 
       const DAYS = ['senin', 'selasa', 'rabu', 'kamis', 'jumat', 'sabtu', 'minggu'];
       const DAY_LABELS = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
@@ -88,6 +89,19 @@
           _fasyankesId = e.target.value;
           render();
         });
+      }
+
+      // Inject "Tambah Jadwal" button if not exists (single role: Admin Dinkes)
+      const headerActions = document.querySelector('#jp-fasyankes') ? document.querySelector('#jp-fasyankes').parentElement : null;
+      let addJadwalBtn = null;
+      if (headerActions) {
+        addJadwalBtn = document.createElement('button');
+        addJadwalBtn.className = 'btn btn-primary btn-sm role-dinkes-only';
+        addJadwalBtn.setAttribute('type', 'button');
+        addJadwalBtn.setAttribute('data-role-action', 'add');
+        addJadwalBtn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg> Tambah Jadwal';
+        headerActions.insertBefore(addJadwalBtn, headerActions.firstChild);
+        addJadwalBtn.addEventListener('click', function () { openFormModal(); });
       }
       document.querySelectorAll('.jp-view-btn').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -318,13 +332,10 @@
         grid.innerHTML = html;
 
         grid.querySelectorAll('[data-praktik-id]').forEach(function (el) {
-          el.addEventListener('click', function () {
-            const tenagaId = el.dataset.tenagaId;
-            utils.toast('Membuka detail nakes...', 'info');
-            window.SIMANTRI.navigateTo('data-nakes');
-            setTimeout(function () {
-              document.dispatchEvent(new CustomEvent('simantri:open-nakes', { detail: { id: tenagaId } }));
-            }, 200);
+          el.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const id = el.dataset.praktikId;
+            openFormModal(id);
           });
         });
       }
@@ -359,7 +370,7 @@
                + '<div class="divide-y divide-ink-100">'
                + items.map(function (s) {
                  const colorAvatar = utils.avatarColor(nakesName(s.tenagaId));
-                 return '<div class="p-3 flex items-center gap-3 hover:bg-teal-50/40 transition-colors cursor-pointer" data-tenaga-id="' + utils.escapeHtml(s.tenagaId) + '">'
+                 return '<div class="p-3 flex items-center gap-3 hover:bg-teal-50/40 transition-colors cursor-pointer" data-tenaga-id="' + utils.escapeHtml(s.tenagaId) + '" data-praktik-id="' + utils.escapeHtml(s.praktikId) + '">'
                       + '<div class="text-center flex-shrink-0 w-16">'
                       + '<p class="text-xs font-bold text-ink-900">' + utils.escapeHtml(s.mulai) + '</p>'
                       + '<p class="text-[10px] text-ink-400">-</p>'
@@ -378,14 +389,246 @@
         }).filter(Boolean).join('');
 
         container.querySelectorAll('[data-tenaga-id]').forEach(function (el) {
-          el.addEventListener('click', function () {
-            const tenagaId = el.dataset.tenagaId;
-            window.SIMANTRI.navigateTo('data-nakes');
-            setTimeout(function () {
-              document.dispatchEvent(new CustomEvent('simantri:open-nakes', { detail: { id: tenagaId } }));
-            }, 200);
+          el.addEventListener('click', function (e) {
+            // Find the parent session row and locate its praktik id via dataset on the row
+            const row = e.currentTarget;
+            const praktikId = row.getAttribute('data-praktik-id');
+            if (praktikId) {
+              openFormModal(praktikId);
+            } else {
+              const tenagaId = el.dataset.tenagaId;
+              window.SIMANTRI.navigateTo('data-nakes');
+              setTimeout(function () {
+                document.dispatchEvent(new CustomEvent('simantri:open-nakes', { detail: { id: tenagaId } }));
+              }, 200);
+            }
           });
         });
+      }
+
+      function openFormModal(id) {
+        const isEdit = !!id;
+        const p = isEdit ? _allPraktik.find(function (x) { return x.id === id; }) : null;
+        const tenagaOptions = '<option value="">-- Pilih Nakes --</option>'
+          + _allNakes.map(function (n) {
+              const sel = p && p.tenaga_id === n.id ? ' selected' : '';
+              return '<option value="' + utils.escapeHtml(n.id) + '"' + sel + '>' + utils.escapeHtml(n.nama) + ' · ' + utils.escapeHtml(n.profesi || '-') + '</option>';
+            }).join('');
+        const fasyankesOptions = '<option value="">-- Pilih Fasyankes --</option>'
+          + _allFasyankes.map(function (f) {
+              const sel = p && p.fasyankes_id === f.id ? ' selected' : '';
+              return '<option value="' + utils.escapeHtml(f.id) + '"' + sel + '>' + utils.escapeHtml(f.nama) + '</option>';
+            }).join('');
+        const jenisDokOptions = ['SIP', 'SIK', 'Rekomendasi'].map(function (j) {
+          const sel = p && p.jenis_dok === j ? ' selected' : '';
+          return '<option value="' + utils.escapeHtml(j) + '"' + sel + '>' + utils.escapeHtml(j) + '</option>';
+        }).join('');
+        const statusOptions = ['aktif', 'nonaktif'].map(function (s) {
+          const sel = p && p.status === s ? ' selected' : (!p && s === 'aktif' ? ' selected' : '');
+          return '<option value="' + s + '"' + sel + '>' + (s === 'aktif' ? 'Aktif' : 'Nonaktif') + '</option>';
+        }).join('');
+        const jadwalValue = p && p.jadwal_json ? (typeof p.jadwal_json === 'string' ? p.jadwal_json : JSON.stringify(p.jadwal_json, null, 2)) : '{\n  "senin_jumat": { "mulai": "08:00", "selesai": "14:00" }\n}';
+
+        const modalHtml = `
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" data-modal>
+            <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-modal-close></div>
+            <div class="relative card w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto" style="border-radius:1.25rem;">
+              <div class="sticky top-0 bg-white p-5 border-b border-ink-100 flex items-center justify-between z-10">
+                <h3 class="text-base font-bold text-ink-900">` + (isEdit ? 'Edit Jadwal Praktik' : 'Tambah Jadwal Praktik') + `</h3>
+                <button class="btn btn-ghost btn-sm" data-modal-close aria-label="Tutup">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <form id="jp-form" class="p-5 space-y-4" novalidate>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="sm:col-span-2">
+                    <label class="label" for="jp-tenaga">Tenaga Kesehatan <span class="text-rose-500">*</span></label>
+                    <select id="jp-tenaga" class="select" required>` + tenagaOptions + `</select>
+                    <p class="field-error hidden" id="jp-tenaga-err">Tenaga kesehatan wajib dipilih</p>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="label" for="jp-fasyankes-form">Fasyankes <span class="text-rose-500">*</span></label>
+                    <select id="jp-fasyankes-form" class="select" required>` + fasyankesOptions + `</select>
+                    <p class="field-error hidden" id="jp-fasyankes-err">Fasyankes wajib dipilih</p>
+                  </div>
+                  <div>
+                    <label class="label" for="jp-no-sip">No. SIP/SIK <span class="text-rose-500">*</span></label>
+                    <input type="text" id="jp-no-sip" class="input" value="` + utils.escapeHtml(p ? (p.no_sip || '') : '') + `" required />
+                    <p class="field-error hidden" id="jp-no-sip-err">No. SIP/SIK wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="jp-jenis-dok">Jenis Dokumen <span class="text-rose-500">*</span></label>
+                    <select id="jp-jenis-dok" class="select" required>` + jenisDokOptions + `</select>
+                  </div>
+                  <div>
+                    <label class="label" for="jp-tgl-terbit-sip">Tanggal Terbit <span class="text-rose-500">*</span></label>
+                    <input type="date" id="jp-tgl-terbit-sip" class="input" value="` + utils.escapeHtml(p ? (p.tgl_terbit_sip || '') : '') + `" required />
+                    <p class="field-error hidden" id="jp-tgl-terbit-sip-err">Tanggal terbit wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="jp-tgl-akhir-sip">Tanggal Akhir <span class="text-rose-500">*</span></label>
+                    <input type="date" id="jp-tgl-akhir-sip" class="input" value="` + utils.escapeHtml(p ? (p.tgl_akhir_sip || '') : '') + `" required />
+                    <p class="field-error hidden" id="jp-tgl-akhir-sip-err">Tanggal akhir harus setelah tanggal terbit</p>
+                  </div>
+                  <div>
+                    <label class="label" for="jp-status-form">Status</label>
+                    <select id="jp-status-form" class="select">` + statusOptions + `</select>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="label" for="jp-jadwal-json">Jadwal (JSON) <span class="text-rose-500">*</span></label>
+                    <textarea id="jp-jadwal-json" class="textarea font-mono text-xs" rows="5">` + utils.escapeHtml(jadwalValue) + `</textarea>
+                    <p class="text-xs text-ink-500 mt-1">Format: {"senin_jumat":{"mulai":"08:00","selesai":"14:00"}}</p>
+                    <p class="field-error hidden" id="jp-jadwal-json-err">JSON tidak valid</p>
+                  </div>
+                </div>
+                <div class="flex justify-between gap-2 pt-3 border-t border-ink-100">
+                  ` + (isEdit ? '<button type="button" class="btn btn-danger btn-sm" data-action="delete-praktik" data-id="' + utils.escapeHtml(id) + '"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>Hapus</button>' : '') + `
+                  <div class="flex gap-2 ml-auto">
+                    <button type="button" class="btn btn-outline btn-sm" data-modal-close>Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm">` + (isEdit ? 'Simpan Perubahan' : 'Tambah Jadwal') + `</button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        portal.innerHTML = modalHtml;
+        portal.querySelectorAll('[data-modal-close]').forEach(function (el) {
+          el.addEventListener('click', closeModal);
+        });
+        const form = portal.querySelector('#jp-form');
+        if (form) {
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            handleSubmit(id);
+          });
+        }
+        const delBtn = portal.querySelector('[data-action="delete-praktik"]');
+        if (delBtn) {
+          delBtn.addEventListener('click', function () {
+            const praktikId = delBtn.dataset.id;
+            const target = _allPraktik.find(function (x) { return x.id === praktikId; });
+            if (target) {
+              closeModal();
+              handleDelete(target);
+            }
+          });
+        }
+        document.addEventListener('keydown', escClose);
+      }
+
+      function handleSubmit(id) {
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        const val = function (sel) { const el = portal.querySelector(sel); return el ? el.value.trim() : ''; };
+        const tenagaId = val('#jp-tenaga');
+        const fasyankesId = val('#jp-fasyankes-form');
+        const noSip = val('#jp-no-sip');
+        const jenisDok = val('#jp-jenis-dok');
+        const tglTerbit = portal.querySelector('#jp-tgl-terbit-sip') ? portal.querySelector('#jp-tgl-terbit-sip').value : '';
+        const tglAkhir = portal.querySelector('#jp-tgl-akhir-sip') ? portal.querySelector('#jp-tgl-akhir-sip').value : '';
+        const status = val('#jp-status-form');
+        const jadwalRaw = portal.querySelector('#jp-jadwal-json') ? portal.querySelector('#jp-jadwal-json').value : '';
+
+        portal.querySelectorAll('.field-error').forEach(function (el) { el.classList.add('hidden'); });
+        let valid = true;
+        const err = function (sel) { const el = portal.querySelector(sel); if (el) el.classList.remove('hidden'); };
+        if (!tenagaId) { err('#jp-tenaga-err'); valid = false; }
+        if (!fasyankesId) { err('#jp-fasyankes-err'); valid = false; }
+        if (!noSip) { err('#jp-no-sip-err'); valid = false; }
+        if (!tglTerbit) { err('#jp-tgl-terbit-sip-err'); valid = false; }
+        if (!tglAkhir || !tglTerbit || new Date(tglAkhir) <= new Date(tglTerbit)) { err('#jp-tgl-akhir-sip-err'); valid = false; }
+        let jadwalObj = null;
+        if (jadwalRaw) {
+          try {
+            jadwalObj = JSON.parse(jadwalRaw);
+          } catch (e2) {
+            err('#jp-jadwal-json-err'); valid = false;
+          }
+        } else {
+          err('#jp-jadwal-json-err'); valid = false;
+        }
+
+        if (!valid) {
+          utils.toast('Periksa kembali isian form', 'error');
+          return;
+        }
+
+        const payload = {
+          tenaga_id: tenagaId,
+          fasyankes_id: fasyankesId,
+          no_sip: noSip,
+          jenis_dok: jenisDok,
+          tgl_terbit_sip: tglTerbit,
+          tgl_akhir_sip: tglAkhir,
+          jadwal_json: typeof jadwalObj === 'string' ? jadwalObj : JSON.stringify(jadwalObj),
+          status: status
+        };
+
+        (async function () {
+          try {
+            const profile = auth.getProfile();
+            if (id) {
+              await data.updatePraktik(id, payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'praktik',
+                entity_id: id,
+                detail: 'Update jadwal praktik SIP ' + noSip
+              });
+              utils.toast('Jadwal berhasil diperbarui', 'success');
+            } else {
+              const item = await data.addPraktik(payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'CREATE',
+                entity: 'praktik',
+                entity_id: item.id,
+                detail: 'Tambah jadwal praktik SIP ' + noSip
+              });
+              utils.toast('Jadwal berhasil ditambahkan', 'success');
+            }
+            closeModal();
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
+      }
+
+      async function handleDelete(p) {
+        if (!confirm('Hapus jadwal praktik (SIP ' + (p.no_sip || '-') + ')? Tindakan ini tidak dapat dibatalkan.')) return;
+        try {
+          await data.deletePraktik(p.id);
+          const profile = auth.getProfile();
+          await data.addAuditLog({
+            user_id: profile.id,
+            user_name: profile.full_name,
+            action: 'DELETE',
+            entity: 'praktik',
+            entity_id: p.id,
+            detail: 'Hapus jadwal praktik SIP ' + (p.no_sip || '-')
+          });
+          utils.toast('Jadwal praktik dihapus', 'success');
+          await load();
+        } catch (e) {
+          utils.toast('Error: ' + e.message, 'error');
+        }
+      }
+
+      function escClose(e) {
+        if (e.key === 'Escape') closeModal();
+      }
+      function closeModal() {
+        const portal = document.getElementById('modal-portal');
+        if (portal) portal.innerHTML = '';
+        document.removeEventListener('keydown', escClose);
       }
 
       await load();

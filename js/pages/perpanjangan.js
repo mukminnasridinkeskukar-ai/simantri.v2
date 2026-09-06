@@ -152,6 +152,7 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
 
       const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -379,15 +380,6 @@
         if (!tglBerakhir) {
           showError('pp-tgl-berakhir-err', 'Tanggal berakhir wajib diisi');
           valid = false;
-        } else {
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          const end = new Date(tglBerakhir);
-          end.setHours(0, 0, 0, 0);
-          if (end <= today) {
-            showError('pp-tgl-berakhir-err', 'Tanggal berakhir harus tanggal masa depan');
-            valid = false;
-          }
         }
         if (!_selectedFile) {
           showError('pp-file-err');
@@ -399,37 +391,46 @@
           return;
         }
 
-        // Create pengajuan
         const n = _allNakes.find(function (x) { return x.id === nakesSel.value; });
-        const newPengajuan = {
-          id: 'pp-' + Date.now(),
+        const payload = {
           tenaga_id: nakesSel.value,
-          nama: n ? n.nama : 'Nakes',
-          profesi: n ? n.profesi : '-',
-          tipe: jenisSel.value,
+          tenaga_nama: n ? n.nama : 'Nakes',
+          jenis_dok: jenisSel.value,
           no_dok_lama: noLamaInput.value.trim(),
           tgl_berakhir_lama: tglBerakhir,
-          tgl_pengajuan: tglPengajuanInput.value,
           catatan: catatanInput.value.trim(),
-          file_name: _selectedFile.name,
-          status: db.STATUS.PENDING,
+          status: 'pending'
         };
-        _pengajuan.unshift(newPengajuan);
 
-        utils.toast('Pengajuan perpanjangan ' + newPengajuan.tipe + ' berhasil dikirim', 'success');
-        form.reset();
-        clearFile();
-        if (tglPengajuanInput) {
-          const today = new Date();
-          const y = today.getFullYear();
-          const m = String(today.getMonth() + 1).padStart(2, '0');
-          const d = String(today.getDate()).padStart(2, '0');
-          tglPengajuanInput.value = y + '-' + m + '-' + d;
-        }
-        renderList();
-        // Switch to list tab
-        const listTab = document.querySelector('.pp-tab[data-tab="list"]');
-        if (listTab) listTab.click();
+        (async function () {
+          try {
+            const item = await data.addPerpanjangan(payload);
+            const profile = auth.getProfile();
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'CREATE',
+              entity: 'perpanjangan',
+              entity_id: item.id,
+              detail: 'Ajukan perpanjangan ' + payload.jenis_dok + ' untuk ' + payload.tenaga_nama
+            });
+            utils.toast('Pengajuan perpanjangan ' + payload.jenis_dok + ' berhasil dikirim', 'success');
+            form.reset();
+            clearFile();
+            if (tglPengajuanInput) {
+              const today = new Date();
+              const y = today.getFullYear();
+              const m = String(today.getMonth() + 1).padStart(2, '0');
+              const d = String(today.getDate()).padStart(2, '0');
+              tglPengajuanInput.value = y + '-' + m + '-' + d;
+            }
+            await loadPengajuan();
+            const listTab = document.querySelector('.pp-tab[data-tab="list"]');
+            if (listTab) listTab.click();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
       }
 
       // Listen for start-perpanjangan events
@@ -468,50 +469,35 @@
               }).join('');
           }
 
-          // Generate mock pengajuan from data
-          const mockPengajuan = [];
-          // Some pending from nakes with hampir_expired STR
-          nakes.forEach(function (n, i) {
-            const status = n.expire_status || db.calcExpireStatus(n.tgl_akhir_str);
-            if (status === db.STATUS.HAMPIR_EXPIRED && i < 5) {
-              mockPengajuan.push({
-                id: 'pp-mock-' + n.id,
-                tenaga_id: n.id,
-                nama: n.nama,
-                profesi: n.profesi,
-                tipe: 'STR',
-                no_dok_lama: n.no_str,
-                tgl_berakhir_lama: n.tgl_akhir_str,
-                tgl_pengajuan: '2025-09-01',
-                catatan: 'Perpanjangan rutin',
-                file_name: 'STR_' + n.id + '.pdf',
-                status: db.STATUS.PENDING,
-              });
-            }
-          });
-          praktik.forEach(function (p) {
-            const status = p.expire_status || db.calcExpireStatus(p.tgl_akhir_sip);
-            if (status === db.STATUS.HAMPIR_EXPIRED) {
-              const n = nakes.find(function (x) { return x.id === p.tenaga_id; });
-              mockPengajuan.push({
-                id: 'pp-mock-sip-' + p.id,
-                tenaga_id: p.tenaga_id,
-                nama: n ? n.nama : 'Nakes',
-                profesi: n ? n.profesi : '-',
-                tipe: 'SIP',
-                no_dok_lama: p.no_sip,
-                tgl_berakhir_lama: p.tgl_akhir_sip,
-                tgl_pengajuan: '2025-09-02',
-                catatan: '',
-                file_name: 'SIP_' + p.id + '.pdf',
-                status: db.STATUS.DIVERIFIKASI,
-              });
-            }
-          });
-          _pengajuan = mockPengajuan;
-          renderList();
+          await loadPengajuan();
         } catch (err) {
           utils.toast('Gagal memuat data: ' + err.message, 'error');
+          console.error(err);
+        }
+      }
+
+      async function loadPengajuan() {
+        try {
+          const items = await data.loadPerpanjangan();
+          // Normalize fields so the rest of the UI works without changes
+          _pengajuan = items.map(function (p) {
+            return {
+              id: p.id,
+              tenaga_id: p.tenaga_id,
+              nama: p.tenaga_nama || p.nama || 'Nakes',
+              profesi: p.profesi || '-',
+              tipe: p.jenis_dok || p.tipe || 'STR',
+              no_dok_lama: p.no_dok_lama,
+              tgl_berakhir_lama: p.tgl_berakhir_lama,
+              tgl_pengajuan: p.created_at ? p.created_at.substring(0, 10) : (p.tgl_pengajuan || ''),
+              catatan: p.catatan || '',
+              file_name: p.file_name || 'dokumen-perpanjangan.pdf',
+              status: p.status || 'pending'
+            };
+          });
+          renderList();
+        } catch (err) {
+          utils.toast('Gagal memuat pengajuan: ' + err.message, 'error');
           console.error(err);
         }
       }
@@ -641,12 +627,28 @@
         });
         const cancelBtn = portal.querySelector('[data-action="cancel"]');
         if (cancelBtn) {
-          cancelBtn.addEventListener('click', function () {
+          cancelBtn.addEventListener('click', async function () {
             const id = cancelBtn.dataset.id;
-            _pengajuan = _pengajuan.filter(function (x) { return x.id !== id; });
-            utils.toast('Pengajuan dibatalkan', 'info');
-            closeModal();
-            renderList();
+            const target = _pengajuan.find(function (x) { return x.id === id; });
+            if (!target) return;
+            if (!confirm('Batalkan pengajuan ' + target.tipe + ' untuk ' + target.nama + '?')) return;
+            try {
+              await data.deletePerpanjangan(id);
+              const profile = auth.getProfile();
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'DELETE',
+                entity: 'perpanjangan',
+                entity_id: id,
+                detail: 'Batalkan pengajuan ' + target.tipe + ' untuk ' + target.nama
+              });
+              utils.toast('Pengajuan dibatalkan', 'info');
+              closeModal();
+              await loadPengajuan();
+            } catch (e) {
+              utils.toast('Error: ' + e.message, 'error');
+            }
           });
         }
         document.addEventListener('keydown', escClose);

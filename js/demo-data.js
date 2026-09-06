@@ -220,4 +220,476 @@
       return data || [];
     },
   };
+
+  // ============================================================================
+  // CRUD STORE (in-memory untuk demo mode; production pakai Supabase)
+  // ============================================================================
+  // Data disimpan di array mutable — perubahan langsung terlihat saat reload.
+  // Untuk production (Supabase configured), fungsi CRUD ini otomatis pakai
+  // insertRow/updateRow/deleteRow dari SIMANTRI_DB.
+
+  function genId(prefix) {
+    prefix = prefix || 'id';
+    return prefix + '-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+  }
+
+  // === NAKES CRUD ===
+  async function addNakes(payload) {
+    if (db.isDemoMode()) {
+      const item = Object.assign({ id: genId('n') }, payload);
+      DEMO_NAKES.push(item);
+      return item;
+    }
+    return await db.insertRow('tenaga_kesehatan', payload);
+  }
+
+  async function updateNakes(id, payload) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_NAKES.findIndex(function (n) { return n.id === id; });
+      if (idx < 0) throw new Error('Nakes tidak ditemukan');
+      DEMO_NAKES[idx] = Object.assign({}, DEMO_NAKES[idx], payload);
+      return DEMO_NAKES[idx];
+    }
+    return await db.updateRow('tenaga_kesehatan', id, payload);
+  }
+
+  async function deleteNakes(id) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_NAKES.findIndex(function (n) { return n.id === id; });
+      if (idx < 0) throw new Error('Nakes tidak ditemukan');
+      // Hapus juga praktik terkait
+      for (let i = DEMO_PRAKTIK.length - 1; i >= 0; i--) {
+        if (DEMO_PRAKTIK[i].tenaga_id === id) DEMO_PRAKTIK.splice(i, 1);
+      }
+      return DEMO_NAKES.splice(idx, 1)[0];
+    }
+    return await db.deleteRow('tenaga_kesehatan', id);
+  }
+
+  // === FASYANKES CRUD ===
+  async function addFasyankes(payload) {
+    if (db.isDemoMode()) {
+      const item = Object.assign({ id: genId('f') }, payload);
+      DEMO_FASYANKES.push(item);
+      return item;
+    }
+    return await db.insertRow('fasyankes', payload);
+  }
+
+  async function updateFasyankes(id, payload) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_FASYANKES.findIndex(function (f) { return f.id === id; });
+      if (idx < 0) throw new Error('Fasyankes tidak ditemukan');
+      DEMO_FASYANKES[idx] = Object.assign({}, DEMO_FASYANKES[idx], payload);
+      return DEMO_FASYANKES[idx];
+    }
+    return await db.updateRow('fasyankes', id, payload);
+  }
+
+  async function deleteFasyankes(id) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_FASYANKES.findIndex(function (f) { return f.id === id; });
+      if (idx < 0) throw new Error('Fasyankes tidak ditemukan');
+      // Set null untuk nakes & praktik yang refer ke fasyankes ini
+      DEMO_NAKES.forEach(function (n) { if (n.fasyankes_id === id) n.fasyankes_id = null; });
+      // Hapus praktik di fasyankes ini
+      for (let i = DEMO_PRAKTIK.length - 1; i >= 0; i--) {
+        if (DEMO_PRAKTIK[i].fasyankes_id === id) DEMO_PRAKTIK.splice(i, 1);
+      }
+      return DEMO_FASYANKES.splice(idx, 1)[0];
+    }
+    return await db.deleteRow('fasyankes', id);
+  }
+
+  // === PRAKTIK CRUD ===
+  async function addPraktik(payload) {
+    if (db.isDemoMode()) {
+      const item = Object.assign({ id: genId('p') }, payload);
+      DEMO_PRAKTIK.push(item);
+      return item;
+    }
+    return await db.insertRow('praktik', payload);
+  }
+
+  async function updatePraktik(id, payload) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_PRAKTIK.findIndex(function (p) { return p.id === id; });
+      if (idx < 0) throw new Error('Praktik tidak ditemukan');
+      DEMO_PRAKTIK[idx] = Object.assign({}, DEMO_PRAKTIK[idx], payload);
+      return DEMO_PRAKTIK[idx];
+    }
+    return await db.updateRow('praktik', id, payload);
+  }
+
+  async function deletePraktik(id) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_PRAKTIK.findIndex(function (p) { return p.id === id; });
+      if (idx < 0) throw new Error('Praktik tidak ditemukan');
+      return DEMO_PRAKTIK.splice(idx, 1)[0];
+    }
+    return await db.deleteRow('praktik', id);
+  }
+
+  // === NOTIFICATION CRUD ===
+  async function addNotification(payload) {
+    if (db.isDemoMode()) {
+      const item = Object.assign({
+        id: genId('notif'),
+        created_at: new Date().toISOString(),
+        is_read: false,
+      }, payload);
+      DEMO_NOTIFICATIONS.push(item);
+      return item;
+    }
+    return await db.insertRow('notifications', payload);
+  }
+
+  async function markNotificationRead(id) {
+    if (db.isDemoMode()) {
+      const idx = DEMO_NOTIFICATIONS.findIndex(function (n) { return n.id === id; });
+      if (idx >= 0) DEMO_NOTIFICATIONS[idx].is_read = true;
+      return DEMO_NOTIFICATIONS[idx];
+    }
+    return await db.updateRow('notifications', id, { is_read: true });
+  }
+
+  async function markAllNotificationsRead() {
+    if (db.isDemoMode()) {
+      DEMO_NOTIFICATIONS.forEach(function (n) { n.is_read = true; });
+      return;
+    }
+    const client = db.getClient();
+    const { error } = await client.from('notifications').update({ is_read: true }).eq('is_read', false);
+    if (error) throw error;
+  }
+
+  // === AUDIT LOG ===
+  const DEMO_AUDIT_LOG = [
+    { id: 'a-001', user_id: 'demo-dinkes', user_name: 'Dr. Admin Dinkes', action: 'LOGIN', entity: 'auth', entity_id: '-', detail: 'Login berhasil', ip_address: '127.0.0.1', user_agent: 'Chrome 130', created_at: new Date(Date.now() - 86400000).toISOString() },
+    { id: 'a-002', user_id: 'demo-dinkes', user_name: 'Dr. Admin Dinkes', action: 'CREATE', entity: 'tenaga_kesehatan', entity_id: 'n-001', detail: 'Tambah nakes: Dr. Budi Santoso', ip_address: '127.0.0.1', user_agent: 'Chrome 130', created_at: new Date(Date.now() - 7200000).toISOString() },
+    { id: 'a-003', user_id: 'demo-dinkes', user_name: 'Dr. Admin Dinkes', action: 'UPDATE', entity: 'praktik', entity_id: 'p-001', detail: 'Update jadwal praktik', ip_address: '127.0.0.1', user_agent: 'Chrome 130', created_at: new Date(Date.now() - 3600000).toISOString() },
+    { id: 'a-004', user_id: 'demo-dinkes', user_name: 'Dr. Admin Dinkes', action: 'APPROVE', entity: 'tenaga_kesehatan', entity_id: 'n-002', detail: 'Verifikasi STR Dr. Siti Aminah', ip_address: '127.0.0.1', user_agent: 'Chrome 130', created_at: new Date(Date.now() - 1800000).toISOString() },
+    { id: 'a-005', user_id: 'demo-dinkes', user_name: 'Dr. Admin Dinkes', action: 'DELETE', entity: 'fasyankes', entity_id: 'f-old', detail: 'Hapus fasyankes tidak aktif', ip_address: '127.0.0.1', user_agent: 'Chrome 130', created_at: new Date(Date.now() - 600000).toISOString() },
+  ];
+
+  async function loadAuditLog(opts) {
+    opts = opts || {};
+    if (db.isDemoMode()) {
+      let data = DEMO_AUDIT_LOG.slice();
+      if (opts.action) data = data.filter(function (a) { return a.action === opts.action; });
+      if (opts.search) {
+        const q = opts.search.toLowerCase();
+        data = data.filter(function (a) {
+          return (a.user_name || '').toLowerCase().indexOf(q) >= 0 ||
+                 (a.entity || '').toLowerCase().indexOf(q) >= 0 ||
+                 (a.detail || '').toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      return data.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+    }
+    let q = db.getClient().from('audit_log').select('*');
+    if (opts.action) q = q.eq('action', opts.action);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  }
+
+  async function addAuditLog(payload) {
+    if (db.isDemoMode()) {
+      const item = Object.assign({
+        id: genId('a'),
+        created_at: new Date().toISOString(),
+        ip_address: '127.0.0.1',
+        user_agent: navigator.userAgent.substring(0, 100),
+      }, payload);
+      DEMO_AUDIT_LOG.unshift(item);
+      return item;
+    }
+    return await db.insertRow('audit_log', payload);
+  }
+
+  // === USERS (Manajemen User) ===
+  const DEMO_USERS_LIST = [
+    { id: 'u-001', email: 'dinkes@simantri.demo', full_name: 'Dr. Admin Dinkes', role: 'dinkes', fasyankes_id: null, fasyankes_nama: '-', is_active: true, last_login: new Date(Date.now() - 3600000).toISOString(), created_at: new Date(Date.now() - 86400000 * 30).toISOString() },
+    { id: 'u-002', email: 'dinkes2@simantri.demo', full_name: 'Dr. Andi Pratama', role: 'dinkes', fasyankes_id: null, fasyankes_nama: '-', is_active: true, last_login: new Date(Date.now() - 86400000 * 2).toISOString(), created_at: new Date(Date.now() - 86400000 * 25).toISOString() },
+    { id: 'u-003', email: 'rsud.admin@simantri.demo', full_name: 'Admin RSUD Soetomo', role: 'dinkes', fasyankes_id: 'f-001', fasyankes_nama: 'RSUD Dr. Soetomo', is_active: true, last_login: new Date(Date.now() - 86400000).toISOString(), created_at: new Date(Date.now() - 86400000 * 20).toISOString() },
+    { id: 'u-004', email: 'puskesmas.gundih@simantri.demo', full_name: 'Admin Puskesmas Gundih', role: 'dinkes', fasyankes_id: 'f-002', fasyankes_nama: 'Puskesmas Gundih', is_active: false, last_login: new Date(Date.now() - 86400000 * 10).toISOString(), created_at: new Date(Date.now() - 86400000 * 15).toISOString() },
+  ];
+
+  async function loadUsers(opts) {
+    opts = opts || {};
+    let data = DEMO_USERS_LIST.slice();
+    if (opts.search) {
+      const q = opts.search.toLowerCase();
+      data = data.filter(function (u) {
+        return (u.email || '').toLowerCase().indexOf(q) >= 0 ||
+               (u.full_name || '').toLowerCase().indexOf(q) >= 0;
+      });
+    }
+    if (opts.role) data = data.filter(function (u) { return u.role === opts.role; });
+    return data;
+  }
+
+  async function addUser(payload) {
+    const item = Object.assign({
+      id: genId('u'),
+      is_active: true,
+      created_at: new Date().toISOString(),
+      last_login: null,
+    }, payload);
+    DEMO_USERS_LIST.push(item);
+    return item;
+  }
+
+  async function updateUser(id, payload) {
+    const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
+    if (idx < 0) throw new Error('User tidak ditemukan');
+    DEMO_USERS_LIST[idx] = Object.assign({}, DEMO_USERS_LIST[idx], payload);
+    return DEMO_USERS_LIST[idx];
+  }
+
+  async function deleteUser(id) {
+    const idx = DEMO_USERS_LIST.findIndex(function (u) { return u.id === id; });
+    if (idx < 0) throw new Error('User tidak ditemukan');
+    return DEMO_USERS_LIST.splice(idx, 1)[0];
+  }
+
+  // === PERPANJANGAN (Pengajuan) ===
+  const DEMO_PERPANJANGAN = [
+    { id: 'pp-001', tenaga_id: 'n-006', tenaga_nama: 'Apt. Joko Susanto, M.Farm', jenis_dok: 'STR', no_dok_lama: 'STR/67890/2021', tgl_berakhir_lama: '2025-08-09', status: 'pending', catatan: 'Pengajuan perpanjangan STR', created_at: new Date(Date.now() - 86400000 * 3).toISOString() },
+    { id: 'pp-002', tenaga_id: 'n-010', tenaga_nama: 'Slamet Riyadi', jenis_dok: 'STR', no_dok_lama: 'STR/01234/2022', tgl_berakhir_lama: '2025-04-01', status: 'pending', catatan: 'STR sudah expired, pengajuan ulang', created_at: new Date(Date.now() - 86400000).toISOString() },
+  ];
+
+  async function loadPerpanjangan(opts) {
+    opts = opts || {};
+    let data = DEMO_PERPANJANGAN.slice();
+    if (opts.status) data = data.filter(function (p) { return p.status === opts.status; });
+    return data.sort(function (a, b) { return new Date(b.created_at) - new Date(a.created_at); });
+  }
+
+  async function addPerpanjangan(payload) {
+    const item = Object.assign({
+      id: genId('pp'),
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    }, payload);
+    DEMO_PERPANJANGAN.unshift(item);
+    return item;
+  }
+
+  async function updatePerpanjangan(id, payload) {
+    const idx = DEMO_PERPANJANGAN.findIndex(function (p) { return p.id === id; });
+    if (idx < 0) throw new Error('Pengajuan tidak ditemukan');
+    DEMO_PERPANJANGAN[idx] = Object.assign({}, DEMO_PERPANJANGAN[idx], payload);
+    return DEMO_PERPANJANGAN[idx];
+  }
+
+  async function deletePerpanjangan(id) {
+    const idx = DEMO_PERPANJANGAN.findIndex(function (p) { return p.id === id; });
+    if (idx < 0) throw new Error('Pengajuan tidak ditemukan');
+    return DEMO_PERPANJANGAN.splice(idx, 1)[0];
+  }
+
+  // === VERIFIKASI (antrian verifikasi STR/SIP) ===
+  // Derived from nakes & praktik with verifikasi_status = 'pending'
+  // Tapi bisa juga add/update/delete manual
+  const DEMO_VERIFIKASI_EXTRA = []; // Tambahan verifikasi yang di-create manual
+
+  async function loadVerifikasiQueue(opts) {
+    opts = opts || {};
+    if (!db.isDemoMode()) {
+      // Production: query dari tenaga_kesehatan & praktik where verifikasi_status = 'pending'
+      const client = db.getClient();
+      const [nakes, praktik] = await Promise.all([
+        client.from('tenaga_kesehatan').select('*').eq('verifikasi_status', 'pending'),
+        client.from('praktik').select('*, tenaga_kesehatan(nama, profesi)').eq('verifikasi_status', 'pending'),
+      ]);
+      const items = [];
+      (nakes.data || []).forEach(function (n) {
+        items.push({ id: 'v-n-' + n.id, entity_type: 'STR', entity_id: n.id, nama: n.nama, profesi: n.profesi, no_dok: n.no_str, tgl_terbit: n.tgl_terbit_str, tgl_akhir: n.tgl_akhir_str, status: 'pending' });
+      });
+      (praktik.data || []).forEach(function (p) {
+        items.push({ id: 'v-p-' + p.id, entity_type: 'SIP', entity_id: p.id, nama: p.tenaga_kesehatan ? p.tenaga_kesehatan.nama : '-', profesi: p.tenaga_kesehatan ? p.tenaga_kesehatan.profesi : '-', no_dok: p.no_sip, tgl_terbit: p.tgl_terbit_sip, tgl_akhir: p.tgl_akhir_sip, status: 'pending' });
+      });
+      return items;
+    }
+    // Demo mode: derive dari DEMO_NAKES & DEMO_PRAKTIK
+    const items = [];
+    DEMO_NAKES.forEach(function (n) {
+      if (n.verifikasi_status === 'pending' || !n.verifikasi_status) {
+        items.push({
+          id: 'v-n-' + n.id,
+          entity_type: 'STR',
+          entity_id: n.id,
+          nama: n.nama,
+          profesi: n.profesi,
+          no_dok: n.no_str,
+          tgl_terbit: n.tgl_terbit_str,
+          tgl_akhir: n.tgl_akhir_str,
+          status: 'pending',
+          fasyankes_id: n.fasyankes_id,
+        });
+      }
+    });
+    DEMO_PRAKTIK.forEach(function (p) {
+      if (p.verifikasi_status === 'pending' || !p.verifikasi_status) {
+        const n = DEMO_NAKES.find(function (x) { return x.id === p.tenaga_id; });
+        items.push({
+          id: 'v-p-' + p.id,
+          entity_type: 'SIP',
+          entity_id: p.id,
+          nama: n ? n.nama : '-',
+          profesi: n ? n.profesi : '-',
+          no_dok: p.no_sip,
+          tgl_terbit: p.tgl_terbit_sip,
+          tgl_akhir: p.tgl_akhir_sip,
+          status: 'pending',
+          fasyankes_id: p.fasyankes_id,
+        });
+      }
+    });
+    // Include extras (yang sudah di-approve/reject, untuk history)
+    DEMO_VERIFIKASI_EXTRA.forEach(function (v) { items.push(v); });
+    if (opts.status) return items.filter(function (v) { return v.status === opts.status; });
+    return items;
+  }
+
+  async function approveVerifikasi(id, opts) {
+    opts = opts || {};
+    // First, find the item in the current queue (before mutating the source)
+    let sourceItem = null;
+    const queue = await loadVerifikasiQueue();
+    sourceItem = queue.find(function (v) { return v.id === id; });
+    // Parse entity_type & entity_id dari id
+    if (id.startsWith('v-n-')) {
+      const nakesId = id.substring(4);
+      if (db.isDemoMode()) {
+        const idx = DEMO_NAKES.findIndex(function (n) { return n.id === nakesId; });
+        if (idx >= 0) DEMO_NAKES[idx].verifikasi_status = 'diverifikasi';
+      } else {
+        await db.updateRow('tenaga_kesehatan', nakesId, { verifikasi_status: 'diverifikasi', verified_by: null, verified_at: new Date().toISOString() });
+      }
+    } else if (id.startsWith('v-p-')) {
+      const praktikId = id.substring(4);
+      if (db.isDemoMode()) {
+        const idx = DEMO_PRAKTIK.findIndex(function (p) { return p.id === praktikId; });
+        if (idx >= 0) DEMO_PRAKTIK[idx].verifikasi_status = 'diverifikasi';
+      } else {
+        await db.updateRow('praktik', praktikId, { verifikasi_status: 'diverifikasi', verified_by: null, verified_at: new Date().toISOString() });
+      }
+    }
+    // Add to extras dengan status diverifikasi
+    const existing = DEMO_VERIFIKASI_EXTRA.find(function (v) { return v.id === id; });
+    if (existing) {
+      existing.status = 'diverifikasi';
+      existing.catatan = opts.catatan || '';
+      existing.processed_at = new Date().toISOString();
+    } else if (sourceItem) {
+      DEMO_VERIFIKASI_EXTRA.push(Object.assign({}, sourceItem, {
+        status: 'diverifikasi',
+        catatan: opts.catatan || '',
+        processed_at: new Date().toISOString(),
+      }));
+    }
+    return { success: true };
+  }
+
+  async function rejectVerifikasi(id, opts) {
+    opts = opts || {};
+    // First, find the item in the current queue (before mutating the source)
+    let sourceItem = null;
+    const queue = await loadVerifikasiQueue();
+    sourceItem = queue.find(function (v) { return v.id === id; });
+    if (id.startsWith('v-n-')) {
+      const nakesId = id.substring(4);
+      if (db.isDemoMode()) {
+        const idx = DEMO_NAKES.findIndex(function (n) { return n.id === nakesId; });
+        if (idx >= 0) DEMO_NAKES[idx].verifikasi_status = 'ditolak';
+      } else {
+        await db.updateRow('tenaga_kesehatan', nakesId, { verifikasi_status: 'ditolak', verified_by: null, verified_at: new Date().toISOString() });
+      }
+    } else if (id.startsWith('v-p-')) {
+      const praktikId = id.substring(4);
+      if (db.isDemoMode()) {
+        const idx = DEMO_PRAKTIK.findIndex(function (p) { return p.id === praktikId; });
+        if (idx >= 0) DEMO_PRAKTIK[idx].verifikasi_status = 'ditolak';
+      } else {
+        await db.updateRow('praktik', praktikId, { verifikasi_status: 'ditolak', verified_by: null, verified_at: new Date().toISOString() });
+      }
+    }
+    const existing = DEMO_VERIFIKASI_EXTRA.find(function (v) { return v.id === id; });
+    if (existing) {
+      existing.status = 'ditolak';
+      existing.catatan = opts.catatan || '';
+      existing.processed_at = new Date().toISOString();
+    } else if (sourceItem) {
+      DEMO_VERIFIKASI_EXTRA.push(Object.assign({}, sourceItem, {
+        status: 'ditolak',
+        catatan: opts.catatan || '',
+        processed_at: new Date().toISOString(),
+      }));
+    }
+    return { success: true };
+  }
+
+  // === SETTINGS (Pengaturan) ===
+  const DEMO_SETTINGS = {
+    notifikasi_h90_str: true,
+    notifikasi_h90_sip: true,
+    notifikasi_h30: true,
+    email_digest: 'daily',
+    expiry_threshold_days: 90,
+    auto_disable_expired: true,
+    integrasi_email: false,
+    integrasi_whatsapp: false,
+  };
+
+  async function loadSettings() {
+    return Object.assign({}, DEMO_SETTINGS);
+  }
+
+  async function saveSettings(payload) {
+    Object.assign(DEMO_SETTINGS, payload);
+    return Object.assign({}, DEMO_SETTINGS);
+  }
+
+  // === Expose CRUD ===
+  Object.assign(window.SIMANTRI_DATA, {
+    // Nakes
+    addNakes: addNakes,
+    updateNakes: updateNakes,
+    deleteNakes: deleteNakes,
+    // Fasyankes
+    addFasyankes: addFasyankes,
+    updateFasyankes: updateFasyankes,
+    deleteFasyankes: deleteFasyankes,
+    // Praktik
+    addPraktik: addPraktik,
+    updatePraktik: updatePraktik,
+    deletePraktik: deletePraktik,
+    // Notifications
+    addNotification: addNotification,
+    markNotificationRead: markNotificationRead,
+    markAllNotificationsRead: markAllNotificationsRead,
+    // Audit log
+    loadAuditLog: loadAuditLog,
+    addAuditLog: addAuditLog,
+    // Users
+    loadUsers: loadUsers,
+    addUser: addUser,
+    updateUser: updateUser,
+    deleteUser: deleteUser,
+    // Perpanjangan
+    loadPerpanjangan: loadPerpanjangan,
+    addPerpanjangan: addPerpanjangan,
+    updatePerpanjangan: updatePerpanjangan,
+    deletePerpanjangan: deletePerpanjangan,
+    // Verifikasi
+    loadVerifikasiQueue: loadVerifikasiQueue,
+    approveVerifikasi: approveVerifikasi,
+    rejectVerifikasi: rejectVerifikasi,
+    // Settings
+    loadSettings: loadSettings,
+    saveSettings: saveSettings,
+  });
 })();

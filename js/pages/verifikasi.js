@@ -83,9 +83,11 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
       const components = window.SIMANTRI_COMPONENTS;
 
       let _items = [];
+      let _fasyankesCache = [];
 
       const refreshBtn = document.querySelector('[data-action="refresh"]');
       if (refreshBtn) refreshBtn.addEventListener('click', async function () {
@@ -95,51 +97,35 @@
 
       async function load() {
         try {
-          const [nakes, praktik] = await Promise.all([
-            data.loadNakes(),
-            data.loadPraktik(),
+          const [pending, verified, rejected, fasyankes] = await Promise.all([
+            data.loadVerifikasiQueue({ status: 'pending' }),
+            data.loadVerifikasiQueue({ status: 'diverifikasi' }),
+            data.loadVerifikasiQueue({ status: 'ditolak' }),
+            data.loadFasyankes(),
           ]);
-
-          // Build mock verification queue from nakes & praktik data
-          const items = [];
-          nakes.forEach(function (n, i) {
-            // 3 most recent as pending, others as verified
-            const status = i < 3 ? db.STATUS.PENDING : (i % 7 === 0 ? db.STATUS.DITOLAK : db.STATUS.DIVERIFIKASI);
-            items.push({
-              id: 'ver-str-' + n.id,
-              tenaga_id: n.id,
-              nama: n.nama,
-              profesi: n.profesi,
-              fasyankes_id: n.fasyankes_id,
-              tipe: 'STR',
-              no_dok: n.no_str,
-              tgl_terbit: n.tgl_terbit_str,
-              tgl_akhir: n.tgl_akhir_str,
-              status: status,
-              submitted_at: n.tgl_terbit_str,
-              catatan: status === db.STATUS.DITOLAK ? 'Berkas tidak lengkap, mohon unggah ulang scan STR yang jelas.' : '',
+          _fasyankesCache = fasyankes || [];
+          // Normalize fields across sources
+          const normalize = function (arr, defaultStatus) {
+            return (arr || []).map(function (it) {
+              return {
+                id: it.id,
+                tenaga_id: it.tenaga_id || it.entity_id,
+                nama: it.nama,
+                profesi: it.profesi,
+                fasyankes_id: it.fasyankes_id,
+                tipe: it.tipe || it.entity_type || 'STR',
+                no_dok: it.no_dok,
+                tgl_terbit: it.tgl_terbit,
+                tgl_akhir: it.tgl_akhir,
+                status: it.status || defaultStatus,
+                submitted_at: it.submitted_at || it.processed_at || it.created_at,
+                catatan: it.catatan || ''
+              };
             });
-          });
-          praktik.forEach(function (p, i) {
-            const n = nakes.find(function (x) { return x.id === p.tenaga_id; });
-            // 2 as pending
-            const status = i < 2 ? db.STATUS.PENDING : db.STATUS.DIVERIFIKASI;
-            items.push({
-              id: 'ver-sip-' + p.id,
-              tenaga_id: p.tenaga_id,
-              nama: n ? n.nama : 'Nakes',
-              profesi: n ? n.profesi : '-',
-              fasyankes_id: p.fasyankes_id,
-              tipe: 'SIP',
-              no_dok: p.no_sip,
-              tgl_terbit: p.tgl_terbit_sip,
-              tgl_akhir: p.tgl_akhir_sip,
-              status: status,
-              submitted_at: p.tgl_terbit_sip,
-              catatan: '',
-            });
-          });
-          _items = items;
+          };
+          _items = normalize(pending, 'pending')
+            .concat(normalize(verified, 'diverifikasi'))
+            .concat(normalize(rejected, 'ditolak'));
           renderStats();
           renderKanban();
         } catch (err) {
@@ -149,7 +135,7 @@
       }
 
       function fasyankesName(id) {
-        const f = data.DEMO_FASYANKES.find(function (x) { return x.id === id; });
+        const f = _fasyankesCache.find(function (x) { return x.id === id; });
         return f ? f.nama : '-';
       }
 
@@ -243,15 +229,38 @@
         });
       }
 
-      function handleAction(id, newStatus, catatan) {
+      async function handleAction(id, newStatus, catatan) {
         const it = _items.find(function (x) { return x.id === id; });
         if (!it) return;
-        it.status = newStatus;
-        it.catatan = catatan || '';
-        const label = newStatus === db.STATUS.DIVERIFIKASI ? 'diverifikasi' : 'ditolak';
-        utils.toast('Pengajuan ' + it.tipe + ' ' + it.nama + ' ' + label, newStatus === db.STATUS.DIVERIFIKASI ? 'success' : 'warning');
-        renderStats();
-        renderKanban();
+        const profile = auth.getProfile();
+        try {
+          if (newStatus === db.STATUS.DIVERIFIKASI) {
+            await data.approveVerifikasi(id, { catatan: catatan || '' });
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'APPROVE',
+              entity: it.tipe === 'SIP' ? 'praktik' : 'tenaga_kesehatan',
+              entity_id: id,
+              detail: 'Approve verifikasi ' + it.tipe + ' ' + it.nama + (catatan ? ' (' + catatan + ')' : '')
+            });
+            utils.toast('Pengajuan ' + it.tipe + ' ' + it.nama + ' diverifikasi', 'success');
+          } else {
+            await data.rejectVerifikasi(id, { catatan: catatan || '' });
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'REJECT',
+              entity: it.tipe === 'SIP' ? 'praktik' : 'tenaga_kesehatan',
+              entity_id: id,
+              detail: 'Reject verifikasi ' + it.tipe + ' ' + it.nama + (catatan ? ' (' + catatan + ')' : '')
+            });
+            utils.toast('Pengajuan ' + it.tipe + ' ' + it.nama + ' ditolak', 'warning');
+          }
+          await load();
+        } catch (err) {
+          utils.toast('Error: ' + err.message, 'error');
+        }
       }
 
       function openRejectModal(itemId) {
@@ -293,7 +302,7 @@
         });
         const confirmBtn = portal.querySelector('[data-action="confirm-reject"]');
         if (confirmBtn) {
-          confirmBtn.addEventListener('click', function () {
+          confirmBtn.addEventListener('click', async function () {
             const textarea = portal.querySelector('#reject-catatan');
             const errEl = portal.querySelector('#reject-error');
             const catatan = textarea ? textarea.value.trim() : '';
@@ -301,8 +310,8 @@
               if (errEl) errEl.classList.remove('hidden');
               return;
             }
-            handleAction(confirmBtn.dataset.id, db.STATUS.DITOLAK, catatan);
             closeModal();
+            await handleAction(confirmBtn.dataset.id, db.STATUS.DITOLAK, catatan);
           });
         }
         document.addEventListener('keydown', escClose);

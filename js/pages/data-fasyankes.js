@@ -66,6 +66,9 @@
       const utils = window.SIMANTRI_UTILS;
       const data = window.SIMANTRI_DATA;
       const db = window.SIMANTRI_DB;
+      const auth = window.SIMANTRI_AUTH;
+
+      const JENIS_OPTIONS = ['RS', 'Puskesmas', 'Klinik Utama', 'Klinik Pratama', 'Praktik Mandiri', 'Apotek'];
 
       let _allFasyankes = [];
       let _allNakes = [];
@@ -89,9 +92,7 @@
         });
       }
       const addBtn = document.querySelector('[data-action="add"]');
-      if (addBtn) addBtn.addEventListener('click', function () {
-        utils.toast('Form tambah fasyankes akan tersedia di modul produksi', 'info');
-      });
+      if (addBtn) addBtn.addEventListener('click', function () { openFormModal(); });
       const refreshBtn = document.querySelector('[data-action="refresh"]');
       if (refreshBtn) refreshBtn.addEventListener('click', async function () {
         utils.toast('Memuat ulang...', 'info');
@@ -168,7 +169,7 @@
           const meta = jenisMeta(f.jenis);
           const nakes = nakesCount(f.id);
           const sip = sipAktifCount(f.id);
-          return '<button type="button" data-fasyankes-id="' + utils.escapeHtml(f.id) + '" class="card card-hover p-5 text-left flex flex-col">'
+          return '<div data-fasyankes-id="' + utils.escapeHtml(f.id) + '" class="card card-hover p-5 text-left flex flex-col cursor-pointer">'
                + '<div class="flex items-start justify-between mb-3">'
                + '<div class="w-12 h-12 rounded-xl ' + meta.bg + ' ' + meta.text + ' flex items-center justify-center flex-shrink-0">'
                + '<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="' + meta.icon + '"/></svg>'
@@ -188,14 +189,36 @@
                + '<p class="text-[10px] text-ink-500 uppercase tracking-wider">SIP Aktif</p>'
                + '</div>'
                + '</div>'
-               + '</button>';
+               + '<div class="mt-3 pt-3 border-t border-ink-100 flex items-center justify-end gap-1">'
+               + '<button class="btn btn-ghost btn-sm" data-action="edit-fasyankes" data-id="' + utils.escapeHtml(f.id) + '" data-role-action="edit" aria-label="Edit">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
+               + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="delete-fasyankes" data-id="' + utils.escapeHtml(f.id) + '" data-role-action="delete" aria-label="Hapus">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>'
+               + '</button>'
+               + '</div>'
+               + '</div>';
         }).join('');
 
         grid.querySelectorAll('[data-fasyankes-id]').forEach(function (card) {
-          card.addEventListener('click', function () {
+          card.addEventListener('click', function (e) {
+            if (e.target.closest('[data-action]')) return;
             const id = card.dataset.fasyankesId;
             const f = _allFasyankes.find(function (x) { return x.id === id; });
             if (f) openDetail(f);
+          });
+        });
+        grid.querySelectorAll('[data-action="edit-fasyankes"]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openFormModal(btn.dataset.id);
+          });
+        });
+        grid.querySelectorAll('[data-action="delete-fasyankes"]').forEach(function (btn) {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            const f = _allFasyankes.find(function (x) { return x.id === btn.dataset.id; });
+            if (f) handleDelete(f);
           });
         });
       }
@@ -333,6 +356,192 @@
           });
         });
         document.addEventListener('keydown', escClose);
+      }
+
+      function openFormModal(id) {
+        const isEdit = !!id;
+        const f = isEdit ? _allFasyankes.find(function (x) { return x.id === id; }) : null;
+        const jenisOptions = JENIS_OPTIONS.map(function (j) {
+          const sel = f && f.jenis === j ? ' selected' : '';
+          return '<option value="' + utils.escapeHtml(j) + '"' + sel + '>' + utils.escapeHtml(j) + '</option>';
+        }).join('');
+
+        const modalHtml = `
+          <div class="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" data-modal>
+            <div class="absolute inset-0 bg-ink-900/50 backdrop-blur-sm" data-modal-close></div>
+            <div class="relative card w-full sm:max-w-2xl max-h-[92vh] overflow-y-auto" style="border-radius:1.25rem;">
+              <div class="sticky top-0 bg-white p-5 border-b border-ink-100 flex items-center justify-between z-10">
+                <h3 class="text-base font-bold text-ink-900">` + (isEdit ? 'Edit Fasyankes' : 'Tambah Fasyankes') + `</h3>
+                <button class="btn btn-ghost btn-sm" data-modal-close aria-label="Tutup">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </div>
+              <form id="df-form" class="p-5 space-y-4" novalidate>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div class="sm:col-span-2">
+                    <label class="label" for="df-nama">Nama Fasyankes <span class="text-rose-500">*</span></label>
+                    <input type="text" id="df-nama" class="input" value="` + utils.escapeHtml(f ? f.nama : '') + `" required />
+                    <p class="field-error hidden" id="df-nama-err">Nama wajib diisi</p>
+                  </div>
+                  <div>
+                    <label class="label" for="df-jenis-form">Jenis <span class="text-rose-500">*</span></label>
+                    <select id="df-jenis-form" class="select" required>` + jenisOptions + `</select>
+                    <p class="field-error hidden" id="df-jenis-err">Jenis wajib dipilih</p>
+                  </div>
+                  <div>
+                    <label class="label" for="df-status-form">Status <span class="text-rose-500">*</span></label>
+                    <select id="df-status-form" class="select">
+                      <option value="aktif"` + (!f || f.status === 'aktif' ? ' selected' : '') + `>Aktif</option>
+                      <option value="nonaktif"` + (f && f.status === 'nonaktif' ? ' selected' : '') + `>Nonaktif</option>
+                    </select>
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label class="label" for="df-alamat">Alamat</label>
+                    <textarea id="df-alamat" class="textarea" rows="2">` + utils.escapeHtml(f ? (f.alamat || '') : '') + `</textarea>
+                  </div>
+                  <div>
+                    <label class="label" for="df-kecamatan">Kecamatan</label>
+                    <input type="text" id="df-kecamatan" class="input" value="` + utils.escapeHtml(f ? (f.kecamatan || '') : '') + `" />
+                  </div>
+                  <div>
+                    <label class="label" for="df-kabupaten">Kabupaten/Kota</label>
+                    <input type="text" id="df-kabupaten" class="input" value="` + utils.escapeHtml(f ? (f.kabupaten || '') : '') + `" />
+                  </div>
+                  <div>
+                    <label class="label" for="df-provinsi">Provinsi</label>
+                    <input type="text" id="df-provinsi" class="input" value="` + utils.escapeHtml(f ? (f.provinsi || '') : '') + `" />
+                  </div>
+                  <div>
+                    <label class="label" for="df-lat-lng">Koordinat (lat,lng)</label>
+                    <input type="text" id="df-lat-lng" class="input" value="` + utils.escapeHtml(f ? (f.lat_lng || '') : '') + `" placeholder="-7.2756,112.7423" />
+                  </div>
+                  <div>
+                    <label class="label" for="df-phone">No. Telepon</label>
+                    <input type="tel" id="df-phone" class="input" value="` + utils.escapeHtml(f ? (f.phone || '') : '') + `" />
+                  </div>
+                  <div>
+                    <label class="label" for="df-email">Email</label>
+                    <input type="email" id="df-email" class="input" value="` + utils.escapeHtml(f ? (f.email || '') : '') + `" />
+                    <p class="field-error hidden" id="df-email-err">Format email tidak valid</p>
+                  </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
+                  <button type="button" class="btn btn-outline btn-sm" data-modal-close>Batal</button>
+                  <button type="submit" class="btn btn-primary btn-sm">` + (isEdit ? 'Simpan Perubahan' : 'Tambah Fasyankes') + `</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        `;
+
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        portal.innerHTML = modalHtml;
+        portal.querySelectorAll('[data-modal-close]').forEach(function (el) {
+          el.addEventListener('click', closeModal);
+        });
+        const form = portal.querySelector('#df-form');
+        if (form) {
+          form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            handleSubmit(id);
+          });
+        }
+        document.addEventListener('keydown', escClose);
+      }
+
+      function handleSubmit(id) {
+        const portal = document.getElementById('modal-portal');
+        if (!portal) return;
+        const val = function (sel) { const el = portal.querySelector(sel); return el ? el.value.trim() : ''; };
+        const nama = val('#df-nama');
+        const jenis = val('#df-jenis-form');
+        const status = val('#df-status-form');
+        const alamat = val('#df-alamat');
+        const kecamatan = val('#df-kecamatan');
+        const kabupaten = val('#df-kabupaten');
+        const provinsi = val('#df-provinsi');
+        const latLng = val('#df-lat-lng');
+        const phone = val('#df-phone');
+        const email = val('#df-email');
+
+        portal.querySelectorAll('.field-error').forEach(function (el) { el.classList.add('hidden'); });
+        let valid = true;
+        const err = function (sel) { const el = portal.querySelector(sel); if (el) el.classList.remove('hidden'); };
+        if (!nama) { err('#df-nama-err'); valid = false; }
+        if (!jenis) { err('#df-jenis-err'); valid = false; }
+        if (email && !utils.isEmail(email)) { err('#df-email-err'); valid = false; }
+
+        if (!valid) {
+          utils.toast('Periksa kembali isian form', 'error');
+          return;
+        }
+
+        const payload = {
+          nama: nama,
+          jenis: jenis,
+          status: status,
+          alamat: alamat || null,
+          kecamatan: kecamatan || null,
+          kabupaten: kabupaten || null,
+          provinsi: provinsi || null,
+          lat_lng: latLng || null,
+          phone: phone || null,
+          email: email || null
+        };
+
+        (async function () {
+          try {
+            const profile = auth.getProfile();
+            if (id) {
+              await data.updateFasyankes(id, payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'fasyankes',
+                entity_id: id,
+                detail: 'Update fasyankes: ' + nama
+              });
+              utils.toast('Data berhasil diperbarui', 'success');
+            } else {
+              const item = await data.addFasyankes(payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'CREATE',
+                entity: 'fasyankes',
+                entity_id: item.id,
+                detail: 'Tambah fasyankes: ' + nama
+              });
+              utils.toast('Data berhasil ditambahkan', 'success');
+            }
+            closeModal();
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
+      }
+
+      async function handleDelete(f) {
+        if (!confirm('Hapus fasyankes "' + f.nama + '"? Semua nakes & praktik terkait juga akan dihapus/dilepas. Tindakan ini tidak dapat dibatalkan.')) return;
+        try {
+          await data.deleteFasyankes(f.id);
+          const profile = auth.getProfile();
+          await data.addAuditLog({
+            user_id: profile.id,
+            user_name: profile.full_name,
+            action: 'DELETE',
+            entity: 'fasyankes',
+            entity_id: f.id,
+            detail: 'Hapus fasyankes: ' + f.nama
+          });
+          utils.toast('Data fasyankes dihapus', 'success');
+          await load();
+        } catch (e) {
+          utils.toast('Error: ' + e.message, 'error');
+        }
       }
 
       function escClose(e) {

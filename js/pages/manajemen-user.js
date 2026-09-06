@@ -121,19 +121,7 @@
         return;
       }
 
-      // Mock user list (in production, fetch from profiles table)
-      const DEMO_USERS = [
-        { id: 'u-001', full_name: 'Dr. Demo Admin Dinkes', email: 'admin.dinkes@simantri.demo', role: 'dinkes', fasyankes_id: null, status: 'aktif', last_login: '2025-09-05T08:30:00Z' },
-        { id: 'u-002', full_name: 'Budi Fasyankes', email: 'admin.rsud@simantri.demo', role: 'fasyankes', fasyankes_id: 'f-001', status: 'aktif', last_login: '2025-09-04T14:20:00Z' },
-        { id: 'u-003', full_name: 'Siti Puskesmas', email: 'admin.puskesmas@simantri.demo', role: 'fasyankes', fasyankes_id: 'f-002', status: 'aktif', last_login: '2025-09-05T07:10:00Z' },
-        { id: 'u-004', full_name: 'Dr. Budi Santoso, Sp.PD', email: 'budi.santoso@simantri.demo', role: 'nakes', fasyankes_id: 'f-001', status: 'aktif', last_login: '2025-09-03T11:00:00Z' },
-        { id: 'u-005', full_name: 'Dr. Siti Aminah', email: 'siti.aminah@simantri.demo', role: 'nakes', fasyankes_id: 'f-002', status: 'aktif', last_login: '2025-09-02T16:45:00Z' },
-        { id: 'u-006', full_name: 'Ns. Rina Marlina, S.Kep', email: 'rina.marlina@simantri.demo', role: 'nakes', fasyankes_id: 'f-001', status: 'nonaktif', last_login: '2025-08-15T09:00:00Z' },
-        { id: 'u-007', full_name: 'Klinik Sehat', email: 'admin.klinik@simantri.demo', role: 'fasyankes', fasyankes_id: 'f-003', status: 'aktif', last_login: '2025-09-05T06:30:00Z' },
-        { id: 'u-008', full_name: 'Apt. Joko Susanto', email: 'joko.susanto@simantri.demo', role: 'nakes', fasyankes_id: 'f-004', status: 'aktif', last_login: '2025-09-01T10:00:00Z' },
-      ];
-
-      let _users = DEMO_USERS.slice();
+      let _users = [];
       let _allFasyankes = [];
       let _search = '';
       let _roleFilter = '';
@@ -157,7 +145,25 @@
 
       async function load() {
         try {
-          _allFasyankes = await data.loadFasyankes();
+          const [users, fasyankes] = await Promise.all([
+            data.loadUsers(),
+            data.loadFasyankes(),
+          ]);
+          _allFasyankes = fasyankes || [];
+          _users = (users || []).map(function (u) {
+            return {
+              id: u.id,
+              full_name: u.full_name,
+              email: u.email,
+              role: u.role || 'dinkes',
+              fasyankes_id: u.fasyankes_id || null,
+              fasyankes_nama: u.fasyankes_nama || null,
+              is_active: u.is_active !== false,
+              status: u.is_active === false ? 'nonaktif' : 'aktif',
+              last_login: u.last_login || null,
+              created_at: u.created_at || null
+            };
+          });
           renderRoleCards();
           renderTable();
           renderMatrix();
@@ -238,12 +244,17 @@
                + '<td><span class="text-xs text-ink-600">' + utils.fmtDate(u.last_login) + '</span></td>'
                + '<td><span class="badge ' + statusBadge + '">' + statusLabel + '</span></td>'
                + '<td class="text-right">'
+               + '<div class="flex items-center justify-end gap-1">'
                + '<button class="btn btn-ghost btn-sm" data-action="edit" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Edit">'
                + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>'
                + '</button>'
                + '<button class="btn btn-ghost btn-sm" data-action="toggle" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Aktif/Nonaktif">'
                + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg>'
                + '</button>'
+               + '<button class="btn btn-ghost btn-sm" data-action="delete" data-id="' + utils.escapeHtml(u.id) + '" data-role-action="manage-user" aria-label="Hapus">'
+               + '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>'
+               + '</button>'
+               + '</div>'
                + '</td>'
                + '</tr>';
         }).join('');
@@ -255,14 +266,31 @@
           });
         });
         tbody.querySelectorAll('[data-action="toggle"]').forEach(function (btn) {
+          btn.addEventListener('click', async function () {
+            const u = _users.find(function (x) { return x.id === btn.dataset.id; });
+            if (!u) return;
+            try {
+              await data.updateUser(u.id, { is_active: !u.is_active });
+              const profile = auth.getProfile();
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'user',
+                entity_id: u.id,
+                detail: (u.is_active ? 'Nonaktifkan' : 'Aktifkan') + ' user: ' + u.full_name
+              });
+              utils.toast('User ' + u.full_name + ' di' + (u.is_active ? 'nonaktifkan' : 'aktifkan'), 'success');
+              await load();
+            } catch (e) {
+              utils.toast('Error: ' + e.message, 'error');
+            }
+          });
+        });
+        tbody.querySelectorAll('[data-action="delete"]').forEach(function (btn) {
           btn.addEventListener('click', function () {
             const u = _users.find(function (x) { return x.id === btn.dataset.id; });
-            if (u) {
-              u.status = u.status === 'aktif' ? 'nonaktif' : 'aktif';
-              utils.toast('User ' + u.full_name + ' di' + (u.status === 'aktif' ? 'aktifkan' : 'nonaktifkan'), 'success');
-              renderTable();
-              renderRoleCards();
-            }
+            if (u) handleDelete(u);
           });
         });
       }
@@ -316,7 +344,7 @@
 
       function buildUserModal(existing) {
         const isEdit = !!existing;
-        const u = existing || { full_name: '', email: '', role: 'nakes', fasyankes_id: '', status: 'aktif' };
+        const u = existing || { full_name: '', email: '', role: 'dinkes', fasyankes_id: '', status: 'aktif' };
         const fasyankesOptions = '<option value="">-- Tidak terikat --</option>'
           + _allFasyankes.map(function (f) {
               return '<option value="' + utils.escapeHtml(f.id) + '"' + (f.id === u.fasyankes_id ? ' selected' : '') + '>' + utils.escapeHtml(f.nama) + '</option>';
@@ -342,13 +370,16 @@
                   <input type="email" id="mu-email" class="input" value="` + utils.escapeHtml(u.email) + `" ` + (isEdit ? 'readonly' : 'required') + ` />
                   <p class="field-error hidden" id="mu-email-err">Email valid wajib diisi</p>
                 </div>
+                <div>
+                  <label class="label" for="mu-password">` + (isEdit ? 'Password Baru (opsional)' : 'Password <span class="text-rose-500">*</span>') + `</label>
+                  <input type="password" id="mu-password" class="input" placeholder="Minimal 8 karakter" ` + (isEdit ? '' : 'required') + ` />
+                  <p class="field-error hidden" id="mu-password-err">Password minimal 8 karakter</p>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="label" for="mu-role-sel">Role <span class="text-rose-500">*</span></label>
                     <select id="mu-role-sel" class="select" required>
                       <option value="dinkes"` + (u.role === 'dinkes' ? ' selected' : '') + `>Admin Dinkes</option>
-                      <option value="fasyankes"` + (u.role === 'fasyankes' ? ' selected' : '') + `>Admin Fasyankes</option>
-                      <option value="nakes"` + (u.role === 'nakes' ? ' selected' : '') + `>Tenaga Kesehatan</option>
                     </select>
                   </div>
                   <div>
@@ -403,15 +434,20 @@
         const fasyankesId = portal.querySelector('#mu-fasyankes-sel').value;
         const statusSel = portal.querySelector('#mu-status-sel');
         const status = statusSel ? statusSel.value : 'aktif';
+        const password = portal.querySelector('#mu-password') ? portal.querySelector('#mu-password').value : '';
 
         // Validate
         let valid = true;
         const errName = portal.querySelector('#mu-full-name-err');
         const errEmail = portal.querySelector('#mu-email-err');
+        const errPass = portal.querySelector('#mu-password-err');
         if (errName) errName.classList.add('hidden');
         if (errEmail) errEmail.classList.add('hidden');
+        if (errPass) errPass.classList.add('hidden');
         if (!fullName) { if (errName) errName.classList.remove('hidden'); valid = false; }
         if (!email || !utils.isEmail(email)) { if (errEmail) { errEmail.textContent = !email ? 'Email wajib diisi' : 'Format email tidak valid'; errEmail.classList.remove('hidden'); } valid = false; }
+        if (!existing && (!password || password.length < 8)) { if (errPass) { errPass.textContent = !password ? 'Password wajib diisi' : 'Password minimal 8 karakter'; errPass.classList.remove('hidden'); } valid = false; }
+        if (existing && password && password.length < 8) { if (errPass) errPass.classList.remove('hidden'); valid = false; }
 
         if (!valid) {
           utils.toast('Periksa kembali isian form', 'error');
@@ -426,28 +462,75 @@
           return;
         }
 
-        if (existing) {
-          existing.full_name = fullName;
-          existing.email = email;
-          existing.role = role;
-          existing.fasyankes_id = fasyankesId || null;
-          existing.status = status;
-          utils.toast('User ' + fullName + ' diperbarui', 'success');
-        } else {
-          _users.unshift({
-            id: 'u-' + Date.now(),
-            full_name: fullName,
-            email: email,
-            role: role,
-            fasyankes_id: fasyankesId || null,
-            status: 'aktif',
-            last_login: null,
+        const fasyankes = _allFasyankes.find(function (f) { return f.id === fasyankesId; });
+        const profile = auth.getProfile();
+        (async function () {
+          try {
+            if (existing) {
+              const payload = {
+                full_name: fullName,
+                email: email,
+                role: role,
+                fasyankes_id: fasyankesId || null,
+                fasyankes_nama: fasyankes ? fasyankes.nama : null,
+                is_active: status === 'aktif'
+              };
+              await data.updateUser(existing.id, payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'UPDATE',
+                entity: 'user',
+                entity_id: existing.id,
+                detail: 'Update user: ' + fullName
+              });
+              utils.toast('User ' + fullName + ' diperbarui', 'success');
+            } else {
+              const payload = {
+                email: email,
+                full_name: fullName,
+                role: role,
+                fasyankes_id: fasyankesId || null,
+                fasyankes_nama: fasyankes ? fasyankes.nama : null,
+                is_active: true
+              };
+              const item = await data.addUser(payload);
+              await data.addAuditLog({
+                user_id: profile.id,
+                user_name: profile.full_name,
+                action: 'CREATE',
+                entity: 'user',
+                entity_id: item.id,
+                detail: 'Tambah user: ' + fullName
+              });
+              utils.toast('User ' + fullName + ' ditambahkan', 'success');
+            }
+            closeModal();
+            await load();
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
+        })();
+      }
+
+      async function handleDelete(u) {
+        if (!confirm('Hapus user "' + u.full_name + '"? Tindakan ini tidak dapat dibatalkan.')) return;
+        try {
+          await data.deleteUser(u.id);
+          const profile = auth.getProfile();
+          await data.addAuditLog({
+            user_id: profile.id,
+            user_name: profile.full_name,
+            action: 'DELETE',
+            entity: 'user',
+            entity_id: u.id,
+            detail: 'Hapus user: ' + u.full_name
           });
-          utils.toast('User ' + fullName + ' ditambahkan', 'success');
+          utils.toast('User ' + u.full_name + ' dihapus', 'success');
+          await load();
+        } catch (e) {
+          utils.toast('Error: ' + e.message, 'error');
         }
-        closeModal();
-        renderRoleCards();
-        renderTable();
       }
 
       function escClose(e) {

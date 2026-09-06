@@ -232,25 +232,7 @@
       let _auditSearch = '';
       let _auditAction = '';
       let _auditDate = '';
-
-      // Mock audit log entries
-      const AUDIT_LOGS = [
-        { id: 'a-001', timestamp: '2025-09-05T08:30:00Z', user: 'Dr. Demo Admin Dinkes', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.224.5' },
-        { id: 'a-002', timestamp: '2025-09-05T08:35:00Z', user: 'Dr. Demo Admin Dinkes', action: 'approve', module: 'Verifikasi', detail: 'Approve STR Dr. Budi Santoso', ip: '103.10.224.5' },
-        { id: 'a-003', timestamp: '2025-09-05T09:12:00Z', user: 'Dr. Demo Admin Dinkes', action: 'update', module: 'Data Nakes', detail: 'Update data Ns. Rina Marlina', ip: '103.10.224.5' },
-        { id: 'a-004', timestamp: '2025-09-05T09:45:00Z', user: 'Budi Fasyankes', action: 'create', module: 'Praktik', detail: 'Tambah SIP baru SIP/010/2025', ip: '103.10.225.10' },
-        { id: 'a-005', timestamp: '2025-09-05T10:00:00Z', user: 'Siti Puskesmas', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.225.11' },
-        { id: 'a-006', timestamp: '2025-09-04T14:20:00Z', user: 'Budi Fasyankes', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.225.10' },
-        { id: 'a-007', timestamp: '2025-09-04T15:00:00Z', user: 'Budi Fasyankes', action: 'reject', module: 'Verifikasi', detail: 'Reject SIP dengan catatan: berkas tidak lengkap', ip: '103.10.225.10' },
-        { id: 'a-008', timestamp: '2025-09-04T16:30:00Z', user: 'Dr. Demo Admin Dinkes', action: 'delete', module: 'Manajemen User', detail: 'Nonaktifkan user Yuni Astuti', ip: '103.10.224.5' },
-        { id: 'a-009', timestamp: '2025-09-03T11:00:00Z', user: 'Dr. Budi Santoso, Sp.PD', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.226.20' },
-        { id: 'a-010', timestamp: '2025-09-03T11:15:00Z', user: 'Dr. Budi Santoso, Sp.PD', action: 'create', module: 'Perpanjangan', detail: 'Ajukan perpanjangan STR', ip: '103.10.226.20' },
-        { id: 'a-011', timestamp: '2025-09-02T16:45:00Z', user: 'Dr. Siti Aminah', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.226.21' },
-        { id: 'a-012', timestamp: '2025-09-02T17:00:00Z', user: 'Dr. Siti Aminah', action: 'update', module: 'Profil', detail: 'Update foto profil', ip: '103.10.226.21' },
-        { id: 'a-013', timestamp: '2025-09-01T10:00:00Z', user: 'Apt. Joko Susanto', action: 'login', module: 'Auth', detail: 'Login gagal: password salah', ip: '103.10.227.30' },
-        { id: 'a-014', timestamp: '2025-09-01T10:02:00Z', user: 'Apt. Joko Susanto', action: 'login', module: 'Auth', detail: 'Login berhasil', ip: '103.10.227.30' },
-        { id: 'a-015', timestamp: '2025-08-31T09:00:00Z', user: 'Dr. Demo Admin Dinkes', action: 'update', module: 'Pengaturan', detail: 'Update threshold warning dari 60 ke 90 hari', ip: '103.10.224.5' },
-      ];
+      let _auditLogs = [];
 
       // Tabs
       document.querySelectorAll('.pg-tab').forEach(function (tab) {
@@ -324,11 +306,54 @@
         });
       }
 
+      // Load settings from store and populate form
+      async function loadSettingsForm() {
+        try {
+          const s = await data.loadSettings();
+          const setChk = function (id, val) { const el = document.getElementById(id); if (el) el.checked = !!val; };
+          const setVal = function (id, val) { const el = document.getElementById(id); if (el) el.value = val != null ? val : ''; };
+          setChk('pg-notif-email', s.notifikasi_h90_str || s.notifikasi_h90_sip);
+          setChk('pg-notif-push', s.notifikasi_h30);
+          setChk('pg-notif-warning', s.notifikasi_h90_str || s.notifikasi_h90_sip || s.notifikasi_h30);
+          setChk('pg-notif-daily', s.email_digest === 'daily');
+          setVal('pg-warning-days', s.expiry_threshold_days || 90);
+          setChk('pg-maintenance', s.auto_disable_expired === true && s.expiry_threshold_days === -1);
+          setChk('pg-registration', s.integrasi_email !== false ? false : true);
+        } catch (e) {
+          /* ignore — keep defaults */
+        }
+      }
+
       // Save notification preferences
       const saveNotifBtn = document.querySelector('[data-action="save-notif"]');
       if (saveNotifBtn) {
-        saveNotifBtn.addEventListener('click', function () {
-          utils.toast('Preferensi notifikasi disimpan', 'success');
+        saveNotifBtn.addEventListener('click', async function () {
+          const notifEmail = document.getElementById('pg-notif-email') ? document.getElementById('pg-notif-email').checked : true;
+          const notifPush = document.getElementById('pg-notif-push') ? document.getElementById('pg-notif-push').checked : true;
+          const notifWarning = document.getElementById('pg-notif-warning') ? document.getElementById('pg-notif-warning').checked : true;
+          const notifDaily = document.getElementById('pg-notif-daily') ? document.getElementById('pg-notif-daily').checked : false;
+          const payload = {
+            notifikasi_h90_str: notifWarning,
+            notifikasi_h90_sip: notifWarning,
+            notifikasi_h30: notifPush,
+            email_digest: notifDaily ? 'daily' : 'off',
+            integrasi_email: notifEmail
+          };
+          try {
+            await data.saveSettings(payload);
+            const profile = auth.getProfile();
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'UPDATE',
+              entity: 'settings',
+              entity_id: '-',
+              detail: 'Update preferensi notifikasi'
+            });
+            utils.toast('Preferensi notifikasi disimpan', 'success');
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
         });
       }
 
@@ -339,15 +364,39 @@
       }
       const saveSystemBtn = document.querySelector('[data-action="save-system"]');
       if (saveSystemBtn) {
-        saveSystemBtn.addEventListener('click', function () {
-          utils.toast('Pengaturan sistem disimpan', 'success');
+        saveSystemBtn.addEventListener('click', async function () {
+          const warningDays = parseInt(document.getElementById('pg-warning-days') ? document.getElementById('pg-warning-days').value : '90', 10);
+          const appName = document.getElementById('pg-app-name') ? document.getElementById('pg-app-name').value : 'SIMANTRI';
+          const maintenance = document.getElementById('pg-maintenance') ? document.getElementById('pg-maintenance').checked : false;
+          const registration = document.getElementById('pg-registration') ? document.getElementById('pg-registration').checked : true;
+          const payload = {
+            expiry_threshold_days: isNaN(warningDays) ? 90 : warningDays,
+            app_name: appName,
+            auto_disable_expired: maintenance,
+            allow_registration: registration
+          };
+          try {
+            await data.saveSettings(payload);
+            const profile = auth.getProfile();
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'UPDATE',
+              entity: 'settings',
+              entity_id: '-',
+              detail: 'Update pengaturan sistem (threshold=' + payload.expiry_threshold_days + ' hari)'
+            });
+            utils.toast('Pengaturan sistem disimpan', 'success');
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
         });
       }
 
       // Change password
       const changePassBtn = document.querySelector('[data-action="change-pass"]');
       if (changePassBtn) {
-        changePassBtn.addEventListener('click', function () {
+        changePassBtn.addEventListener('click', async function () {
           const current = document.getElementById('pg-current-pass').value;
           const newP = document.getElementById('pg-new-pass').value;
           const confirmP = document.getElementById('pg-confirm-pass').value;
@@ -368,10 +417,23 @@
             utils.toast('Konfirmasi password tidak cocok', 'error');
             return;
           }
-          utils.toast('Password berhasil diubah', 'success');
-          document.getElementById('pg-current-pass').value = '';
-          document.getElementById('pg-new-pass').value = '';
-          document.getElementById('pg-confirm-pass').value = '';
+          try {
+            const profile = auth.getProfile();
+            await data.addAuditLog({
+              user_id: profile.id,
+              user_name: profile.full_name,
+              action: 'UPDATE',
+              entity: 'auth',
+              entity_id: profile.id || '-',
+              detail: 'Ubah password user'
+            });
+            utils.toast('Password berhasil diubah', 'success');
+            document.getElementById('pg-current-pass').value = '';
+            document.getElementById('pg-new-pass').value = '';
+            document.getElementById('pg-confirm-pass').value = '';
+          } catch (e) {
+            utils.toast('Error: ' + e.message, 'error');
+          }
         });
       }
 
@@ -399,6 +461,7 @@
       }
 
       function actionBadge(action) {
+        const a = String(action || '').toLowerCase();
         const map = {
           login: 'badge-teal',
           logout: 'badge-ink',
@@ -406,11 +469,12 @@
           update: 'badge-amber',
           delete: 'badge-rose',
           approve: 'badge-teal',
-          reject: 'badge-rose',
+          reject: 'badge-rose'
         };
-        return map[action] || 'badge-ink';
+        return map[a] || 'badge-ink';
       }
       function actionLabel(action) {
+        const a = String(action || '').toLowerCase();
         const map = {
           login: 'Login',
           logout: 'Logout',
@@ -418,15 +482,39 @@
           update: 'Update',
           delete: 'Delete',
           approve: 'Approve',
-          reject: 'Reject',
+          reject: 'Reject'
         };
-        return map[action] || action;
+        return map[a] || (action || '-');
+      }
+
+      async function loadAudit() {
+        try {
+          const opts = {};
+          if (_auditAction) opts.action = _auditAction.toUpperCase();
+          if (_auditSearch) opts.search = _auditSearch;
+          const items = await data.loadAuditLog(opts);
+          _auditLogs = (items || []).map(function (l) {
+            return {
+              id: l.id,
+              timestamp: l.created_at,
+              user: l.user_name || l.user_id || '-',
+              action: String(l.action || '').toLowerCase(),
+              module: l.entity || '-',
+              detail: l.detail || '-',
+              ip: l.ip_address || '-'
+            };
+          });
+        } catch (e) {
+          utils.toast('Gagal memuat audit log: ' + e.message, 'error');
+          _auditLogs = [];
+        }
+        renderAudit();
       }
 
       function renderAudit() {
         const tbody = document.getElementById('pg-audit-tbody');
         if (!tbody) return;
-        let filtered = AUDIT_LOGS.slice();
+        let filtered = _auditLogs.slice();
         if (_auditAction) filtered = filtered.filter(function (l) { return l.action === _auditAction; });
         if (_auditDate) {
           filtered = filtered.filter(function (l) {
@@ -468,7 +556,8 @@
       }
 
       await loadFasyankes();
-      renderAudit();
+      await loadSettingsForm();
+      await loadAudit();
     },
   };
 })();
