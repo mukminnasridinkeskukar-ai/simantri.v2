@@ -1,48 +1,28 @@
 -- =========================================================
--- SIMANTRI — SKEMA DATABASE SUPABASE (v1.5.1)
--- Sistem Informasi dan Manajemen Praktik Tenaga Medis dan
--- Tenaga Kesehatan di Fasyankes dan Praktik Mandiri
--- Dinkes Kabupaten Kutai Kartanegara
+-- SIMANTRI — MIGRASI PERBAIKAN KE STRUKTUR v1.5.1
 -- ---------------------------------------------------------
--- SELARAS DENGAN MENU APLIKASI v1.5.1:
---   BAGIAN 1 — OVERVIEW (publik, tanpa login):
---     Beranda/Dashboard, Petunjuk Penggunaan, Peta Sebaran,
---     Notifikasi Izin Expired, Cek Hasil Verifikasi
---     → membaca: tenaga_medis, tenaga_kesehatan, fasyankes,
---       praktik_mandiri (SELECT publik)
---   BAGIAN 2 — MANAJEMEN DATA (login operator/admin):
---     Data Fasyankes, Data Praktik Mandiri (CRUD)
---   BAGIAN 3 — PERIZINAN:
---     Verifikasi Praktik (verval_izin_praktik + verval_draft),
---     Verifikasi Faskes (verval_fasyankes + verval_draft),
---     Monev Izin (monev_izin + storage bucket "monev")
---   BAGIAN 4 — PANEL ADMIN (khusus admin, 14 tab):
---     Ringkasan, Tenaga Medis, Tenaga Kesehatan, Fasyankes,
---     Praktik Mandiri, Verval Praktik, Verval Faskes,
---     Cek Verifikasi, Monev, Izin Expired, Peta, Petunjuk,
---     Petunjuk Admin, Pengguna (profiles)
+-- UNTUK APA?
+--   Database Supabase yang SUDAH BERJALAN dari versi lama,
+--   atau yang PERNAH BERUBAH (tabel/kolom terhapus, dibuat
+--   manual, atau tidak sinkron dengan aplikasi). Script ini
+--   MEMERIKSA & MENYELARASKAN seluruh struktur database ke
+--   bentuk yang dibutuhkan aplikasi SIMANTRI v1.5.1:
+--     • tabel hilang          → dibuat utuh
+--     • kolom hilang          → ditambahkan
+--     • fungsi/trigger/policy → dibuat ulang
+--   SELURUH DATA LAMA DIJAGA — tidak ada drop/delete data.
 --
--- CARA PAKAI (database BARU):
+-- CARA PAKAI:
 --   1. Buka Supabase Dashboard → SQL Editor → New query
 --   2. Salin SELURUH isi file ini → klik Run
---   3. (Opsional) jalankan sql/seed.sql untuk data demo
---   4. Buat user admin pertama (lihat langkah di akhir file)
+--   3. Selesai. Aplikasi langsung dapat dipakai.
 --
--- Database SUDAH BERJALAN / pernah berubah?
---   Jalankan sql/migrasi_v1.5.0.sql — script perbaikan yang
---   menyelaraskan database lama ke struktur aplikasi terbaru
---   tanpa menghapus data apa pun.
---
--- Script ini IDEMPOTENT: aman dijalankan berulang kali.
+-- Script IDEMPOTENT: aman dijalankan berulang kali, pada
+-- database kosong maupun yang sudah berisi data.
 -- =========================================================
 
 -- =========================================================
--- 1. TABEL PROFILES (id = auth.users.id) — DIBUAT PALING AWAL
---    Menu: Panel Admin → tab Pengguna (khusus admin).
---    ⚠ Fungsi bantu & kebijakan RLS di bawah merujuk ke tabel
---    ini, sehingga wajib ada lebih dulu (mencegah error 42P01
---    "relation public.profiles does not exist").
---    Role: admin | verifikator | operator (3 peran aplikasi).
+-- 1. TABEL PROFILES + FUNGSI BANTU (fondasi RLS)
 -- =========================================================
 
 create table if not exists public.profiles (
@@ -55,12 +35,13 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
--- =========================================================
--- 2. FUNGSI BANTU (kebijakan RLS berbasis role)
---    SECURITY DEFINER agar tidak terjadi rekursi RLS profiles.
--- =========================================================
+-- Tambahkan kolom yang mungkin hilang pada database lama
+alter table public.profiles add column if not exists email      text;
+alter table public.profiles add column if not exists nama       text not null default '';
+alter table public.profiles add column if not exists role       text not null default 'operator';
+alter table public.profiles add column if not exists created_at timestamptz not null default now();
+alter table public.profiles add column if not exists updated_at timestamptz not null default now();
 
--- Role pengguna yang sedang login
 create or replace function public.get_my_role()
 returns text
 language sql
@@ -71,7 +52,6 @@ as $$
   select role from public.profiles where id = auth.uid()
 $$;
 
--- admin saja (hapus data, kelola pengguna)
 create or replace function public.is_admin()
 returns boolean
 language sql
@@ -82,7 +62,6 @@ as $$
   select coalesce((select role from public.profiles where id = auth.uid()) = 'admin', false)
 $$;
 
--- admin + verifikator (verifikasi, verval, edit catatan verval)
 create or replace function public.is_verifikator()
 returns boolean
 language sql
@@ -93,7 +72,6 @@ as $$
   select coalesce((select role from public.profiles where id = auth.uid()) in ('admin', 'verifikator'), false)
 $$;
 
--- admin + operator (input & edit data fasyankes/praktik/tenaga/monev)
 create or replace function public.can_input()
 returns boolean
 language sql
@@ -105,39 +83,40 @@ as $$
 $$;
 
 -- =========================================================
--- 3. TABEL TENAGA MEDIS
---    Menu: Panel Admin → Tenaga Medis (CRUD), serta publik di
---    Dashboard / Peta / Notifikasi Expired / Cek Verifikasi.
---    Kolom `nik` = peninggalan data lama (sebelum v1.2.1);
---    aplikasi tidak lagi mengisinya — tetap ada agar data
---    lama tersimpan. Jangan dihapus.
+-- 2. TABEL TENAGA MEDIS & TENAGA KESEHATAN
+--    (Menu: Panel Admin → Tenaga Medis / Tenaga Kesehatan;
+--     dibaca publik oleh Dashboard, Peta, Expired, Cek Verifikasi)
 -- =========================================================
 
 create table if not exists public.tenaga_medis (
   id               bigint generated always as identity primary key,
-  nik              varchar(16),        -- legacy: tidak dipakai aplikasi (nullable)
+  nik              varchar(16),
   nama_lengkap     text        not null,
   no_str           text,
   no_sip           text,
   spesialisasi     text,
   tempat_praktik   text,
-  masa_berlaku_sip date,               -- dipakai notifikasi H-30
+  masa_berlaku_sip date,
   status           text        not null default 'aktif'
                    check (status in ('aktif', 'nonaktif')),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
 
--- =========================================================
--- 4. TABEL TENAGA KESEHATAN
---    Menu: Panel Admin → Tenaga Kesehatan (CRUD), serta
---    publik di Dashboard / Peta / Expired / Cek Verifikasi.
---    Daftar profesi harus sama dengan PROFESI_TK di app.js.
--- =========================================================
+alter table public.tenaga_medis add column if not exists nik              varchar(16);
+alter table public.tenaga_medis add column if not exists nama_lengkap     text;
+alter table public.tenaga_medis add column if not exists no_str           text;
+alter table public.tenaga_medis add column if not exists no_sip           text;
+alter table public.tenaga_medis add column if not exists spesialisasi     text;
+alter table public.tenaga_medis add column if not exists tempat_praktik   text;
+alter table public.tenaga_medis add column if not exists masa_berlaku_sip date;
+alter table public.tenaga_medis add column if not exists status           text not null default 'aktif';
+alter table public.tenaga_medis add column if not exists created_at       timestamptz not null default now();
+alter table public.tenaga_medis add column if not exists updated_at       timestamptz not null default now();
 
 create table if not exists public.tenaga_kesehatan (
   id               bigint generated always as identity primary key,
-  nik              varchar(16),        -- legacy: tidak dipakai aplikasi (nullable)
+  nik              varchar(16),
   nama_lengkap     text        not null,
   no_str           text,
   no_sip           text,
@@ -156,11 +135,21 @@ create table if not exists public.tenaga_kesehatan (
   updated_at       timestamptz not null default now()
 );
 
+alter table public.tenaga_kesehatan add column if not exists nik              varchar(16);
+alter table public.tenaga_kesehatan add column if not exists nama_lengkap     text;
+alter table public.tenaga_kesehatan add column if not exists no_str           text;
+alter table public.tenaga_kesehatan add column if not exists no_sip           text;
+alter table public.tenaga_kesehatan add column if not exists profesi          text;
+alter table public.tenaga_kesehatan add column if not exists tempat_praktik   text;
+alter table public.tenaga_kesehatan add column if not exists masa_berlaku_sip date;
+alter table public.tenaga_kesehatan add column if not exists status           text not null default 'aktif';
+alter table public.tenaga_kesehatan add column if not exists created_at       timestamptz not null default now();
+alter table public.tenaga_kesehatan add column if not exists updated_at       timestamptz not null default now();
+
 -- =========================================================
--- 5. TABEL FASYANKES
---    Menu: Bagian 2 → Data Fasyankes (CRUD), Bagian 3 →
---    Verifikasi Faskes (tab Pengajuan Faskes), serta publik
---    di Dashboard / Peta / Cek Verifikasi.
+-- 3. TABEL FASYANKES & PRAKTIK MANDIRI
+--    (Menu: Bagian 2 → Data Fasyankes / Data Praktik Mandiri;
+--     Bagian 3 → tab Pengajuan; publik: Dashboard/Peta/Cek)
 -- =========================================================
 
 create table if not exists public.fasyankes (
@@ -169,24 +158,30 @@ create table if not exists public.fasyankes (
   jenis              text not null
                      check (jenis in ('RS', 'Puskesmas', 'Klinik', 'Lainnya')),
   alamat             text,
-  kecamatan          text,               -- salah satu dari 20 kecamatan Kukar
-  latitude           numeric(10, 7),     -- dipakai Peta Sebaran
+  kecamatan          text,
+  latitude           numeric(10, 7),
   longitude          numeric(10, 7),
   status_verifikasi  text not null default 'pending'
                      check (status_verifikasi in ('pending', 'disetujui', 'ditolak')),
   catatan_verifikasi text,
-  verified_by        text,               -- email verifikator
+  verified_by        text,
   verified_at        timestamptz,
   created_at         timestamptz not null default now(),
   updated_at         timestamptz not null default now()
 );
 
--- =========================================================
--- 6. TABEL PRAKTIK MANDIRI
---    Menu: Bagian 2 → Data Praktik Mandiri (CRUD), Bagian 3 →
---    Verifikasi Praktik (tab Pengajuan Praktik), serta publik
---    di Dashboard / Peta / Cek Verifikasi.
--- =========================================================
+alter table public.fasyankes add column if not exists nama_fasyankes     text;
+alter table public.fasyankes add column if not exists jenis              text;
+alter table public.fasyankes add column if not exists alamat             text;
+alter table public.fasyankes add column if not exists kecamatan          text;
+alter table public.fasyankes add column if not exists latitude           numeric(10, 7);
+alter table public.fasyankes add column if not exists longitude          numeric(10, 7);
+alter table public.fasyankes add column if not exists status_verifikasi  text not null default 'pending';
+alter table public.fasyankes add column if not exists catatan_verifikasi text;
+alter table public.fasyankes add column if not exists verified_by        text;
+alter table public.fasyankes add column if not exists verified_at        timestamptz;
+alter table public.fasyankes add column if not exists created_at         timestamptz not null default now();
+alter table public.fasyankes add column if not exists updated_at         timestamptz not null default now();
 
 create table if not exists public.praktik_mandiri (
   id                 bigint generated always as identity primary key,
@@ -209,11 +204,22 @@ create table if not exists public.praktik_mandiri (
   updated_at         timestamptz not null default now()
 );
 
+alter table public.praktik_mandiri add column if not exists nama_praktik       text;
+alter table public.praktik_mandiri add column if not exists pemilik            text;
+alter table public.praktik_mandiri add column if not exists alamat             text;
+alter table public.praktik_mandiri add column if not exists jenis_praktik      text;
+alter table public.praktik_mandiri add column if not exists kecamatan          text;
+alter table public.praktik_mandiri add column if not exists latitude           numeric(10, 7);
+alter table public.praktik_mandiri add column if not exists longitude          numeric(10, 7);
+alter table public.praktik_mandiri add column if not exists status_verifikasi  text not null default 'pending';
+alter table public.praktik_mandiri add column if not exists catatan_verifikasi text;
+alter table public.praktik_mandiri add column if not exists verified_by        text;
+alter table public.praktik_mandiri add column if not exists verified_at        timestamptz;
+alter table public.praktik_mandiri add column if not exists created_at         timestamptz not null default now();
+alter table public.praktik_mandiri add column if not exists updated_at         timestamptz not null default now();
+
 -- =========================================================
--- 7. TABEL MONEV IZIN (Monitoring & Evaluasi)
---    Menu: Bagian 3 → Monev Izin. Foto dokumentasi tersimpan
---    di Storage bucket "monev" (section 12); URL publiknya di
---    kolom foto_url. created_by = email pengguna yang input.
+-- 4. TABEL MONEV IZIN (Menu: Bagian 3 → Monev Izin)
 -- =========================================================
 
 create table if not exists public.monev_izin (
@@ -231,17 +237,26 @@ create table if not exists public.monev_izin (
   updated_at        timestamptz not null default now()
 );
 
+alter table public.monev_izin add column if not exists tanggal_kunjungan date not null default current_date;
+alter table public.monev_izin add column if not exists sasaran_jenis     text;
+alter table public.monev_izin add column if not exists sasaran_nama      text;
+alter table public.monev_izin add column if not exists petugas           text;
+alter table public.monev_izin add column if not exists temuan            text;
+alter table public.monev_izin add column if not exists tindak_lanjut     text;
+alter table public.monev_izin add column if not exists foto_url          text;
+alter table public.monev_izin add column if not exists created_by        text;
+alter table public.monev_izin add column if not exists created_at        timestamptz not null default now();
+alter table public.monev_izin add column if not exists updated_at        timestamptz not null default now();
+
 -- =========================================================
--- 7B. TABEL VERVAL IZIN PRAKTIK
---     Menu: Bagian 3 → Verifikasi Praktik (Formulir Verval 27
---     field + Riwayat + Edit), Panel Admin → Verval Praktik &
---     Cek Verifikasi (pencarian kode/nama via aplikasi).
---     kode_verifikasi = SIMANTRI-VERVAL-<timestamp>, unik.
+-- 5. TABEL VERVAL IZIN PRAKTIK
+--    (Menu: Bagian 3 → Verifikasi Praktik; Panel Admin →
+--     Verval Praktik / Cek Verifikasi)
 -- =========================================================
 
 create table if not exists public.verval_izin_praktik (
   id                 bigint generated always as identity primary key,
-  nik                varchar(16),       -- legacy: tidak dipakai aplikasi (nullable)
+  nik                varchar(16),
   nama_lengkap       text        not null,
   jenis_kelamin      text check (jenis_kelamin in ('Laki-laki', 'Perempuan')),
   tempat_lahir       text,
@@ -272,12 +287,38 @@ create table if not exists public.verval_izin_praktik (
   updated_at         timestamptz not null default now()
 );
 
+alter table public.verval_izin_praktik add column if not exists nik                 varchar(16);
+alter table public.verval_izin_praktik add column if not exists nama_lengkap        text;
+alter table public.verval_izin_praktik add column if not exists jenis_kelamin       text;
+alter table public.verval_izin_praktik add column if not exists tempat_lahir        text;
+alter table public.verval_izin_praktik add column if not exists tanggal_lahir       date;
+alter table public.verval_izin_praktik add column if not exists alamat_ktp          text;
+alter table public.verval_izin_praktik add column if not exists nomor_str           text;
+alter table public.verval_izin_praktik add column if not exists status_str          text;
+alter table public.verval_izin_praktik add column if not exists status_sip          text;
+alter table public.verval_izin_praktik add column if not exists nomor_sip           text;
+alter table public.verval_izin_praktik add column if not exists masa_berlaku_sip    date;
+alter table public.verval_izin_praktik add column if not exists unit_kerja          text;
+alter table public.verval_izin_praktik add column if not exists alamat_unit         text;
+alter table public.verval_izin_praktik add column if not exists desa_kelurahan      text;
+alter table public.verval_izin_praktik add column if not exists kecamatan           text;
+alter table public.verval_izin_praktik add column if not exists status_satu_sehat   text;
+alter table public.verval_izin_praktik add column if not exists sop_pelayanan       text;
+alter table public.verval_izin_praktik add column if not exists sop_profesi         text;
+alter table public.verval_izin_praktik add column if not exists sop_etika           text;
+alter table public.verval_izin_praktik add column if not exists sdmk_named          text;
+alter table public.verval_izin_praktik add column if not exists sdmk_nakes          text;
+alter table public.verval_izin_praktik add column if not exists sdmk_admin          text;
+alter table public.verval_izin_praktik add column if not exists jam_operasional     text;
+alter table public.verval_izin_praktik add column if not exists catatan_rekomendasi text;
+alter table public.verval_izin_praktik add column if not exists pendidikan_str      text;
+alter table public.verval_izin_praktik add column if not exists kode_verifikasi     text;
+alter table public.verval_izin_praktik add column if not exists verifikator         text;
+alter table public.verval_izin_praktik add column if not exists created_at          timestamptz not null default now();
+alter table public.verval_izin_praktik add column if not exists updated_at          timestamptz not null default now();
+
 -- =========================================================
--- 7C. TABEL VERVAL DRAFT (draf formulir per pengguna per form)
---     Menu: Bagian 3 → Verifikasi Praktik & Verifikasi Faskes.
---     Pengganti localStorage: draf tersinkron otomatis ke
---     Supabase sehingga aman dibuka lintas perangkat. Kolom
---     `form` memisahkan draf "praktik" dan "faskes" (PK komposit).
+-- 6. TABEL VERVAL DRAFT (draf otomatis multi-form praktik/faskes)
 -- =========================================================
 
 create table if not exists public.verval_draft (
@@ -288,12 +329,22 @@ create table if not exists public.verval_draft (
   primary key (user_id, form)
 );
 
+alter table public.verval_draft add column if not exists form       text not null default 'praktik';
+alter table public.verval_draft add column if not exists data       jsonb not null default '{}'::jsonb;
+alter table public.verval_draft add column if not exists updated_at timestamptz not null default now();
+
+-- Pastikan PK komposit (user_id, form) ada (database lama
+-- memakai PK tunggal user_id)
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'verval_draft_form_pkey') then
+    alter table public.verval_draft drop constraint if exists verval_draft_pkey;
+    alter table public.verval_draft add constraint verval_draft_form_pkey primary key (user_id, form);
+  end if;
+end $$;
+
 -- =========================================================
--- 7D. TABEL VERVAL FASYANKES
---     Menu: Bagian 3 → Verifikasi Faskes (Formulir Verval,
---     ID otomatis VF-YYYYMMDD-XXXXX, SDM Kesehatan dinamis per
---     jenis fasyankes) + Riwayat + Edit, Panel Admin → tab
---     Verval Faskes.
+-- 7. TABEL VERVAL FASYANKES (Menu: Bagian 3 → Verifikasi Faskes)
 -- =========================================================
 
 create table if not exists public.verval_fasyankes (
@@ -313,7 +364,7 @@ create table if not exists public.verval_fasyankes (
   kecamatan          text        not null,
   nomor_hp           text        not null,
   email              text,
-  sdm_kesehatan      text,              -- daftar SDM dipisah "; "
+  sdm_kesehatan      text,
   status_verifikasi  text not null default 'Pending'
                      check (status_verifikasi in ('Layak', 'Tidak Layak', 'Perbaikan', 'Pending', 'Tidak Valid')),
   catatan_verifikasi text,
@@ -322,8 +373,36 @@ create table if not exists public.verval_fasyankes (
   updated_at         timestamptz not null default now()
 );
 
+alter table public.verval_fasyankes add column if not exists kode_verval        text;
+alter table public.verval_fasyankes add column if not exists tanggal_verval     date not null default current_date;
+alter table public.verval_fasyankes add column if not exists nomor_unit         text;
+alter table public.verval_fasyankes add column if not exists nama_fasyankes     text;
+alter table public.verval_fasyankes add column if not exists jenis_fasyankes    text;
+alter table public.verval_fasyankes add column if not exists nama_pemilik       text;
+alter table public.verval_fasyankes add column if not exists penanggung_jawab   text;
+alter table public.verval_fasyankes add column if not exists alamat_lengkap     text;
+alter table public.verval_fasyankes add column if not exists kelurahan          text;
+alter table public.verval_fasyankes add column if not exists kecamatan          text;
+alter table public.verval_fasyankes add column if not exists nomor_hp           text;
+alter table public.verval_fasyankes add column if not exists email              text;
+alter table public.verval_fasyankes add column if not exists sdm_kesehatan      text;
+alter table public.verval_fasyankes add column if not exists status_verifikasi  text not null default 'Pending';
+alter table public.verval_fasyankes add column if not exists catatan_verifikasi text;
+alter table public.verval_fasyankes add column if not exists verifikator        text;
+alter table public.verval_fasyankes add column if not exists created_at         timestamptz not null default now();
+alter table public.verval_fasyankes add column if not exists updated_at         timestamptz not null default now();
+
 -- =========================================================
--- 8. TRIGGER updated_at (semua tabel — diisi otomatis)
+-- 8. NIK TIDAK LAGI WAJIB (sejak v1.2.1; kolom dipertahankan
+--    hanya agar data lama tidak hilang)
+-- =========================================================
+
+alter table public.tenaga_medis        alter column nik drop not null;
+alter table public.tenaga_kesehatan    alter column nik drop not null;
+alter table public.verval_izin_praktik alter column nik drop not null;
+
+-- =========================================================
+-- 9. TRIGGER updated_at (semua tabel)
 -- =========================================================
 
 create or replace function public.set_updated_at()
@@ -349,12 +428,7 @@ begin
   end loop;
 end $$;
 
--- =========================================================
--- 9. TRIGGER PROFIL OTOMATIS saat user baru mendaftar
---    (dipakai fitur Tambah Pengguna di tab Pengguna; profil
---    baru otomatis dibuat dengan role default: operator)
--- =========================================================
-
+-- Trigger profil otomatis saat user baru mendaftar
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -380,7 +454,7 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- =========================================================
--- 10. INDEX (mempercepat pencarian, dashboard & agregasi)
+-- 10. INDEX
 -- =========================================================
 
 create index if not exists idx_tm_nik        on public.tenaga_medis (nik);
@@ -402,23 +476,7 @@ create index if not exists idx_vervalfas_status    on public.verval_fasyankes (s
 create index if not exists idx_vervalfas_kecamatan on public.verval_fasyankes (kecamatan);
 
 -- =========================================================
--- 11. ROW LEVEL SECURITY (selaras menu v1.5.1)
--- ---------------------------------------------------------
--- Ringkasan hak akses per Bagian menu:
---   BAGIAN 1 (publik): SELECT true  pada 7 tabel data →
---     dashboard, peta, notifikasi expired & cek verifikasi
---     dapat dibuka TANPA login. (Privasi No. STR disembunyikan
---     pada lapisan tampilan aplikasi — mask •••••••• bagi
---     pengunjung yang belum masuk.)
---   BAGIAN 2 & 3 (login): INSERT/UPDATE sesuai role —
---     can_input()      = admin + operator (data & monev)
---     is_verifikator() = admin + verifikator (verval)
---   BAGIAN 4 (admin): DELETE selalu khusus admin;
---     profiles dikelola penuh admin (tab Pengguna).
---   profiles: semua pengguna boleh baca/edit barisnya sendiri.
---   verval_draft: murni milik pemilik draf (user_id).
---   Bila ingin menutup akses publik: ganti using (true) menjadi
---   using (auth.uid() is not null) pada policy select.
+-- 11. ROW LEVEL SECURITY (identik dengan schema.sql v1.5.1)
 -- =========================================================
 
 alter table public.profiles            enable row level security;
@@ -431,7 +489,7 @@ alter table public.verval_izin_praktik enable row level security;
 alter table public.verval_draft        enable row level security;
 alter table public.verval_fasyankes    enable row level security;
 
--- ---------- profiles (Panel Admin → Pengguna) ----------
+-- ---------- profiles ----------
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
 create policy "profiles_select_own_or_admin"
   on public.profiles for select
@@ -442,7 +500,6 @@ create policy "profiles_insert_admin"
   on public.profiles for insert
   with check (public.is_admin());
 
--- pengguna boleh memperbarui data sendiri TANPA bisa mengubah role sendiri
 drop policy if exists "profiles_update_self" on public.profiles;
 create policy "profiles_update_self"
   on public.profiles for update
@@ -459,7 +516,7 @@ create policy "profiles_delete_admin"
   on public.profiles for delete
   using (public.is_admin());
 
--- ---------- tenaga_medis (Panel Admin + halaman publik) ----------
+-- ---------- tenaga_medis ----------
 drop policy if exists "tm_select" on public.tenaga_medis;
 create policy "tm_select" on public.tenaga_medis for select using (true);
 
@@ -491,7 +548,7 @@ drop policy if exists "tk_delete" on public.tenaga_kesehatan;
 create policy "tk_delete" on public.tenaga_kesehatan for delete
   using (public.is_admin());
 
--- ---------- fasyankes (Bagian 2 + 3 + publik) ----------
+-- ---------- fasyankes ----------
 drop policy if exists "fas_select" on public.fasyankes;
 create policy "fas_select" on public.fasyankes for select using (true);
 
@@ -507,7 +564,7 @@ drop policy if exists "fas_delete" on public.fasyankes;
 create policy "fas_delete" on public.fasyankes for delete
   using (public.is_admin());
 
--- ---------- praktik_mandiri (Bagian 2 + 3 + publik) ----------
+-- ---------- praktik_mandiri ----------
 drop policy if exists "prak_select" on public.praktik_mandiri;
 create policy "prak_select" on public.praktik_mandiri for select using (true);
 
@@ -523,7 +580,7 @@ drop policy if exists "prak_delete" on public.praktik_mandiri;
 create policy "prak_delete" on public.praktik_mandiri for delete
   using (public.is_admin());
 
--- ---------- monev_izin (Bagian 3; edit oleh pengguna login) ----------
+-- ---------- monev_izin ----------
 drop policy if exists "monev_select" on public.monev_izin;
 create policy "monev_select" on public.monev_izin for select using (true);
 
@@ -539,9 +596,7 @@ drop policy if exists "monev_delete" on public.monev_izin;
 create policy "monev_delete" on public.monev_izin for delete
   using (public.is_admin());
 
--- ---------- verval_izin_praktik (Bagian 3) ----------
--- Hasil verval dapat dilihat publik (konsisten dgn cek verifikasi);
--- penulisan hanya oleh verifikator/admin; hapus hanya admin.
+-- ---------- verval_izin_praktik ----------
 drop policy if exists "verval_select" on public.verval_izin_praktik;
 create policy "verval_select" on public.verval_izin_praktik for select using (true);
 
@@ -557,7 +612,7 @@ drop policy if exists "verval_delete" on public.verval_izin_praktik;
 create policy "verval_delete" on public.verval_izin_praktik for delete
   using (public.is_admin());
 
--- ---------- verval_draft (draf milik pengguna sendiri) ----------
+-- ---------- verval_draft ----------
 drop policy if exists "verval_draft_select" on public.verval_draft;
 create policy "verval_draft_select" on public.verval_draft for select
   using (user_id = auth.uid());
@@ -575,7 +630,7 @@ drop policy if exists "verval_draft_delete" on public.verval_draft;
 create policy "verval_draft_delete" on public.verval_draft for delete
   using (user_id = auth.uid());
 
--- ---------- verval_fasyankes (Bagian 3) ----------
+-- ---------- verval_fasyankes ----------
 drop policy if exists "vervalfas_select" on public.verval_fasyankes;
 create policy "vervalfas_select" on public.verval_fasyankes for select using (true);
 
@@ -592,10 +647,7 @@ create policy "vervalfas_delete" on public.verval_fasyankes for delete
   using (public.is_admin());
 
 -- =========================================================
--- 12. STORAGE BUCKET "monev" (foto dokumentasi monev)
---     Dipakai tombol unggah foto pada form Tambah/Edit
---     Kunjungan Monev. Bucket publik agar foto tampil di
---     tabel & detail monev tanpa URL bertanda tangan.
+-- 12. STORAGE BUCKET "monev"
 -- =========================================================
 
 insert into storage.buckets (id, name, public)
@@ -623,14 +675,28 @@ create policy "monev_storage_delete"
   using (bucket_id = 'monev' and (auth.uid() is not null or public.is_admin()));
 
 -- =========================================================
--- SELESAI. Langkah berikutnya (WAJIB agar bisa mengelola app):
---   1. Buat user admin pertama via Authentication → Users →
---      Add user (email + sandi), tanpa "Confirm email".
---   2. Promosikan ke admin via SQL Editor:
---        update public.profiles set role='admin'
---        where email='email-anda@dinkes.go.id';
---   3. Isi js/config.js dengan Project URL & anon key.
---   4. Tips: pastikan opsi Confirm email NONAKTIF di
---      Authentication → Providers → Email agar pembuatan
---      akun lewat menu Pengguna berjalan mulus.
+-- 13. VERIFIKASI HASIL MIGRASI (opsional, hanya membaca)
+--     Jalankan blok SELECT di bawah bila ingin memastikan
+--     seluruh struktur sudah lengkap. Output diharapkan 9 baris
+--     dengan status OK.
+-- =========================================================
+
+-- select t.nama, c.jumlah_kolom,
+--        case when c.jumlah_kolom >= 5 then 'OK' else 'PERIKSA' end as status
+-- from (values ('profiles'), ('tenaga_medis'), ('tenaga_kesehatan'),
+--              ('fasyankes'), ('praktik_mandiri'), ('monev_izin'),
+--              ('verval_izin_praktik'), ('verval_draft'),
+--              ('verval_fasyankes')) as t(nama)
+-- left join (
+--   select table_name, count(*) as jumlah_kolom
+--   from information_schema.columns
+--   where table_schema = 'public'
+--   group by table_name
+-- ) c on c.table_name = t.nama;
+
+-- =========================================================
+-- SELESAI. Struktur database kini selaras dengan aplikasi
+-- v1.5.1. Tidak perlu restart apa pun — buka aplikasi, hard
+-- refresh (Ctrl+Shift+R); console wajib menampilkan
+-- "[SIMANTRI] v1.5.1".
 -- =========================================================

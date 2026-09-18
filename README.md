@@ -23,10 +23,9 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ├── assets/
 │   └── logo.svg        # Logo SIMANTRI
 ├── sql/
-│   ├── schema.sql            # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru)
-│   ├── migrasi_verval.sql    # Migrasi v1.1.0+v1.2.0+v1.2.1: tabel verval praktik & fasyankes + nik nullable (untuk database yang SUDAH berjalan)
-│   ├── migrasi_hapus_nik.sql # Migrasi v1.2.1 saja: kolom nik tidak wajib (database lama, tanpa rerun migrasi lengkap)
-│   └── seed.sql              # Data demo opsional (fasyankes/praktik Kab. Kutai Kartanegara + koordinat, tanpa NIK)
+│   ├── schema.sql           # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru) — selaras menu v1.5.1
+│   ├── migrasi_v1.5.0.sql   # PERBAIKAN database lama/berubah: membuat tabel & kolom yang hilang, menyelaraskan RLS — data lama dijaga
+│   └── seed.sql             # Data demo opsional (fasyankes/praktik Kab. Kutai Kartanegara + koordinat, tanpa NIK)
 └── README.md
 ```
 
@@ -43,9 +42,7 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 2. Salin seluruh isi `sql/schema.sql` → klik **Run**.
 3. (Opsional) Salin isi `sql/seed.sql` → **Run** untuk data demo (RSUD Tenggarong, Puskesmas, praktik bidan, dll. — lengkap dengan koordinat agar peta langsung tampil).
 
-> **Database sudah berjalan dari versi lama (≤ v1.1.0)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_verval.sql` sekali untuk menambah tabel **verval_izin_praktik**, **verval_fasyankes**, **verval_draft** (draf otomatis multi-form) beserta RLS-nya, sekaligus membuat kolom `nik` tidak wajib (v1.2.1). Script ini idempotent — aman juga dijalankan pada database yang sudah pernah dimigrasi sebagian.
->
-> **Database dari versi lama dan hanya ingin efek v1.2.1 (NIK tidak wajib)?** Jalankan `sql/migrasi_hapus_nik.sql` saja.
+> **Database sudah berjalan dari versi lama, atau pernah berubah (tabel/kolom terhapus, tidak sinkron)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_v1.5.0.sql` sekali. Script ini MEMERIKSA seluruh struktur yang dibutuhkan aplikasi v1.5.1 (9 tabel, seluruh kolom, fungsi, trigger, index, RLS, bucket storage), MEMBUAT yang hilang, dan MENYELARASKAN yang berbeda — tanpa menghapus data apa pun. Idempotent: aman dijalankan berulang.
 
 ### 3. Konfigurasi Auth
 1. Buka **Authentication → Sign In / Providers → Email**.
@@ -135,13 +132,15 @@ python3 -m http.server 8080
 
 ## Riwayat Versi
 
+- **v1.5.1** — **Pembangunan ulang folder `sql/` agar selaras dengan struktur menu terbaru (v1.5.1)**: (1) `schema.sql` ditulis ulang — dokumentasi akses per Bagian menu (Bagian 1 publik baca 7 tabel data; Bagian 2–3 CRUD sesuai role; Bagian 4 Panel Admin), 9 tabel lengkap dengan fungsi bantu, trigger, index, RLS & bucket storage, tetap idempotent; (2) `sql/migrasi_v1.5.0.sql` baru — **satu script perbaikan** untuk database lama/berubah: membuat tabel & kolom yang hilang (`add column if not exists`), memastikan PK komposit draf, menyelaraskan RLS — tanpa menghapus data (menggantikan `migrasi_verval.sql` + `migrasi_hapus_nik.sql` yang diarsipkan); (3) **Perbaikan bug `seed.sql`**: baris demo verval praktik no. 2 memuat `sdmk_admin='Belum'` yang melanggar CHECK constraint (`'Ada'/'Tidak Ada'`) sehingga seed GAGAL dijalankan — kini `'Tidak Ada'`; seluruh 47 nilai enum seed tervalidasi otomatis terhadap constraint schema. Konsistensi SQL ↔ aplikasi diverifikasi silang (tabel/kolom `.from()` app.js, konstanta `PROFESI_TK`/`JENIS_FASKES`/`JENIS_PRAKTIK` vs CHECK, 9× RLS, bucket monev).
+
 - **v1.5.0** — **Dua buku petunjuk PDF terpisah**: (1) **Buku 1 — Petunjuk untuk Pembaca** (10 halaman): tersaji sebagai **flipbook baca-saja** pada menu Petunjuk Penggunaan — halaman disajikan sebagai gambar dan **tidak ada berkas PDF di hosting sehingga tidak dapat diunduh** (klik kanan & seret dinonaktifkan, navigasi tombol/panah/lompat halaman); (2) **Buku 2 — Petunjuk untuk Admin** (14 halaman): tersedia di **Panel Admin → tab Petunjuk Admin** dengan pratinjau tersemat + tombol **Unduh PDF** (berkas di `docs/petunjuk-admin-simantri.pdf`). Kedua buku memakai sampul & palet teal resmi (Penyusun: Mukmin Nasri, S.Kep) dan sudah disesuaikan dengan struktur menu v1.4.0.
 
 - **v1.4.0** — Penataan ulang menu: (1) **Cek Hasil Verifikasi dipindah ke Bagian 1 — Overview** (ikut di dashboard aksi cepat); (2) **No. STR disembunyikan dari pembaca yang belum login** — termasuk detail Notifikasi Expired & detail Riwayat Verval (mask `••••••••`, penuh hanya untuk pengguna masuk); (3) **Menu Data Tenaga Medis & Data Tenaga Kesehatan dihapus dari Bagian 2** — pengelolaan data tenaga kini melalui **Panel Admin (Bagian 4)** tab Tenaga Medis & Tenaga Kesehatan (CRUD lengkap tetap berfungsi). Petunjuk penggunaan di dalam aplikasi disesuaikan.
 
 - **v1.3.0** — Pengembangan Bagian 4 menjadi **Panel Admin**: seluruh menu (13 halaman) kini tersedia sebagai **tab berbeda dalam satu konten** pada satu halaman khusus admin. Setiap tabel di seluruh aplikasi diakhiri **kolom Aksi (Edit/Hapus per baris)** yang berfungsi lengkap — termasuk edit langsung catatan verval izin praktik & verval fasyankes (verifikator/admin) dan edit data SIP dari daftar expired. Perbaikan: halaman aktif kini otomatis di-render ulang setelah login/logout (kartu "Akses Ditolak" langsung terbuka setelah masuk sebagai admin).
 
-- **v1.2.1** — Pembersihan data NIK: seluruh form/tabel/riwayat/pencarian tidak lagi mengumpulkan atau menampilkan NIK (kolom `nik` di DB menjadi opsional — jalankan `sql/migrasi_hapus_nik.sql` atau `sql/migrasi_verval.sql` terbaru pada database lama), kode verifikasi menjadi `SIMANTRI-VERVAL-<timestamp>`, dan seluruh penamaan wilayah diganti dari Kota Samarinda ke **Kabupaten Kutai Kartanegara** (20 kecamatan resmi, pusat peta Tenggarong, data demo seed disesuaikan).
+- **v1.2.1** — Pembersihan data NIK: seluruh form/tabel/riwayat/pencarian tidak lagi mengumpulkan atau menampilkan NIK (kolom `nik` di DB menjadi opsional — untuk database lama kini cukup `sql/migrasi_v1.5.0.sql`; file `migrasi_hapus_nik.sql`/`migrasi_verval.sql` lama sudah digabung ke dalamnya), kode verifikasi menjadi `SIMANTRI-VERVAL-<timestamp>`, dan seluruh penamaan wilayah diganti dari Kota Samarinda ke **Kabupaten Kutai Kartanegara** (20 kecamatan resmi, pusat peta Tenggarong, data demo seed disesuaikan).
 - **v1.2.0** — Menu Verifikasi Faskes dikembangkan: Formulir Verval Fasyankes (ID otomatis VF-, SDM Kesehatan dinamis per jenis fasyankes, 5 hasil verifikasi), tabel baru `verval_fasyankes`, tabel `verval_draft` menjadi multi-form (praktik & faskes, PK komposit user_id+form), data demo verval fasyankes pada `seed.sql`.
 - **v1.1.0** — Menu Verifikasi Praktik dikembangkan: Formulir Verval Izin Praktik 28 field (adaptasi formulir verval SatuSehat SDMK), tabel baru `verval_izin_praktik` + `verval_draft` (draf otomatis per pengguna — pengganti localStorage), migrasi terpisah `sql/migrasi_verval.sql`, data demo verval pada `seed.sql`.
 - **v1.0.3** — Perbaikan seed.sql (overriding system value + sinkronisasi sequence identity).

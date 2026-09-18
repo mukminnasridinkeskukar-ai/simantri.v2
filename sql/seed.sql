@@ -1,5 +1,5 @@
 -- =========================================================
--- SIMANTRI — SEED DATA (OPSIONAL, khusus DEMO)
+-- SIMANTRI — SEED DATA (OPSIONAL, khusus DEMO) — v1.5.1
 -- ---------------------------------------------------------
 -- Jalankan HANYA bila ingin mengisi contoh data untuk
 -- melihat dashboard, grafik, dan peta. Data ini MASUK ke
@@ -7,7 +7,10 @@
 -- membaca live dari Supabase.
 -- Aman dijalankan berulang (id eksplisit + overriding system value +
 -- on conflict do nothing + sinkronisasi sequence setelah tiap tabel).
--- Sejak v1.2.1: tanpa NIK & lokasi demo Kab. Kutai Kartanegara.
+-- Lokasi demo: Kabupaten Kutai Kartanegara (tanpa NIK).
+-- WAJIB dijalankan SETELAH sql/schema.sql (butuh tabel & RLS).
+-- Seluruh nilai sesuai CHECK constraint di schema.sql —
+-- telah diverifikasi tidak melanggar batasan apa pun.
 -- =========================================================
 
 -- ---------- FASYANKES ----------
@@ -63,7 +66,7 @@ update public.praktik_mandiri set
   verified_at = now() - interval '1 day'
 where id = 8;
 
--- ---------- TENAGA MEDIS (tanpa NIK sejak v1.2.1) ----------
+-- ---------- TENAGA MEDIS ----------
 insert into public.tenaga_medis
   (id, nama_lengkap, no_str, no_sip, spesialisasi, tempat_praktik, masa_berlaku_sip, status)
 overriding system value
@@ -80,7 +83,7 @@ on conflict (id) do nothing;
 select setval(pg_get_serial_sequence('public.tenaga_medis', 'id'),
               coalesce((select max(id) from public.tenaga_medis), 0) + 1, false);
 
--- ---------- TENAGA KESEHATAN (tanpa NIK sejak v1.2.1) ----------
+-- ---------- TENAGA KESEHATAN ----------
 insert into public.tenaga_kesehatan
   (id, nama_lengkap, no_str, no_sip, profesi, tempat_praktik, masa_berlaku_sip, status)
 overriding system value
@@ -111,7 +114,7 @@ on conflict (id) do nothing;
 select setval(pg_get_serial_sequence('public.monev_izin', 'id'),
               coalesce((select max(id) from public.monev_izin), 0) + 1, false);
 
--- ---------- VERVAL IZIN PRAKTIK (tanpa NIK sejak v1.2.1) ----------
+-- ---------- VERVAL IZIN PRAKTIK ----------
 insert into public.verval_izin_praktik
   (id, nama_lengkap, jenis_kelamin, tempat_lahir, tanggal_lahir, alamat_ktp,
    nomor_str, status_str, status_sip, nomor_sip, masa_berlaku_sip,
@@ -131,7 +134,7 @@ values
    'Jl. Kesuma Bangsa No. 8, Tenggarong',
    '30.3.4.31.02201', 'Aktif', 'Aktif', 'SIP-N/118', '2026-09-30',
    'Klinik Pratama Harapan Bunda', 'Jl. Gajah Mada No. 12', 'Pemuda', 'Tenggarong', 'Belum',
-   'Ada', 'Ada', 'Tidak Ada', 'Ada', 'Ada', 'Belum',
+   'Ada', 'Ada', 'Tidak Ada', 'Ada', 'Ada', 'Tidak Ada',
    'Senin-Sabtu 08.00-20.00', 'Registrasi SatuSehat SDMK dan SOP etika perlu dilengkapi.',
    'D3 Keperawatan / S1 Ners', 'SIMANTRI-VERVAL-1788403200002', 'verifikator@dinkes.go.id')
 on conflict (id) do nothing;
