@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.4.0';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.5.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -867,7 +867,7 @@ function openDetailExpired(r) {
  * 11. HALAMAN: PETUNJUK PENGGUNAAN (accordion)
  * ========================================================= */
 
-function renderPetunjuk(target = '#page-content') {
+function renderPetunjukAcc(target = '#page-content') {
   const items = [
     {
       t: '1. Persiapan Backend Supabase',
@@ -923,6 +923,108 @@ function renderPetunjuk(target = '#page-content') {
       <div class="space-y-2.5" id="acc-root">${items.map(accItem).join('')}</div>
     </div>`;
   $$('#acc-root [data-acc] .acc-head').forEach((h) => h.addEventListener('click', () => h.parentElement.classList.toggle('open')));
+}
+
+/* ---------- Buku petunjuk (v1.5.0): Buku 1 pembaca (flipbook baca-saja) + Buku 2 admin ---------- */
+
+let pjTab = 'buku';
+
+function renderPetunjuk(target = '#page-content') {
+  $(target).innerHTML = `
+    <div class="max-w-3xl mx-auto">
+      <div class="flex flex-wrap gap-2 mb-4" id="pj-tabs">
+        <button class="chip ${pjTab === 'buku' ? 'active' : ''}" data-pj="buku">${icon('petunjuk', 'w-4 h-4')} Buku Petunjuk (Pembaca)</button>
+        <button class="chip ${pjTab === 'ringkas' ? 'active' : ''}" data-pj="ringkas">${icon('info', 'w-4 h-4')} Ringkasan Cepat</button>
+      </div>
+      <div id="pj-content"></div>
+    </div>`;
+  $$('#pj-tabs [data-pj]').forEach((b) => b.addEventListener('click', () => {
+    if (pjTab === b.dataset.pj) return;
+    pjTab = b.dataset.pj;
+    $$('#pj-tabs [data-pj]').forEach((x) => x.classList.toggle('active', x.dataset.pj === pjTab));
+    renderPetunjukTab();
+  }));
+  renderPetunjukTab();
+}
+
+function renderPetunjukTab() {
+  const T = '#pj-content';
+  if (pjTab === 'buku') renderBukuPembaca(T);
+  else renderPetunjukAcc(T);
+}
+
+function renderBukuPembaca(target = '#page-content') {
+  const data = window.BUKU_PELIHAT;
+  if (!data || !Array.isArray(data.halaman) || !data.halaman.length) {
+    $(target).innerHTML = emptyState('Buku petunjuk belum termuat. Segarkan halaman (Ctrl+Shift+R) dan coba lagi.');
+    return;
+  }
+  let idx = 1; // nomor halaman aktif (1-based, sinkron dengan tampilan awal)
+  const total = data.halaman.length;
+  $(target).innerHTML = `
+    <div class="card p-4 sm:p-5" id="buku-wrap">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div>
+          <p class="text-sm font-extrabold text-slate-800">${esc(data.judul)}</p>
+          <p class="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">${icon('shield', 'w-3.5 h-3.5')} Hanya dapat dibaca online &bull; unduh &amp; cetak dinonaktifkan</p>
+        </div>
+        <span class="kode-chip">Halaman <b id="buku-num">1</b> / ${total}</span>
+      </div>
+      <div class="rounded-xl overflow-hidden bg-slate-100 grid place-items-center select-none" id="buku-stage">
+        <img id="buku-img" src="${data.halaman[0]}" alt="Halaman 1 dari ${total}" class="max-h-[72vh] w-auto" draggable="false">
+      </div>
+      <div class="flex items-center justify-between gap-2 mt-3">
+        <button class="btn btn-soft" id="buku-prev" title="Halaman sebelumnya">${icon('chevron', 'w-4 h-4 rotate-90')} Sebelumnya</button>
+        <input id="buku-go" type="number" min="1" max="${total}" value="1" class="input w-20 text-center" aria-label="Nomor halaman">
+        <button class="btn btn-soft" id="buku-next" title="Halaman berikutnya">Berikutnya ${icon('chevron', 'w-4 h-4 -rotate-90')}</button>
+      </div>
+    </div>`;
+  const img = $('#buku-img');
+  const num = $('#buku-num');
+  const btnPrev = $('#buku-prev');
+  const btnNext = $('#buku-next');
+  const go = (n) => {
+    idx = Math.min(total, Math.max(1, n));
+    img.src = data.halaman[idx - 1];
+    img.alt = `Halaman ${idx} dari ${total}`;
+    num.textContent = idx;
+    $('#buku-go').value = idx;
+    btnPrev.style.opacity = idx === 1 ? '.45' : '1';
+    btnNext.style.opacity = idx === total ? '.45' : '1';
+  };
+  btnPrev.addEventListener('click', () => go(idx - 1));
+  btnNext.addEventListener('click', () => go(idx + 1));
+  $('#buku-go').addEventListener('change', (e) => go(parseInt(e.target.value, 10) || 1));
+  $('#buku-wrap').addEventListener('contextmenu', (e) => e.preventDefault());
+  $('#buku-stage').addEventListener('dragstart', (e) => e.preventDefault());
+  const onKey = (e) => {
+    if (!document.getElementById('buku-img')) { document.removeEventListener('keydown', onKey); return; }
+    if (e.key === 'ArrowLeft') go(idx - 1);
+    if (e.key === 'ArrowRight') go(idx + 1);
+  };
+  document.addEventListener('keydown', onKey);
+}
+
+function renderPetunjukAdmin(target = '#page-content') {
+  const src = 'docs/petunjuk-admin-simantri.pdf';
+  $(target).innerHTML = `
+    <div class="card p-4 sm:p-5 mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div class="flex items-start gap-3 min-w-0">
+        <div class="w-10 h-10 rounded-xl bg-teal-600 text-white grid place-items-center flex-none">${icon('petunjuk', 'w-5 h-5')}</div>
+        <div class="min-w-0">
+          <p class="text-sm font-extrabold text-slate-800">Buku 2 &mdash; Petunjuk Penggunaan untuk Admin</p>
+          <p class="text-xs text-slate-400 mt-0.5">Panduan teknis admin: penyiapan sistem, akun &amp; peran, manajemen data, verval, monev, Panel Admin, keamanan &amp; publikasi.</p>
+        </div>
+      </div>
+      <div class="flex gap-2 flex-none">
+        <a class="btn btn-soft" href="${src}" target="_blank" rel="noopener">Buka di Tab Baru</a>
+        <a class="btn btn-primary" href="${src}" download="Petunjuk_Admin_SIMANTRI.pdf">${icon('cek', 'w-4 h-4')} Unduh PDF</a>
+      </div>
+    </div>
+    <div class="card p-2">
+      <iframe src="${src}#view=FitH" title="Buku 2 - Petunjuk Admin" class="w-full rounded-lg" style="height:76vh;border:0"></iframe>
+    </div>
+    <p class="text-[.7rem] text-slate-400 text-center mt-2">Bila pratinjau tidak tampil pada peramban Anda, gunakan tombol <b>Unduh PDF</b> atau <b>Buka di Tab Baru</b>.</p>`;
 }
 
 /* =========================================================
@@ -2810,6 +2912,7 @@ const PANEL_TABS = [
   ['expired', 'Izin Expired', 'clock'],
   ['peta', 'Peta Sebaran', 'peta'],
   ['petunjuk', 'Petunjuk', 'petunjuk'],
+  ['petunjuk-admin', 'Petunjuk Admin', 'petunjuk'],
   ['pengguna', 'Pengguna', 'users'],
 ];
 
@@ -2831,6 +2934,7 @@ function renderPanelTab() {
     'expired': () => mountExpired(T),
     'peta': () => mountPeta(T),
     'petunjuk': () => renderPetunjuk(T),
+    'petunjuk-admin': () => renderPetunjukAdmin(T),
     'pengguna': () => mountPengguna(T),
   };
   (render[panelTab] || render['ringkasan'])();
@@ -2883,7 +2987,7 @@ const ROUTES = {
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.4.0';
+const VERSI_SIMANTRI = '1.5.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,

@@ -16,7 +16,10 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ├── js/
 │   ├── config.js       # ← ISI SUPABASE_URL & ANON KEY DI SINI
 │   ├── supabase.js     # Klien supabase-js v2 (ESM via CDN)
+│   ├── buku_pelihat.js # Halaman Buku 1 (Petunjuk Pembaca) sebagai gambar flipbook baca-saja (dibuat otomatis)
 │   └── app.js          # Router hash + auth + CRUD + verifikasi + peta + grafik
+├── docs/
+│   └── petunjuk-admin-simantri.pdf  # Buku 2 — Petunjuk untuk Admin (di Panel Admin → tab Petunjuk Admin)
 ├── assets/
 │   └── logo.svg        # Logo SIMANTRI
 ├── sql/
@@ -122,15 +125,17 @@ python3 -m http.server 8080
 
 - **Landing splash** 3 detik dengan logo + progress bar → fade otomatis ke `#beranda` tanpa reload.
 - **Layout**: sidebar kiri fixed 280px (collapsible di mobile) + topbar + content.
-- **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (accordion), Peta Sebaran Praktik (Leaflet, pusat Tenggarong −0.4419, 117.0861), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30), **Cek Hasil Verifikasi** (pencarian status berdasarkan nama). Nomor STR otomatis **disembunyikan dari pengunjung yang belum masuk** (privasi pembaca; penuh hanya untuk pengguna login).
+- **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (dua tab: **Buku Petunjuk Pembaca** — flipbook baca-saja tanpa unduh — dan **Ringkasan Cepat** accordion), Peta Sebaran Praktik (Leaflet, pusat Tenggarong −0.4419, 117.0861), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30), **Cek Hasil Verifikasi** (pencarian status berdasarkan nama). Nomor STR otomatis **disembunyikan dari pengunjung yang belum masuk** (privasi pembaca; penuh hanya untuk pengguna login).
 - **Bagian 2 — Manajemen Data**: CRUD penuh Fasyankes & Praktik Mandiri — form tambah/edit via modal, klik baris → modal detail. Data **Tenaga Medis & Tenaga Kesehatan dikelola melalui Panel Admin** (Bagian 4, tab Tenaga Medis & Tenaga Kesehatan).
 - **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 27 field — tanpa data NIK, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan), **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject) dan Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
-- **Bagian 4 — Panel Admin**: hanya admin — **seluruh menu aplikasi tersedia sebagai tab terpisah dalam satu konten** (ringkasan, tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri, verval praktik & faskes, cek verifikasi, monev, izin expired, peta, petunjuk, pengguna) + **kolom Aksi berisi tombol Edit/Hapus pada setiap baris** semua tabel yang berfungsi lengkap ke Supabase, termasuk **edit catatan verval izin praktik & verval fasyankes** (SDM kesehatan dinamis ikut dapat diedit).
+- **Bagian 4 — Panel Admin**: hanya admin — **seluruh menu aplikasi tersedia sebagai tab terpisah dalam satu konten** (ringkasan, tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri, verval praktik & faskes, cek verifikasi, monev, izin expired, peta, petunjuk, **petunjuk admin**, pengguna) + **kolom Aksi berisi tombol Edit/Hapus pada setiap baris** semua tabel yang berfungsi lengkap ke Supabase, termasuk **edit catatan verval izin praktik & verval fasyankes** (SDM kesehatan dinamis ikut dapat diedit). Tab **Petunjuk Admin** menyajikan Buku 2 (PDF) yang dapat dibaca langsung maupun diunduh.
 - Semua kartu statistik & baris tabel membuka **modal detail live** dari Supabase (bukan alert).
 
 ---
 
 ## Riwayat Versi
+
+- **v1.5.0** — **Dua buku petunjuk PDF terpisah**: (1) **Buku 1 — Petunjuk untuk Pembaca** (10 halaman): tersaji sebagai **flipbook baca-saja** pada menu Petunjuk Penggunaan — halaman disajikan sebagai gambar dan **tidak ada berkas PDF di hosting sehingga tidak dapat diunduh** (klik kanan & seret dinonaktifkan, navigasi tombol/panah/lompat halaman); (2) **Buku 2 — Petunjuk untuk Admin** (14 halaman): tersedia di **Panel Admin → tab Petunjuk Admin** dengan pratinjau tersemat + tombol **Unduh PDF** (berkas di `docs/petunjuk-admin-simantri.pdf`). Kedua buku memakai sampul & palet teal resmi (Penyusun: Mukmin Nasri, S.Kep) dan sudah disesuaikan dengan struktur menu v1.4.0.
 
 - **v1.4.0** — Penataan ulang menu: (1) **Cek Hasil Verifikasi dipindah ke Bagian 1 — Overview** (ikut di dashboard aksi cepat); (2) **No. STR disembunyikan dari pembaca yang belum login** — termasuk detail Notifikasi Expired & detail Riwayat Verval (mask `••••••••`, penuh hanya untuk pengguna masuk); (3) **Menu Data Tenaga Medis & Data Tenaga Kesehatan dihapus dari Bagian 2** — pengelolaan data tenaga kini melalui **Panel Admin (Bagian 4)** tab Tenaga Medis & Tenaga Kesehatan (CRUD lengkap tetap berfungsi). Petunjuk penggunaan di dalam aplikasi disesuaikan.
 
