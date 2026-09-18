@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo Security Module — Halaman Protected</title>
+
+<!-- OVERRIDE KONFIGURASI (harus identik dengan index.html demo) -->
+<script>
+window.SECURITY_CONFIG_OVERRIDES = {
+  DEBUG: true,
+  LOGIN_URL: './index.html',
+  HOME_URL: './index.html',
+  LOGIN_ENDPOINT: 'mock-login',
+  SESSION_VALIDATE_ENDPOINT: 'mock-validate',   // ditangkap mock di bawah
+  SESSION_LOGOUT_ENDPOINT: '',
+  SESSION_HEARTBEAT_ENDPOINT: '',
+  CSRF_PROTECTION: false,
+  AUDIT_REMOTE_ENDPOINT: '',
+  INACTIVITY_TIMEOUT_MINUTES: 1.5,
+  WARNING_BEFORE_MINUTES: 1,
+  PROTECTED_PATTERNS: ['**/app.html'],
+  PUBLIC_PATTERNS: ['**/index.html', '/'],
+  ROLE_RULES: [{ pattern: '**/app.html', roles: ['admin'] }]
+};
+</script>
+
+<!-- ===================== SATU-SATUNYA SCRIPT SECURITY ==================== -->
+<script src="../security.js" defer></script>
+
+<!-- MOCK API KHUSUS DEMO (bukan bagian security module; menggantikan backend) -->
+<script>
+(function () {
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf('mock-validate') !== -1) {
+      var marker = null;
+      try { marker = JSON.parse(window.sessionStorage.getItem('security_session_info') || 'null'); }
+      catch (e) { /* noop */ }
+      if (marker && marker.user) {
+        return Promise.resolve(new Response(JSON.stringify({
+          valid: true, user: marker.user, roles: marker.roles || [],
+          expiresAt: new Date(Date.now() + 30 * 60000).toISOString()
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ valid: false, reason: 'expired' }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } }));
+    }
+    return realFetch(input, init);
+  };
+})();
+</script>
+
+<style>
+  body { margin:0; font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+         background:#101821; color:#e8eef7; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; } .sub { color:#93a7bd; font-size:14px; }
+  .card { background:#182331; border:1px solid #2a3648; border-radius:14px; padding:20px 22px; margin-bottom:18px; }
+  h2 { font-size:15px; color:#7fc3ff; margin:0 0 10px; }
+  button { padding:9px 16px; border:0; border-radius:8px; background:#2f81f7; color:#fff;
+           cursor:pointer; font-weight:600; margin:2px 8px 2px 0; }
+  button.warn { background:#9a6b00; }
+  pre { background:#0d1420; color:#cde3f7; padding:12px; border-radius:10px; overflow:auto; font-size:12.5px; }
+  .note { color:#93a7bd; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Halaman Protected (Demo)</h1>
+  <p class="sub">Halaman ini cocok pola <code>**/app.html</code> → butuh session + role <code>admin</code>.
+  Tanpa session valid, access-control mengarahkan kembali ke login.</p>
+
+  <div class="card">
+    <h2>Status Session</h2>
+    <pre id="session-box">memuat…</pre>
+  </div>
+
+  <div class="card">
+    <h2>Uji Fitur</h2>
+    <button id="btnActivity">Reset Timer Auto-Logout</button>
+    <button id="btnSensitive" class="warn">Aksi Sensitif (audit)</button>
+    <button id="btnRole">uji requireRole('superadmin') → ditolak</button>
+    <button id="btnLogout">Logout Manual</button>
+    <p class="note">Auto-logout demo: 1.5 menit tanpa aktivitas (peringatan 1 menit sebelumnya).
+    Tab kedua <code>app.html</code> diizinkan (policy allow-same-session) dan ikut ter-logout.</p>
+  </div>
+
+  <div class="card">
+    <h2>Elemen dengan data-security-requires-role</h2>
+    <p data-security-requires-role="superadmin" style="background:#3b1d1d;padding:10px;border-radius:8px;">
+      Menu Superadmin — tersembunyi otomatis karena role Anda bukan superadmin.
+      (Kosmetik saja: API tetap harus menolak di server!)</p>
+    <p data-security-requires-role="admin" style="background:#1d3324;padding:10px;border-radius:8px;">
+      Menu Admin — terlihat karena Anda memiliki role admin.</p>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  setTimeout(function () {
+    if (!window.AppSecurity) { $('session-box').textContent = 'security module tidak termuat!'; return; }
+    $('session-box').textContent = JSON.stringify({
+      page: 'protected',
+      status: AppSecurity.Session.getStatus(),
+      user: AppSecurity.Session.getUser(),
+      roles: AppSecurity.Session.getRoles(),
+      deviceId: AppSecurity.BrowserSession.getDeviceId(),
+      sisaAutoLogout: Math.round(AppSecurity.AutoLogout.getRemainingMs() / 1000) + ' detik'
+    }, null, 2);
+  }, 600);
+
+  $('btnActivity').addEventListener('click', function () {
+    AppSecurity.AutoLogout.resetTimer();
+    AppSecurity.toast('Timer auto-logout di-reset', 'info');
+  });
+  $('btnSensitive').addEventListener('click', function () {
+    AppSecurity.audit('SENSITIVE_ACTION', { action: 'EXPORT_DATA', rows: 120 }, 'warn');
+    AppSecurity.toast('SENSITIVE_ACTION dicatat ke audit log', 'info');
+  });
+  $('btnRole').addEventListener('click', function () {
+    var ok = AppSecurity.AccessControl.requireRole(['superadmin']);
+    if (ok) { AppSecurity.toast('Role cukup (tidak akan terjadi di demo)', 'info'); }
+  });
+  $('btnLogout').addEventListener('click', function () {
+    AppSecurity.logout('user');
+  });
+});
+</script>
+</body>
+</html>

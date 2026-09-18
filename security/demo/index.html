@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Demo Security Module — Login & Sandbox</title>
+
+<!-- =========================================================================
+  DEMO / SANDBOX — SECURITY MODULE
+  Halaman ini MENIRU aplikasi existing: file aplikasi utama TIDAK diubah,
+  cukup satu script tag security.js. Konfigurasi demo lewat
+  SECURITY_CONFIG_OVERRIDES (lihat config.js bagian bawah).
+
+  Password demo: demo123  (mock login lokal, bukan sistem nyata)
+========================================================================= -->
+
+<!-- OVERRIDE KONFIGURASI KHUSUS DEMO (harus SEBELUM security.js) -->
+<script>
+window.SECURITY_CONFIG_OVERRIDES = {
+  DEBUG: true,                              // lihat log internal di console
+  LOGIN_URL: './index.html',
+  HOME_URL: './app.html',
+  // Demo tanpa backend -> endpoint kosong (modul jalan mode degradasi)
+  LOGIN_ENDPOINT: 'mock-login',             // ditangkap mock di bawah
+  SESSION_VALIDATE_ENDPOINT: '',
+  SESSION_LOGOUT_ENDPOINT: '',
+  SESSION_HEARTBEAT_ENDPOINT: '',
+  CSRF_PROTECTION: false,
+  AUDIT_REMOTE_ENDPOINT: '',
+  // Auto-logout dipercepat agar mudah diuji: 1.5 menit, peringatan 1 menit
+  INACTIVITY_TIMEOUT_MINUTES: 1.5,
+  WARNING_BEFORE_MINUTES: 1,
+  // Halaman mana yang dianggap protected
+  PROTECTED_PATTERNS: ['**/app.html'],
+  PUBLIC_PATTERNS: ['**/index.html', '/'],
+  ROLE_RULES: [{ pattern: '**/app.html', roles: ['admin'] }]
+};
+</script>
+
+<!-- MOCK API KHUSUS DEMO (bukan bagian security module; menggantikan backend) -->
+<script>
+(function () {
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.indexOf('mock-login') !== -1) {
+      var body = {};
+      try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { /* noop */ }
+      var ok = body.password === 'demo123' && body.username === 'demo';
+      // Set "session" tiruan agar access-control punya penanda lokal
+      if (ok) {
+        try {
+          window.sessionStorage.setItem('security_session_info',
+            JSON.stringify({ user: 'demo', roles: ['admin'], ts: Date.now() }));
+        } catch (e) { /* noop */ }
+      }
+      return Promise.resolve(new Response(
+        JSON.stringify({ success: ok, message: ok ? 'Login berhasil' : 'Username/password salah' }),
+        { status: ok ? 200 : 401, headers: { 'Content-Type': 'application/json' } }
+      ));
+    }
+    return realFetch(input, init);
+  };
+})();
+</script>
+
+<!-- ===================== SATU-SATUNYA SCRIPT SECURITY ==================== -->
+<script src="../security.js" defer></script>
+
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+         background:#f2f5f9; color:#1c2733; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color:#5b6b7c; margin:0 0 24px; font-size:14px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
+  .card { background:#fff; border:1px solid #dbe3ec; border-radius:14px; padding:20px 22px;
+          box-shadow:0 2px 10px rgba(28,39,51,.05); }
+  .card h2 { font-size:15px; margin:0 0 12px; color:#0f4c81; text-transform:uppercase; letter-spacing:.4px; }
+  input, button { font:inherit; }
+  input { width:100%; padding:10px 12px; margin:4px 0 12px; border:1px solid #c9d4e0;
+          border-radius:8px; background:#fbfdff; }
+  button { padding:9px 16px; border:0; border-radius:8px; background:#0f4c81; color:#fff;
+           cursor:pointer; font-weight:600; }
+  button.ghost { background:#e7edf4; color:#1c2733; }
+  button:hover { filter:brightness(1.06); }
+  .note { font-size:13px; color:#5b6b7c; }
+  code, pre { font: 12.5px/1.6 ui-monospace,Consolas,monospace; }
+  pre { background:#0f1720; color:#cde3f7; padding:12px 14px; border-radius:10px; overflow:auto; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  td, th { border-bottom:1px solid #e6ecf3; padding:6px 8px; text-align:left; }
+  th { background:#f4f8fc; }
+  .ok { color:#137a43; font-weight:700; } .bad { color:#b3261e; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Demo Security Module</h1>
+  <p class="sub">Halaman publik (login). Seluruh modul berjalan dari folder <code>/security/</code> tanpa mengubah file aplikasi.</p>
+
+  <div class="grid">
+
+    <!-- LOGIN -->
+    <div class="card">
+      <h2>1 · Login (uji proteksi 3x salah)</h2>
+      <form id="loginForm">
+        <label>Username</label>
+        <input name="username" value="demo" autocomplete="username">
+        <label>Password</label>
+        <input name="password" type="password" placeholder="demo123" autocomplete="current-password">
+        <button type="submit">Masuk</button>
+        <button type="button" class="ghost" id="btnFailLogin">Simulasikan Gagal</button>
+      </form>
+      <p class="note">Salah 3x → diblokir sementara (cooldown + eskalasi). Blokir nyata harus di server
+      (<code>loginGuard</code>); di demo ini hanya lapisan browser.</p>
+    </div>
+
+    <!-- AUTO LOGOUT -->
+    <div class="card">
+      <h2>2 · Auto Logout (dipercepat: 1.5 menit)</h2>
+      <p class="note">Biarkan halaman tanpa aktivitas.
+      Peringatan muncul <b>1 menit</b> sebelum logout, hitung mundur ditampilkan,
+      tombol <i>Tetap Masuk</i> mengulang timer.</p>
+      <p>Sisa waktu: <b id="al-remaining">–</b></p>
+    </div>
+
+    <!-- XSS -->
+    <div class="card">
+      <h2>3 · Uji Sanitizer XSS</h2>
+      <input id="xss-input" value='Halo <img src=x onerror=alert(1)> <script>alert(2)<\/script> dunia'>
+      <button id="btnUnsafe" class="ghost" type="button">Render TANPA proteksi</button>
+      <button id="btnSafe" type="button">Render DENGAN sanitizeHtml</button>
+      <div id="xss-output" style="margin-top:10px;padding:10px;border:1px dashed #c9d4e0;border-radius:8px;min-height:40px"></div>
+    </div>
+
+    <!-- AUDIT -->
+    <div class="card">
+      <h2>4 · Audit Log (lokal)</h2>
+      <button id="btnAuditRefresh" class="ghost" type="button">Muat Ulang 10 Event Terakhir</button>
+      <table id="audit-table" style="margin-top:10px"><thead>
+        <tr><th>Waktu</th><th>Event</th><th>Sev</th></tr>
+      </thead><tbody></tbody></table>
+    </div>
+
+    <!-- INFO -->
+    <div class="card">
+      <h2>5 · Status Module</h2>
+      <pre id="status-box">memuat…</pre>
+      <p class="note">Device ID bersifat acak-lokal (bukan fingerprint). API:
+      <code>AppSecurity.*</code> — buka console untuk log DEBUG.</p>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Panel demo — membaca status modul (semua via API publik AppSecurity)
+document.addEventListener('DOMContentLoaded', function () {
+  var $ = function (id) { return document.getElementById(id); };
+
+  // --- Login form (fetch mock ditangkap interceptor security) ---
+  $('loginForm').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target;
+    window.fetch('mock-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: f.username.value, password: f.password.value })
+    }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.success) {
+        AppSecurity.audit('LOGIN_SUCCESS', { user: f.username.value });
+        window.location.href = './app.html';
+      } else {
+        AppSecurity.toast(data.message, 'error');
+      }
+    });
+  });
+  // Tombol simulasi gagal (memicu counter proteksi login yang sama)
+  $('btnFailLogin').addEventListener('click', function () {
+    window.fetch('mock-login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'demo', password: 'pasti-salah' })
+    });
+  });
+
+  // --- Auto logout countdown ---
+  setInterval(function () {
+    var el = $('al-remaining');
+    if (window.AppSecurity && AppSecurity.AutoLogout) {
+      var ms = AppSecurity.AutoLogout.getRemainingMs();
+      el.textContent = Math.floor(ms / 60000) + 'm ' + Math.round((ms % 60000) / 1000) + 's';
+    }
+  }, 500);
+
+  // --- XSS playground ---
+  $('btnUnsafe').addEventListener('click', function () {
+    // DEMO sengaja menampilkan pola berbahaya — JANGAN lakukan ini di aplikasi nyata
+    $('xss-output').innerHTML = $('xss-input').value;
+  });
+  $('btnSafe').addEventListener('click', function () {
+    AppSecurity.XSS.safeHtml($('xss-output'), $('xss-input').value);
+  });
+
+  // --- Audit viewer ---
+  function renderAudit() {
+    var tb = $('audit-table').querySelector('tbody');
+    tb.innerHTML = '';
+    (AppSecurity.AuditLog.recent(10) || []).slice().reverse().forEach(function (ev) {
+      var tr = document.createElement('tr');
+      var td1 = document.createElement('td'); td1.textContent = new Date(ev.ts).toLocaleTimeString();
+      var td2 = document.createElement('td'); td2.textContent = ev.event;
+      var td3 = document.createElement('td'); td3.textContent = ev.severity;
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      tb.appendChild(tr);
+    });
+  }
+  $('btnAuditRefresh').addEventListener('click', renderAudit);
+  setInterval(renderAudit, 5000);
+
+  // --- Status ---
+  setTimeout(function () {
+    if (!window.AppSecurity) { $('status-box').textContent = 'security module tidak termuat!'; return; }
+    $('status-box').textContent = JSON.stringify({
+      version: AppSecurity.version,
+      page: 'public (login)',
+      deviceId: AppSecurity.BrowserSession.getDeviceId(),
+      loginBlocked: AppSecurity.LoginProtection.isBlocked(),
+      config: {
+        INACTIVITY_TIMEOUT_MINUTES: AppSecurity.config.INACTIVITY_TIMEOUT_MINUTES,
+        MAX_LOGIN_ATTEMPTS: AppSecurity.config.MAX_LOGIN_ATTEMPTS,
+        TAB_POLICY: AppSecurity.config.TAB_POLICY
+      }
+    }, null, 2);
+  }, 600);
+});
+</script>
+</body>
+</html>
