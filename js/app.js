@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.3.0';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.4.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -378,13 +378,12 @@ const NAV_SECTIONS = [
       { id: 'petunjuk', label: 'Petunjuk Penggunaan', icon: 'petunjuk' },
       { id: 'peta', label: 'Peta Sebaran Praktik', icon: 'peta' },
       { id: 'expired', label: 'Notifikasi Expired', icon: 'expired' },
+      { id: 'cek-verifikasi', label: 'Cek Hasil Verifikasi', icon: 'cek' },
     ],
   },
   {
     label: 'Bagian 2 — Manajemen Data',
     items: [
-      { id: 'tenaga-medis', label: 'Data Tenaga Medis', icon: 'medis' },
-      { id: 'tenaga-kesehatan', label: 'Data Tenaga Kesehatan', icon: 'kes' },
       { id: 'fasyankes', label: 'Data Fasyankes', icon: 'faskes' },
       { id: 'praktik-mandiri', label: 'Data Praktik Mandiri', icon: 'praktik' },
     ],
@@ -394,7 +393,6 @@ const NAV_SECTIONS = [
     items: [
       { id: 'verifikasi-praktik', label: 'Verifikasi Praktik', icon: 'verif' },
       { id: 'verifikasi-faskes', label: 'Verifikasi Faskes', icon: 'shield' },
-      { id: 'cek-verifikasi', label: 'Cek Hasil Verifikasi', icon: 'cek' },
       { id: 'monev', label: 'Monev Izin', icon: 'monev' },
     ],
   },
@@ -423,7 +421,7 @@ function buildNav() {
 }
 
 /* =========================================================
- * 7. ROUTER HASH (#beranda, #peta, #tenaga-medis, dst.)
+ * 7. ROUTER HASH (#beranda, #peta, #fasyankes, dst.)
  * ========================================================= */
 
 function forbiddenCard() {
@@ -674,6 +672,7 @@ async function mountDashboard(target = '#page-content') {
     $('#quick-panel').innerHTML = `
       ${item('#verifikasi-faskes', 'verif', 'Verifikasi Fasyankes', `${fpend} pengajuan menunggu`, 'bg-teal-50 text-teal-600')}
       ${item('#verifikasi-praktik', 'shield', 'Verifikasi Praktik Mandiri', `${ppend} pengajuan menunggu`, 'bg-amber-50 text-amber-600')}
+      ${item('#cek-verifikasi', 'cek', 'Cek Hasil Verifikasi', 'Cari status data &amp; verifikasi', 'bg-emerald-50 text-emerald-600')}
       ${item('#expired', 'clock', 'Notifikasi Expired', 'SIP/STR H-30 & expired', 'bg-rose-50 text-rose-600')}
       ${item('#monev', 'monev', 'Isi Monev Izin', 'Kunjungan, temuan, tindak lanjut', 'bg-sky-50 text-sky-600')}`;
   } catch (e) {
@@ -774,6 +773,11 @@ async function loadExpiredRows() {
   return rows;
 }
 
+/* Privasi (v1.4.0): No. STR disembunyikan dari pembaca yang belum masuk.
+   Nilai penuh hanya tampil untuk pengguna yang telah login (operator/verifikator/admin). */
+const STR_MASK = '<span class="text-slate-400" title="Masuk untuk melihat No. STR">••••••••</span>';
+const strPrivat = (v) => (state.user ? esc(v || '—') : STR_MASK);
+
 function sisaBadge(d, kat) {
   if (kat === 'merah') return `<span class="badge bg-rose-100 text-rose-700 ring-1 ring-rose-200">Expired ${Math.abs(d)} hari lalu</span>`;
   const cls = kat === 'kuning' ? 'bg-amber-100 text-amber-700 ring-1 ring-amber-200' : 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200';
@@ -845,7 +849,7 @@ function openDetailExpired(r) {
     size: 'md',
     body: `<div class="detail-grid">
       <div class="detail-label">Sumber Data</div><div class="detail-value">${esc(r._sumber)}</div>
-      <div class="detail-label">No. STR</div><div class="detail-value">${esc(r.no_str || '—')}</div>
+      <div class="detail-label">No. STR</div><div class="detail-value">${strPrivat(r.no_str)}</div>
       <div class="detail-label">No. SIP</div><div class="detail-value">${esc(r.no_sip || '—')}</div>
       ${r.spesialisasi ? `<div class="detail-label">Spesialisasi</div><div class="detail-value">${esc(r.spesialisasi)}</div>` : ''}
       ${r.profesi ? `<div class="detail-label">Profesi</div><div class="detail-value">${esc(r.profesi)}</div>` : ''}
@@ -879,11 +883,11 @@ function renderPetunjuk(target = '#page-content') {
     },
     {
       t: '4. Manajemen Data (Bagian 2 Sidebar)',
-      c: `<p>Empat menu data (Tenaga Medis, Tenaga Kesehatan, Fasyankes, Praktik Mandiri) mendukung CRUD penuh: klik <b>Tambah</b> untuk input baru, klik baris tabel untuk melihat <b>detail lengkap</b>, lalu gunakan tombol <b>Edit</b> atau <b>Hapus</b> di dalam modal detail.</p><p>Operator &amp; admin dapat menambah/mengubah data; hanya admin yang dapat menghapus. Pencarian tersedia di setiap halaman data.</p>`,
+      c: `<p>Menu data pada Bagian 2: <b>Data Fasyankes</b> dan <b>Data Praktik Mandiri</b> — keduanya mendukung CRUD penuh: klik <b>Tambah</b> untuk input baru, klik baris tabel untuk melihat <b>detail lengkap</b>, lalu gunakan tombol <b>Edit</b> atau <b>Hapus</b>.</p><p>Data <b>Tenaga Medis</b> &amp; <b>Tenaga Kesehatan</b> kini dikelola melalui <b>Panel Admin</b> (Bagian 4) pada tab <b>Tenaga Medis</b> &amp; <b>Tenaga Kesehatan</b>. Operator &amp; admin dapat menambah/mengubah data; hanya admin yang dapat menghapus. Nomor STR disembunyikan dari pengunjung yang belum masuk (privasi pembaca).</p>`,
     },
     {
       t: '5. Verifikasi Perizinan (Bagian 3)',
-      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 27 field verifikasi &amp; validasi izin praktik dengan <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> juga tiga tab: <b>Formulir Verval Fasyankes</b> — ID verval otomatis (VF-tanggal-kode), data fasilitas, alamat &amp; kontak, daftar <b>SDM Kesehatan dinamis</b> mengikuti jenis fasyankes (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, plus draf otomatis; <b>Riwayat Verval</b> (detail lengkap, hapus khusus admin); dan <b>Pengajuan Faskes</b> (setujui/tolak). Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> dengan memasukkan nama.</p>`,
+      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 27 field verifikasi &amp; validasi izin praktik dengan <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> juga tiga tab: <b>Formulir Verval Fasyankes</b> — ID verval otomatis (VF-tanggal-kode), data fasilitas, alamat &amp; kontak, daftar <b>SDM Kesehatan dinamis</b> mengikuti jenis fasyankes (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, plus draf otomatis; <b>Riwayat Verval</b> (detail lengkap, hapus khusus admin); dan <b>Pengajuan Faskes</b> (setujui/tolak). Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> (Bagian 1 — Overview) dengan memasukkan nama.</p>`,
     },
     {
       t: '6. Monev Izin & Upload Foto',
@@ -922,7 +926,7 @@ function renderPetunjuk(target = '#page-content') {
 }
 
 /* =========================================================
- * 12. CRUD GENERIK (Bagian 2 — Manajemen Data)
+ * 12. CRUD GENERIK (dipakai Panel Admin & edit expired)
  * ========================================================= */
 
 let currentCrudReload = null; // fungsi reload daftar halaman aktif (dipakai modal)
@@ -1753,6 +1757,7 @@ async function muatRiwayatVerval(q) {
 function detailVervalModal(r, onSaved = null) {
   const rows = VERVAL_FIELDS.map(([k, label]) => {
     let v = r[k];
+    if (k === 'nomor_str' && !state.user) return `<div class="detail-label">${label}</div><div class="detail-value">${STR_MASK}</div>`;
     if (k === 'tanggal_lahir' || k === 'masa_berlaku_sip') v = fmtDate(v);
     if (k === 'created_at') v = fmtDateTime(v);
     if (k === 'kode_verifikasi' && v) return `<div class="detail-label">${label}</div><div class="detail-value"><span class="kode-chip">${esc(v)}</span></div>`;
@@ -2868,8 +2873,6 @@ const ROUTES = {
   'petunjuk': { t: 'Petunjuk Penggunaan', s: 'Panduan langkah demi langkah', render: renderPetunjuk },
   'peta': { t: 'Peta Sebaran Praktik', s: 'Fasyankes & praktik mandiri berdasarkan koordinat', render: mountPeta },
   'expired': { t: 'Notifikasi Expired', s: 'SIP/STR yang expired dan menuju H-30', render: mountExpired },
-  'tenaga-medis': { t: 'Data Tenaga Medis', s: 'Kelola data dokter & dokter gigi', render: () => mountCrud('tenaga-medis') },
-  'tenaga-kesehatan': { t: 'Data Tenaga Kesehatan', s: 'Kelola data perawat, bidan & profesi lain', render: () => mountCrud('tenaga-kesehatan') },
   'fasyankes': { t: 'Data Fasyankes', s: 'Kelola data RS, Puskesmas & Klinik', render: () => mountCrud('fasyankes') },
   'praktik-mandiri': { t: 'Data Praktik Mandiri', s: 'Kelola data pengajuan praktik mandiri', render: () => mountCrud('praktik-mandiri') },
   'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan', render: mountVervalPraktik },
@@ -2880,7 +2883,7 @@ const ROUTES = {
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.3.0';
+const VERSI_SIMANTRI = '1.4.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,
