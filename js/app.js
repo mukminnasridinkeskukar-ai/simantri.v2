@@ -7,7 +7,7 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.2.1';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.3.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -357,12 +357,13 @@ async function doLogout() {
 }
 
 /** Sinkronisasi state auth + rebuild UI (nav, topbar, guard) */
-async function refreshAuth(session) {
+async function refreshAuth(session, revalidate = false) {
   state.user = session?.user ?? null;
   state.profile = state.user ? await loadProfile(state.user.id) : null;
   buildNav();
   renderTopbarUser();
-  if (!state.user && state.route) router(); // re-guard halaman terproteksi
+  // Render ulang halaman aktif bila izin berubah (login/logout/profile updated)
+  if (state.route && (revalidate || !state.user)) router();
 }
 
 /* =========================================================
@@ -398,9 +399,10 @@ const NAV_SECTIONS = [
     ],
   },
   {
-    label: 'Bagian 4 — Manajemen User',
+    label: 'Bagian 4 — Panel Admin',
     adminOnly: true,
     items: [
+      { id: 'panel-admin', label: 'Panel Admin (Semua Menu)', icon: 'shield' },
       { id: 'pengguna', label: 'Kelola Pengguna', icon: 'users' },
     ],
   },
@@ -557,8 +559,8 @@ async function openStatModal(id) {
   }
 }
 
-async function mountDashboard() {
-  $('#page-content').innerHTML = `
+async function mountDashboard(target = '#page-content') {
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5 mb-5" id="stat-grid">
       ${Array(5).fill('<div class="card p-4"><div class="skeleton h-14"></div></div>').join('')}
@@ -693,8 +695,8 @@ function pinIcon(color) {
   });
 }
 
-async function mountPeta() {
-  $('#page-content').innerHTML = `
+async function mountPeta(target = '#page-content') {
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="card p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -778,8 +780,8 @@ function sisaBadge(d, kat) {
   return `<span class="badge ${cls}">H-${d}</span>`;
 }
 
-async function mountExpired() {
-  $('#page-content').innerHTML = `
+async function mountExpired(target = '#page-content') {
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="card p-4 sm:p-5">
       <div class="flex flex-wrap items-center justify-between gap-2.5 mb-3.5">
@@ -813,17 +815,25 @@ async function mountExpired() {
     const data = tab === 'semua' ? rows : rows.filter((r) => r._kat === tab);
     if (!data.length) { $('#ex-list').innerHTML = emptyState('Tidak ada data pada kategori ini.'); return; }
     $('#ex-list').innerHTML = `<div class="table-wrap"><table class="sim-table">
-      <thead><tr><th>Nama</th><th>No. SIP</th><th>Tempat Praktik</th><th>Masa Berlaku</th><th>Sisa Waktu</th></tr></thead>
+      <thead><tr><th>Nama</th><th>No. SIP</th><th>Tempat Praktik</th><th>Masa Berlaku</th><th>Sisa Waktu</th>${canInput() ? '<th class="text-right">Aksi</th>' : ''}</tr></thead>
       <tbody>${data.map((r) => `<tr data-id="${r.id}">
         <td><span class="font-semibold text-slate-700">${esc(r.nama_lengkap)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r._sumber)}${r.spesialisasi ? ' • ' + esc(r.spesialisasi) : r.profesi ? ' • ' + esc(r.profesi) : ''}</span></td>
         <td>${esc(r.no_sip || '—')}</td>
         <td>${esc(r.tempat_praktik || '—')}</td>
         <td>${fmtDate(r.masa_berlaku_sip)}</td>
         <td>${sisaBadge(r._d, r._kat)}</td>
+        ${canInput() ? `<td class="text-right whitespace-nowrap"><button class="row-act" data-act="edit" data-id="${r.id}" title="Edit data & masa berlaku SIP">${icon('pencil', 'w-3.5 h-3.5')}</button></td>` : ''}
       </tr>`).join('')}</tbody></table></div>`;
     $$('#ex-list tbody tr').forEach((tr) => tr.addEventListener('click', () => {
       const row = data.find((r) => String(r.id) === tr.dataset.id);
       if (row) openDetailExpired(row);
+    }));
+    $$('#ex-list [data-act="edit"]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = data.find((r) => String(r.id) === b.dataset.id);
+      if (!row) return;
+      const cfg = CRUD[row._sumber === 'Tenaga Medis' ? 'tenaga-medis' : 'tenaga-kesehatan'];
+      openFormCrud(cfg, row);
     }));
   }
   renderList();
@@ -853,7 +863,7 @@ function openDetailExpired(r) {
  * 11. HALAMAN: PETUNJUK PENGGUNAAN (accordion)
  * ========================================================= */
 
-function renderPetunjuk() {
+function renderPetunjuk(target = '#page-content') {
   const items = [
     {
       t: '1. Persiapan Backend Supabase',
@@ -865,7 +875,7 @@ function renderPetunjuk() {
     },
     {
       t: '3. Membuat Akun Admin Pertama',
-      c: `<p>Di dashboard Supabase buka <b>Authentication → Users → Add user</b>, isi email &amp; kata sandi (nonaktifkan opsi konfirmasi email bila ada). Profil otomatis dibuat dengan role <b>operator</b> oleh trigger.</p><p>Untuk menjadikan akun tersebut admin, jalankan di SQL Editor: <code class="bg-slate-100 rounded px-1">update profiles set role='admin' where email='email-anda';</code></p><p>Setelah itu masuk lewat tombol <b>Masuk</b> di kanan atas. Admin dapat menambah pengguna lain langsung dari menu <b>Kelola Pengguna</b>.</p>`,
+      c: `<p>Di dashboard Supabase buka <b>Authentication → Users → Add user</b>, isi email &amp; kata sandi (nonaktifkan opsi konfirmasi email bila ada). Profil otomatis dibuat dengan role <b>operator</b> oleh trigger.</p><p>Untuk menjadikan akun tersebut admin, jalankan di SQL Editor: <code class="bg-slate-100 rounded px-1">update profiles set role='admin' where email='email-anda';</code></p><p>Setelah itu masuk lewat tombol <b>Masuk</b> di kanan atas. Admin dapat menambah pengguna lain dari <b>Panel Admin</b> (Bagian 4) — tab <b>Pengguna</b>.</p>`,
     },
     {
       t: '4. Manajemen Data (Bagian 2 Sidebar)',
@@ -887,13 +897,17 @@ function renderPetunjuk() {
       t: '8. Deploy ke GitHub Pages',
       c: `<p>Unggah seluruh isi folder aplikasi (index.html, css/, js/, assets/) ke repository GitHub, lalu aktifkan <b>Settings → Pages → Source: Deploy from a branch</b> pilih cabang <b>main</b> dan folder <b>/ (root)</b>. Aplikasi akan terbit pada alamat https://username.github.io/nama-repo/</p><p>Untuk uji lokal, jalankan server statis sederhana, contoh: <code class="bg-slate-100 rounded px-1">python3 -m http.server 8080</code> — ES module tidak berjalan via file:// langsung.</p>`,
     },
+    {
+      t: '9. Panel Admin (Bagian 4)',
+      c: `<p>Bagian 4 pada sidebar dikhususkan untuk admin. Menu <b>Panel Admin</b> menempatkan <b>seluruh menu aplikasi</b> — ringkasan, data (tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri), verval praktik &amp; faskes, cek verifikasi, monev, izin expired, peta, petunjuk, hingga pengguna — dalam <b>tab terpisah pada satu konten</b>, tanpa perlu berpindah halaman.</p><p>Setiap tabel diakhiri kolom <b>Aksi</b>: tombol <b>Edit</b> dan <b>Hapus</b> langsung pada setiap baris yang berfungsi penuh (CRUD lengkap). Tambah data tetap melalui tombol <b>Tambah</b> pada tiap tab. Edit data memerlukan Operator/Admin, edit catatan verval Verifikator/Admin, dan hapus selalu khusus Admin — ditegakkan pula oleh RLS di database.</p>`,
+    },
   ];
   const accItem = (it, i) => `
     <div class="acc-item ${i === 0 ? 'open' : ''}" data-acc>
       <button class="acc-head" type="button"><span>${it.t}</span>${icon('chevron', 'w-4 h-4 text-slate-400 acc-chevron')}</button>
       <div class="acc-body"><div class="px-5 pb-4 text-[.82rem] text-slate-600 leading-relaxed space-y-1.5">${it.c}</div></div>
     </div>`;
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     <div class="max-w-3xl mx-auto">
       <div class="card p-5 mb-4 flex gap-3 items-start bg-teal-50/60 border-teal-100">
         <div class="w-10 h-10 rounded-xl bg-teal-600 text-white grid place-items-center flex-none">${icon('petunjuk', 'w-5 h-5')}</div>
@@ -1088,7 +1102,7 @@ function openFormCrud(cfg, row) {
           currentCrudReload?.();
         } catch (err) {
           toast(friendlyError(err), 'error');
-          btn.disabled = false; btn.textContent = 'Simpan';
+          btn.disabled = false; btn.innerHTML = `${icon('check', 'w-4 h-4')} Simpan`;
         }
       });
     },
@@ -1122,9 +1136,9 @@ function openDetailCrud(cfg, row) {
   });
 }
 
-async function mountCrud(key) {
+async function mountCrud(key, target = '#page-content') {
   const cfg = CRUD[key];
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="flex flex-wrap items-center justify-between gap-2.5 mb-4">
       <div>
@@ -1161,15 +1175,35 @@ async function mountCrud(key) {
         return;
       }
       box.innerHTML = `<div class="table-wrap"><table class="sim-table">
-        <thead><tr><th class="w-8">#</th>${cfg.columns.map((c) => `<th>${c.label}</th>`).join('')}</tr></thead>
+        <thead><tr><th class="w-8">#</th>${cfg.columns.map((c) => `<th>${c.label}</th>`).join('')}${canInput() ? '<th class="text-right">Aksi</th>' : ''}</tr></thead>
         <tbody>${rows.map((r, i) => `<tr data-id="${r.id}" title="Klik untuk detail">
           <td class="text-slate-400">${i + 1}</td>
           ${cfg.columns.map((c) => `<td>${c.render ? c.render(r[c.k], r) : esc(r[c.k] ?? '—')}</td>`).join('')}
+          ${canInput() ? `<td class="text-right whitespace-nowrap">
+            <button class="row-act" data-act="edit" data-id="${r.id}" title="Edit data">${icon('pencil', 'w-3.5 h-3.5')}</button>
+            ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus data">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
+          </td>` : ''}
         </tr>`).join('')}</tbody></table></div>
-        <p class="text-[.68rem] text-slate-400 mt-2">Klik baris untuk membuka detail lengkap.</p>`;
+        <p class="text-[.68rem] text-slate-400 mt-2">Klik baris untuk detail lengkap &bull; tombol di kolom <b>Aksi</b> untuk edit/hapus langsung.</p>`;
       $$('#crud-list tbody tr').forEach((tr) => tr.addEventListener('click', () => {
         const row = rows.find((r) => String(r.id) === tr.dataset.id);
         if (row) openDetailCrud(cfg, row);
+      }));
+      $$('#crud-list [data-act]').forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const row = rows.find((r) => String(r.id) === b.dataset.id);
+        if (!row) return;
+        if (b.dataset.act === 'edit') { openFormCrud(cfg, row); return; }
+        confirmDialog({
+          title: 'Hapus Data',
+          message: `Yakin ingin menghapus <b>${esc(cfg.rowTitle(row))}</b>? Tindakan ini tidak dapat dibatalkan.`,
+          onYes: async () => {
+            const { error } = await supabase.from(cfg.table).delete().eq('id', row.id);
+            if (error) throw error;
+            toast('Data berhasil dihapus.');
+            loadList();
+          },
+        });
       }));
     } catch (e) {
       box.innerHTML = errorBlock(e);
@@ -1272,6 +1306,8 @@ async function mountVerifikasi(kind, target = '#page-content') {
           ${canVerify() && r.status_verifikasi === 'pending' ? `
             <button class="btn btn-success !py-1.5 !px-2.5" data-act="disetujui">${icon('check', 'w-3.5 h-3.5')} Setujui</button>
             <button class="btn btn-danger !py-1.5 !px-2.5" data-act="ditolak">${icon('x', 'w-3.5 h-3.5')} Tolak</button>` : ''}
+          ${canInput() ? `<button class="row-act" data-act="edit" title="Edit data pengajuan">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
+          ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" title="Hapus pengajuan">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
 
@@ -1282,7 +1318,19 @@ async function mountVerifikasi(kind, target = '#page-content') {
     $$('#vf-list [data-act]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();
       const row = data.find((r) => String(r.id) === b.closest('.vf-row').dataset.id);
-      if (row) verifyModal(table, nameKey, row, b.dataset.act);
+      if (!row) return;
+      if (b.dataset.act === 'disetujui' || b.dataset.act === 'ditolak') { verifyModal(table, nameKey, row, b.dataset.act); return; }
+      if (b.dataset.act === 'edit') { openFormCrud(cfgT, row); return; }
+      confirmDialog({
+        title: 'Hapus Pengajuan',
+        message: `Yakin ingin menghapus <b>${esc(row[nameKey])}</b> dari tabel ${esc(table)}? Tindakan ini tidak dapat dibatalkan.`,
+        onYes: async () => {
+          const { error } = await supabase.from(table).delete().eq('id', row.id);
+          if (error) throw error;
+          toast('Pengajuan dihapus.');
+          currentCrudReload?.();
+        },
+      });
     }));
   }
   renderList();
@@ -1340,13 +1388,13 @@ function vervalLoginNotice() {
 
 /* ---------- Halaman Verifikasi Praktik (3 tab) ---------- */
 
-async function mountVervalPraktik() {
+async function mountVervalPraktik(target = '#page-content') {
   const tabs = [
     ['form', 'Formulir Verval', 'verif'],
     ['riwayat', 'Riwayat Verval', 'cek'],
     ['pengajuan', 'Pengajuan Praktik', 'praktik'],
   ];
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="flex flex-wrap items-center gap-2 mb-4" id="vp-tabs">
       ${tabs.map(([k, l, ic]) => `<button class="chip ${vpTab === k ? 'active' : ''}" data-tab="${k}">${icon(ic, 'w-4 h-4')} ${l}</button>`).join('')}
@@ -1672,18 +1720,37 @@ async function muatRiwayatVerval(q) {
         <div class="flex items-center gap-2 flex-none flex-wrap">
           <span class="badge ${VERVAL_SIP_BADGE[r.status_sip] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">SIP ${esc(r.status_sip || '-')}</span>
           <span class="kode-chip">${esc(trunc(r.kode_verifikasi || '-', 26))}</span>
+          ${canVerify() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
+          ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan verval">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
     $$('#rv-list .rv-row').forEach((el) => el.addEventListener('click', () => {
       const row = rows.find((r) => String(r.id) === el.dataset.id);
       if (row) detailVervalModal(row, () => muatRiwayatVerval($('#rv-q')?.value.trim() || ''));
     }));
+    $$('#rv-list [data-act]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = rows.find((r) => String(r.id) === b.dataset.id);
+      if (!row) return;
+      const reload = () => muatRiwayatVerval($('#rv-q')?.value.trim() || '');
+      if (b.dataset.act === 'edit') { openEditVervalPraktik(row, reload); return; }
+      confirmDialog({
+        title: 'Hapus Catatan Verval',
+        message: `Yakin menghapus verval <b>${esc(row.nama_lengkap)}</b>? Tindakan ini tidak dapat dibatalkan.`,
+        onYes: async () => {
+          const { error } = await supabase.from('verval_izin_praktik').delete().eq('id', row.id);
+          if (error) throw error;
+          toast('Catatan verval dihapus.');
+          reload();
+        },
+      });
+    }));
   } catch (e) {
     list.innerHTML = errorBlock(e);
   }
 }
 
-function detailVervalModal(r, onDeleted = null) {
+function detailVervalModal(r, onSaved = null) {
   const rows = VERVAL_FIELDS.map(([k, label]) => {
     let v = r[k];
     if (k === 'tanggal_lahir' || k === 'masa_berlaku_sip') v = fmtDate(v);
@@ -1695,8 +1762,13 @@ function detailVervalModal(r, onDeleted = null) {
     title: `Detail Verval: ${esc(r.nama_lengkap)}`, size: 'xl',
     body: `<div class="detail-grid">${rows}</div>`,
     footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-verval">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
+             ${canVerify() ? `<button class="btn btn-soft" id="btn-edit-verval">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
              <button class="btn btn-ghost" data-close="1">Tutup</button>`,
     onOpen: (root) => {
+      root.querySelector('#btn-edit-verval')?.addEventListener('click', () => {
+        closeModal();
+        openEditVervalPraktik(r, onSaved);
+      });
       const del = root.querySelector('#btn-del-verval');
       if (del) del.addEventListener('click', () => confirmDialog({
         title: 'Hapus Catatan Verval',
@@ -1705,10 +1777,76 @@ function detailVervalModal(r, onDeleted = null) {
           const { error } = await supabase.from('verval_izin_praktik').delete().eq('id', r.id);
           if (error) throw error;
           toast('Catatan verval dihapus.');
-          if (onDeleted) onDeleted();
+          if (onSaved) onSaved();
         },
       }));
     },
+  });
+}
+
+/* ---------- Edit catatan verval izin praktik (Update, verifikator/admin) ---------- */
+
+const EDIT_VERVAL_PRAKTIK = [
+  { k: 'nama_lengkap', label: 'Nama Lengkap', required: true, wide: true },
+  { k: 'jenis_kelamin', label: 'Jenis Kelamin', type: 'select', options: ['Laki-laki', 'Perempuan'] },
+  { k: 'tempat_lahir', label: 'Tempat Lahir' },
+  { k: 'tanggal_lahir', label: 'Tanggal Lahir', type: 'date' },
+  { k: 'alamat_ktp', label: 'Alamat Sesuai KTP', type: 'textarea', wide: true },
+  { k: 'nomor_str', label: 'Nomor STR', required: true },
+  { k: 'status_str', label: 'Status STR', type: 'select', options: ['Aktif', 'Tidak Aktif', 'Expired'] },
+  { k: 'status_sip', label: 'Status SIP', type: 'select', options: ['Aktif', 'Proses', 'Expired', 'Tidak Ada'] },
+  { k: 'nomor_sip', label: 'Nomor SIP' },
+  { k: 'masa_berlaku_sip', label: 'Masa Berlaku SIP', type: 'date' },
+  { k: 'pendidikan_str', label: 'Pendidikan Sesuai STR' },
+  { k: 'unit_kerja', label: 'Unit Kerja / Fasyankes', required: true, wide: true },
+  { k: 'alamat_unit', label: 'Alamat Unit Kerja', type: 'textarea', wide: true },
+  { k: 'desa_kelurahan', label: 'Desa / Kelurahan' },
+  { k: 'kecamatan', label: 'Kecamatan', type: 'select', options: KECAMATAN_KUKAR },
+  { k: 'jam_operasional', label: 'Jam Operasional / Praktik' },
+  { k: 'status_satu_sehat', label: 'Status Unit di SatuSehat SDMK', type: 'select', options: ['Sudah', 'Belum'] },
+  { k: 'sop_pelayanan', label: 'SOP Pelayanan', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'sop_profesi', label: 'SOP Profesi', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'sop_etika', label: 'SOP Etika', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'sdmk_named', label: 'SDMK Named', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'sdmk_nakes', label: 'SDMK Nakes', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'sdmk_admin', label: 'SDMK Admin', type: 'select', options: ['Ada', 'Tidak Ada'] },
+  { k: 'catatan_rekomendasi', label: 'Catatan Rekomendasi', type: 'textarea', wide: true },
+];
+
+function openEditVervalPraktik(row, onSaved = null) {
+  if (!canVerify()) { toast('Edit verval memerlukan akun Verifikator atau Admin.', 'info'); return; }
+  openModal({
+    title: `Edit Verval: ${esc(row.nama_lengkap || '')}`,
+    size: 'lg',
+    body: `<form id="verval-edit-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5" novalidate>
+        ${EDIT_VERVAL_PRAKTIK.map((f) => fieldHTML(f, row[f.k])).join('')}
+      </form>
+      <p class="text-[.68rem] text-slate-400 mt-3">Kode verifikasi &amp; nama verifikator tidak berubah. Perubahan langsung tersimpan ke Supabase.</p>`,
+    footer: `<button class="btn btn-ghost" data-close="1">Batal</button>
+             <button class="btn btn-primary" id="btn-vep-save">${icon('check', 'w-4 h-4')} Simpan Perubahan</button>`,
+    onOpen: (root) => root.querySelector('#btn-vep-save').addEventListener('click', async (e) => {
+      const form = root.querySelector('#verval-edit-form');
+      if (!form.reportValidity()) return;
+      const btn = e.currentTarget;
+      btn.disabled = true; btn.textContent = 'Menyimpan…';
+      const payload = {};
+      EDIT_VERVAL_PRAKTIK.forEach((f) => {
+        const el = form.elements[f.k];
+        if (!el) return;
+        const v = el.value.trim();
+        payload[f.k] = v === '' ? null : v;
+      });
+      try {
+        const { error } = await supabase.from('verval_izin_praktik').update(payload).eq('id', row.id);
+        if (error) throw error;
+        closeModal();
+        toast('Catatan verval berhasil diperbarui.');
+        if (onSaved) onSaved();
+      } catch (err) {
+        toast(friendlyError(err), 'error');
+        btn.disabled = false; btn.innerHTML = `${icon('check', 'w-4 h-4')} Simpan Perubahan`;
+      }
+    }),
   });
 }
 
@@ -1772,13 +1910,13 @@ function setDraftStatusVf(html, mode = 'ok') {
 
 /* ---------- Halaman Verifikasi Faskes (3 tab) ---------- */
 
-async function mountVervalFaskes() {
+async function mountVervalFaskes(target = '#page-content') {
   const tabs = [
     ['form', 'Formulir Verval', 'faskes'],
     ['riwayat', 'Riwayat Verval', 'cek'],
     ['pengajuan', 'Pengajuan Faskes', 'shield'],
   ];
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="flex flex-wrap items-center gap-2 mb-4" id="vfc-tabs">
       ${tabs.map(([k, l, ic]) => `<button class="chip ${vfTab === k ? 'active' : ''}" data-tab="${k}">${icon(ic, 'w-4 h-4')} ${l}</button>`).join('')}
@@ -2109,18 +2247,37 @@ async function muatRiwayatVf(q) {
         </div>
         <div class="flex items-center gap-2 flex-none flex-wrap">
           <span class="badge ${VERVAL_FAS_BADGE[r.status_verifikasi] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">${esc(r.status_verifikasi || '-')}</span>
+          ${canVerify() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
+          ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan verval">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
     $$('#rvf-list .rv-row').forEach((el) => el.addEventListener('click', () => {
       const row = rows.find((r) => String(r.id) === el.dataset.id);
       if (row) detailVfModal(row, () => muatRiwayatVf($('#rvf-q')?.value.trim() || ''));
     }));
+    $$('#rvf-list [data-act]').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const row = rows.find((r) => String(r.id) === b.dataset.id);
+      if (!row) return;
+      const reload = () => muatRiwayatVf($('#rvf-q')?.value.trim() || '');
+      if (b.dataset.act === 'edit') { openEditVervalFaskes(row, reload); return; }
+      confirmDialog({
+        title: 'Hapus Catatan Verval Fasyankes',
+        message: `Yakin menghapus verval <b>${esc(row.nama_fasyankes)}</b> (${esc(row.kode_verval || '-')})? Tindakan ini tidak dapat dibatalkan.`,
+        onYes: async () => {
+          const { error } = await supabase.from('verval_fasyankes').delete().eq('id', row.id);
+          if (error) throw error;
+          toast('Catatan verval fasyankes dihapus.');
+          reload();
+        },
+      });
+    }));
   } catch (e) {
     list.innerHTML = errorBlock(e);
   }
 }
 
-function detailVfModal(r, onDeleted = null) {
+function detailVfModal(r, onSaved = null) {
   const rows = VERVAL_FAS_FIELDS.map(([k, label]) => {
     let v = r[k];
     if (k === 'tanggal_verval') v = fmtDate(v);
@@ -2134,8 +2291,13 @@ function detailVfModal(r, onDeleted = null) {
     title: `Detail Verval: ${esc(r.nama_fasyankes)}`, size: 'xl',
     body: `<div class="detail-grid">${rows}</div>`,
     footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-vf">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
+             ${canVerify() ? `<button class="btn btn-soft" id="btn-edit-vf">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
              <button class="btn btn-ghost" data-close="1">Tutup</button>`,
     onOpen: (root) => {
+      root.querySelector('#btn-edit-vf')?.addEventListener('click', () => {
+        closeModal();
+        openEditVervalFaskes(r, onSaved);
+      });
       const del = root.querySelector('#btn-del-vf');
       if (del) del.addEventListener('click', () => confirmDialog({
         title: 'Hapus Catatan Verval Fasyankes',
@@ -2144,9 +2306,85 @@ function detailVfModal(r, onDeleted = null) {
           const { error } = await supabase.from('verval_fasyankes').delete().eq('id', r.id);
           if (error) throw error;
           toast('Catatan verval fasyankes dihapus.');
-          if (onDeleted) onDeleted();
+          if (onSaved) onSaved();
         },
       }));
+    },
+  });
+}
+
+/* ---------- Edit catatan verval fasyankes (Update, verifikator/admin) ---------- */
+
+const EDIT_VERVAL_FASKES = [
+  { k: 'nomor_unit', label: 'Nomor Unit', required: true },
+  { k: 'nama_fasyankes', label: 'Nama Fasyankes', required: true },
+  { k: 'jenis_fasyankes', label: 'Jenis Fasyankes', type: 'select', options: Object.keys(SDM_FASYANKES), required: true },
+  { k: 'nama_pemilik', label: 'Nama Pemilik', required: true },
+  { k: 'penanggung_jawab', label: 'Penanggung Jawab', required: true },
+  { k: 'alamat_lengkap', label: 'Alamat Lengkap', type: 'textarea', wide: true, required: true },
+  { k: 'kelurahan', label: 'Kelurahan / Desa', required: true },
+  { k: 'kecamatan', label: 'Kecamatan', required: true },
+  { k: 'nomor_hp', label: 'Nomor HP/WA', required: true },
+  { k: 'email', label: 'Email' },
+  { k: 'status_verifikasi', label: 'Hasil Verifikasi', type: 'select', options: ['Layak', 'Tidak Layak', 'Perbaikan', 'Pending', 'Tidak Valid'], required: true },
+  { k: 'verifikator', label: 'Nama Verifikator', required: true },
+  { k: 'catatan_verifikasi', label: 'Catatan Verifikasi', type: 'textarea', wide: true },
+];
+
+function openEditVervalFaskes(row, onSaved = null) {
+  if (!canVerify()) { toast('Edit verval memerlukan akun Verifikator atau Admin.', 'info'); return; }
+  openModal({
+    title: `Edit Verval: ${esc(row.nama_fasyankes || '')}`,
+    size: 'lg',
+    body: `<form id="vef-edit-form" class="grid grid-cols-1 sm:grid-cols-2 gap-3.5" novalidate>
+        ${EDIT_VERVAL_FASKES.map((f) => fieldHTML(f, row[f.k])).join('')}
+        <div class="sm:col-span-2">
+          <label class="lbl">SDM Kesehatan Terverifikasi</label>
+          <div class="vf-sdm-box" id="vef-sdm-box"></div>
+          <small class="verval-hint">Daftar mengikuti Jenis Fasyankes terpilih — centang SDM yang terverifikasi. Kosongkan bila tidak ada.</small>
+        </div>
+      </form>`,
+    footer: `<button class="btn btn-ghost" data-close="1">Batal</button>
+             <button class="btn btn-primary" id="btn-vef-save">${icon('check', 'w-4 h-4')} Simpan Perubahan</button>`,
+    onOpen: (root) => {
+      const form = root.querySelector('#vef-edit-form');
+      const jenisSel = form.querySelector('[name="jenis_fasyankes"]');
+      const renderSdmEdit = (checked) => {
+        const box = root.querySelector('#vef-sdm-box');
+        const jenis = jenisSel.value;
+        if (!jenis || !SDM_FASYANKES[jenis]) {
+          box.innerHTML = '<p class="text-xs text-slate-400 italic">Pilih Jenis Fasyankes terlebih dahulu.</p>';
+          return;
+        }
+        box.innerHTML = `<div class="vf-sdm-grid">${SDM_FASYANKES[jenis].map((o) => `
+          <label class="vf-sdm-item"><input type="checkbox" name="vef-sdm" value="${esc(o)}" ${checked.includes(o) ? 'checked' : ''}><span>${esc(o)}</span></label>`).join('')}</div>`;
+      };
+      renderSdmEdit(String(row.sdm_kesehatan || '').split('; ').filter(Boolean));
+      jenisSel.addEventListener('change', () => renderSdmEdit([]));
+      root.querySelector('#btn-vef-save').addEventListener('click', async (e) => {
+        if (!form.reportValidity()) return;
+        const btn = e.currentTarget;
+        btn.disabled = true; btn.textContent = 'Menyimpan…';
+        const payload = {};
+        EDIT_VERVAL_FASKES.forEach((f) => {
+          const el = form.elements[f.k];
+          if (!el) return;
+          const v = el.value.trim();
+          payload[f.k] = v === '' ? null : v;
+        });
+        const sdm = $$('input[name="vef-sdm"]:checked').map((c) => c.value);
+        payload.sdm_kesehatan = sdm.length ? sdm.join('; ') : null;
+        try {
+          const { error } = await supabase.from('verval_fasyankes').update(payload).eq('id', row.id);
+          if (error) throw error;
+          closeModal();
+          toast('Catatan verval fasyankes berhasil diperbarui.');
+          if (onSaved) onSaved();
+        } catch (err) {
+          toast(friendlyError(err), 'error');
+          btn.disabled = false; btn.innerHTML = `${icon('check', 'w-4 h-4')} Simpan Perubahan`;
+        }
+      });
     },
   });
 }
@@ -2155,8 +2393,8 @@ function detailVfModal(r, onDeleted = null) {
  * 14. HALAMAN: CEK HASIL VERIFIKASI (search Nama)
  * ========================================================= */
 
-function mountCekVerifikasi() {
-  $('#page-content').innerHTML = `
+function mountCekVerifikasi(target = '#page-content') {
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="max-w-3xl mx-auto">
       <div class="card p-4 sm:p-5 mb-4">
@@ -2228,8 +2466,8 @@ async function uploadFotoMonev(file) {
   return supabase.storage.from('monev').getPublicUrl(path).data.publicUrl;
 }
 
-async function mountMonev() {
-  $('#page-content').innerHTML = `
+async function mountMonev(target = '#page-content') {
+  $(target).innerHTML = `
     ${SUPABASE_TERKONFIGURASI ? '' : setupNotice()}
     <div class="flex flex-wrap items-center justify-between gap-2.5 mb-4">
       <div>
@@ -2260,7 +2498,7 @@ async function mountMonev() {
       $('#monev-count').textContent = `${rows.length} catatan`;
       if (!rows.length) { $('#monev-list').innerHTML = emptyState(q ? 'Tidak ada catatan yang cocok.' : 'Belum ada catatan monev. Klik "Tambah Kunjungan".'); return; }
       $('#monev-list').innerHTML = `<div class="table-wrap"><table class="sim-table">
-        <thead><tr><th>Tanggal</th><th>Sasaran</th><th>Petugas</th><th>Temuan</th><th>Tindak Lanjut</th><th>Foto</th></tr></thead>
+        <thead><tr><th>Tanggal</th><th>Sasaran</th><th>Petugas</th><th>Temuan</th><th>Tindak Lanjut</th><th>Foto</th>${state.user ? '<th class="text-right">Aksi</th>' : ''}</tr></thead>
         <tbody>${rows.map((r) => `<tr data-id="${r.id}" title="Klik untuk detail">
           <td class="whitespace-nowrap">${fmtDate(r.tanggal_kunjungan)}</td>
           <td><span class="font-semibold text-slate-700">${esc(r.sasaran_nama)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.sasaran_jenis)}</span></td>
@@ -2268,11 +2506,31 @@ async function mountMonev() {
           <td class="max-w-[200px]">${trunc(r.temuan, 70) || '—'}</td>
           <td class="max-w-[200px]">${trunc(r.tindak_lanjut, 70) || '—'}</td>
           <td>${r.foto_url ? `<img src="${esc(r.foto_url)}" alt="Foto monev" class="thumb" loading="lazy">` : '<span class="text-slate-300 text-xs">—</span>'}</td>
+          ${state.user ? `<td class="text-right whitespace-nowrap">
+            <button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan">${icon('pencil', 'w-3.5 h-3.5')}</button>
+            ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
+          </td>` : ''}
         </tr>`).join('')}</tbody></table></div>
         <p class="text-[.68rem] text-slate-400 mt-2">Klik baris untuk membuka detail lengkap.</p>`;
       $$('#monev-list tbody tr').forEach((tr) => tr.addEventListener('click', () => {
         const row = rows.find((r) => String(r.id) === tr.dataset.id);
         if (row) openDetailMonev(row);
+      }));
+      $$('#monev-list [data-act]').forEach((b) => b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const row = rows.find((r) => String(r.id) === b.dataset.id);
+        if (!row) return;
+        if (b.dataset.act === 'edit') { openFormMonev(row); return; }
+        confirmDialog({
+          title: 'Hapus Catatan Monev',
+          message: `Yakin ingin menghapus catatan monev untuk <b>${esc(row.sasaran_nama)}</b>?`,
+          onYes: async () => {
+            const { error } = await supabase.from('monev_izin').delete().eq('id', row.id);
+            if (error) throw error;
+            toast('Catatan monev dihapus.');
+            loadList();
+          },
+        });
       }));
     } catch (e) {
       $('#monev-list').innerHTML = errorBlock(e);
@@ -2399,14 +2657,14 @@ async function mountMonev() {
  * 16. HALAMAN: MANAJEMEN PENGGUNA (khusus admin)
  * ========================================================= */
 
-async function mountPengguna() {
+async function mountPengguna(target = '#page-content') {
   if (!SUPABASE_TERKONFIGURASI) {
-    $('#page-content').innerHTML = setupNotice();
+    $(target).innerHTML = setupNotice();
     return;
   }
-  if (!isAdmin()) { $('#page-content').innerHTML = forbiddenCard(); return; }
+  if (!isAdmin()) { $(target).innerHTML = forbiddenCard(); return; }
 
-  $('#page-content').innerHTML = `
+  $(target).innerHTML = `
     <div class="flex flex-wrap items-center justify-between gap-2.5 mb-4">
       <div>
         <p class="text-sm font-extrabold text-slate-800">Manajemen Pengguna</p>
@@ -2528,6 +2786,80 @@ async function mountPengguna() {
 }
 
 /* =========================================================
+ * 16B. PANEL ADMIN (Bagian 4) — seluruh menu dalam tab
+ *      berbeda pada satu konten + CRUD lengkap per baris
+ * ========================================================= */
+
+let panelTab = 'ringkasan';
+
+const PANEL_TABS = [
+  ['ringkasan', 'Ringkasan', 'dashboard'],
+  ['tenaga-medis', 'Tenaga Medis', 'medis'],
+  ['tenaga-kesehatan', 'Tenaga Kesehatan', 'kes'],
+  ['fasyankes', 'Fasyankes', 'faskes'],
+  ['praktik-mandiri', 'Praktik Mandiri', 'praktik'],
+  ['verifikasi-praktik', 'Verval Praktik', 'verif'],
+  ['verifikasi-faskes', 'Verval Faskes', 'shield'],
+  ['cek-verifikasi', 'Cek Verifikasi', 'cek'],
+  ['monev', 'Monev Izin', 'monev'],
+  ['expired', 'Izin Expired', 'clock'],
+  ['peta', 'Peta Sebaran', 'peta'],
+  ['petunjuk', 'Petunjuk', 'petunjuk'],
+  ['pengguna', 'Pengguna', 'users'],
+];
+
+function renderPanelTab() {
+  // Bersihkan instance grafik/peta sebelum ganti tab (hindari duplikat)
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+  if (state.map) { state.map.remove(); state.map = null; }
+  const T = '#panel-content';
+  const render = {
+    'ringkasan': () => mountDashboard(T),
+    'tenaga-medis': () => mountCrud('tenaga-medis', T),
+    'tenaga-kesehatan': () => mountCrud('tenaga-kesehatan', T),
+    'fasyankes': () => mountCrud('fasyankes', T),
+    'praktik-mandiri': () => mountCrud('praktik-mandiri', T),
+    'verifikasi-praktik': () => mountVervalPraktik(T),
+    'verifikasi-faskes': () => mountVervalFaskes(T),
+    'cek-verifikasi': () => mountCekVerifikasi(T),
+    'monev': () => mountMonev(T),
+    'expired': () => mountExpired(T),
+    'peta': () => mountPeta(T),
+    'petunjuk': () => renderPetunjuk(T),
+    'pengguna': () => mountPengguna(T),
+  };
+  (render[panelTab] || render['ringkasan'])();
+}
+
+async function mountPanelAdmin() {
+  if (!SUPABASE_TERKONFIGURASI) { $('#page-content').innerHTML = setupNotice(); return; }
+  if (!isAdmin()) { $('#page-content').innerHTML = forbiddenCard(); return; }
+  if (!PANEL_TABS.some(([k]) => k === panelTab)) panelTab = 'ringkasan';
+  $('#page-content').innerHTML = `
+    <div class="card panel-banner p-4 sm:p-5 mb-4">
+      <div class="flex items-start gap-3">
+        <div class="w-11 h-11 rounded-xl bg-teal-600 text-white grid place-items-center flex-none">${icon('shield', 'w-5 h-5')}</div>
+        <div class="min-w-0">
+          <p class="font-extrabold text-teal-900 text-sm">Panel Admin — Semua Menu dalam Satu Konten</p>
+          <p class="text-xs text-teal-800/75 leading-relaxed mt-0.5">Pilih tab di bawah untuk membuka menu mana pun tanpa berpindah halaman. Setiap tabel diakhiri kolom <b>Aksi</b> berisi tombol <b>Edit</b> &amp; <b>Hapus</b> pada setiap baris yang berfungsi penuh ke Supabase; tambah data lewat tombol <b>Tambah</b> di tab terkait. Hapus selalu khusus Admin.</p>
+        </div>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2 mb-4" id="panel-tabs">
+      ${PANEL_TABS.map(([k, l, ic]) => `<button class="chip ${panelTab === k ? 'active' : ''}" data-tab="${k}">${icon(ic, 'w-4 h-4')} ${l}</button>`).join('')}
+    </div>
+    <div id="panel-content"></div>`;
+  $$('#panel-tabs [data-tab]').forEach((b) => b.addEventListener('click', () => {
+    if (panelTab === b.dataset.tab) return;
+    panelTab = b.dataset.tab;
+    $$('#panel-tabs [data-tab]').forEach((x) => x.classList.toggle('active', x.dataset.tab === panelTab));
+    renderPanelTab();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
+  renderPanelTab();
+}
+
+/* =========================================================
  * 17. ROUTES & BOOT
  * ========================================================= */
 
@@ -2544,10 +2876,11 @@ const ROUTES = {
   'verifikasi-faskes': { t: 'Verifikasi Faskes', s: 'Formulir verval fasyankes, riwayat & persetujuan pengajuan', render: mountVervalFaskes },
   'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Pencarian status berdasarkan Nama', render: mountCekVerifikasi },
   'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto', render: mountMonev },
+  'panel-admin': { t: 'Panel Admin', s: 'Seluruh menu dalam tab pada satu konten + CRUD per baris (khusus admin)', render: mountPanelAdmin, adminOnly: true },
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.2.1';
+const VERSI_SIMANTRI = '1.3.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,
@@ -2563,7 +2896,7 @@ async function boot() {
       await refreshAuth(data?.session ?? null);
       supabase.auth.onAuthStateChange((ev, session) => {
         if (['INITIAL_SESSION', 'SIGNED_IN', 'SIGNED_OUT', 'USER_UPDATED'].includes(ev)) {
-          refreshAuth(session);
+          refreshAuth(session, ev !== 'INITIAL_SESSION');
         }
       });
     } catch (e) {

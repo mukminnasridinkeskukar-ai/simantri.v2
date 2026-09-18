@@ -55,7 +55,7 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
    ```sql
    update profiles set role = 'admin' where email = 'email-anda@contoh.com';
    ```
-4. Selanjutnya admin dapat menambah/mengubah pengguna langsung dari menu **Kelola Pengguna** di aplikasi.
+4. Selanjutnya admin dapat menambah/mengubah pengguna langsung dari **Panel Admin** (Bagian 4) — tab **Pengguna** — di aplikasi.
 
 ### 5. Isi Konfigurasi Aplikasi
 Buka `js/config.js`, isi dari **Project Settings → API**:
@@ -105,6 +105,7 @@ python3 -m http.server 8080
 | Melihat dashboard, peta, tabel, cek verifikasi | ✅ | ✅ | ✅ |
 | Menambah data (Bagian 2) & monev | ✅ | — | ✅ |
 | Mengedit data | ✅ | hanya status verifikasi | ✅ |
+| Mengedit catatan verval (praktik & faskes) | ✅ | ✅ | — |
 | Menghapus data | ✅ | — | — |
 | Setujui / Tolak pengajuan (Bagian 3) | ✅ | ✅ | — |
 | Mengisi & mengirim Formulir Verval Izin Praktik | ✅ | ✅ | — |
@@ -124,12 +125,14 @@ python3 -m http.server 8080
 - **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (accordion), Peta Sebaran Praktik (Leaflet, pusat Tenggarong −0.4419, 117.0861), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30).
 - **Bagian 2 — Manajemen Data**: CRUD penuh Tenaga Medis, Tenaga Kesehatan, Fasyankes, Praktik Mandiri — form tambah/edit via modal, klik baris → modal detail.
 - **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 27 field — tanpa data NIK, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan) dan **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject), Cek Hasil Verifikasi (nama), Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
-- **Bagian 4 — Manajemen User**: hanya admin — CRUD pengguna, assign role (admin/verifikator/operator).
+- **Bagian 4 — Panel Admin**: hanya admin — **seluruh menu aplikasi tersedia sebagai tab terpisah dalam satu konten** (ringkasan, 4 menu data, verval praktik & faskes, cek verifikasi, monev, izin expired, peta, petunjuk, pengguna) + **kolom Aksi berisi tombol Edit/Hapus pada setiap baris** semua tabel yang berfungsi lengkap ke Supabase, termasuk **edit catatan verval izin praktik & verval fasyankes** (SDM kesehatan dinamis ikut dapat diedit).
 - Semua kartu statistik & baris tabel membuka **modal detail live** dari Supabase (bukan alert).
 
 ---
 
 ## Riwayat Versi
+
+- **v1.3.0** — Pengembangan Bagian 4 menjadi **Panel Admin**: seluruh menu (13 halaman) kini tersedia sebagai **tab berbeda dalam satu konten** pada satu halaman khusus admin. Setiap tabel di seluruh aplikasi diakhiri **kolom Aksi (Edit/Hapus per baris)** yang berfungsi lengkap — termasuk edit langsung catatan verval izin praktik & verval fasyankes (verifikator/admin) dan edit data SIP dari daftar expired. Perbaikan: halaman aktif kini otomatis di-render ulang setelah login/logout (kartu "Akses Ditolak" langsung terbuka setelah masuk sebagai admin).
 
 - **v1.2.1** — Pembersihan data NIK: seluruh form/tabel/riwayat/pencarian tidak lagi mengumpulkan atau menampilkan NIK (kolom `nik` di DB menjadi opsional — jalankan `sql/migrasi_hapus_nik.sql` atau `sql/migrasi_verval.sql` terbaru pada database lama), kode verifikasi menjadi `SIMANTRI-VERVAL-<timestamp>`, dan seluruh penamaan wilayah diganti dari Kota Samarinda ke **Kabupaten Kutai Kartanegara** (20 kecamatan resmi, pusat peta Tenggarong, data demo seed disesuaikan).
 - **v1.2.0** — Menu Verifikasi Faskes dikembangkan: Formulir Verval Fasyankes (ID otomatis VF-, SDM Kesehatan dinamis per jenis fasyankes, 5 hasil verifikasi), tabel baru `verval_fasyankes`, tabel `verval_draft` menjadi multi-form (praktik & faskes, PK komposit user_id+form), data demo verval fasyankes pada `seed.sql`.

@@ -365,6 +365,28 @@ textarea.input { resize: vertical; min-height: 2.4rem; }
   border-radius: .5rem; border: 1px solid var(--line);
 }
 
+/* =========================================================
+   15. PANEL ADMIN (Bagian 4) + AKSI PER BARIS
+   ========================================================= */
+
+/* Banner pengantar panel admin */
+.panel-banner {
+  background: linear-gradient(135deg, #f0fdfa, #ecfdf5);
+  border-color: #99f6e4;
+}
+
+/* Tombol aksi kecil per baris tabel (Edit / Hapus) */
+.row-act {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.9rem; height: 1.9rem; border-radius: .55rem;
+  border: 1px solid var(--line); background: #fff; color: #475569;
+  cursor: pointer; flex: none;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.row-act:hover { border-color: #99f6e4; color: var(--primary-dark); background: var(--primary-soft); }
+.row-act-danger { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
+.row-act-danger:hover { background: #ffe4e6; border-color: #fda4af; color: #be123c; }
+
 /* Fokus keyboard yang jelas */
 a:focus-visible, button:focus-visible, input:focus-visible,
 select:focus-visible, textarea:focus-visible {
