@@ -1,151 +1,127 @@
-/* ============================================================================
- * /security/access-control.js — PROTEKSI HALAMAN (LAPISAN FRONTEND)
- * ----------------------------------------------------------------------------
- * ⚠ PRINSIP UTAMA: frontend HANYA lapisan tambahan. Keamanan sesungguhnya
- * (authentication + authorization) WAJIB diverifikasi di backend/API/database
- * untuk SETIAP request data. Menyembunyikan menu dengan CSS tidak pernah
- * cukup — halaman ini memastikan halaman protected diredirect bila session
- * tidak valid, dan role tidak sesuai.
+/**
+ * ============================================================
+ * SECURITY MODULE - access-control.js
+ * ============================================================
+ * FITUR 6: Kontrol akses halaman.
+ * - Halaman dalam PROTECTED_ROUTES wajib memiliki sesi valid;
+ *   jika tidak -> redirect ke LOGIN_PAGE dengan parameter ?next=
+ *   agar pengguna kembali ke halaman semula setelah login.
+ * - Halaman dalam ADMIN_ROUTES wajib role 'admin'.
  *
- * Yang dilakukan modul ini:
- *  1. Saat halaman protected dibuka: pastikan session divalidasi (server).
- *  2. Session tidak valid / dicabut -> redirect ke login (oleh Session).
- *  3. Aturan ROLE_RULES per path (config) -> bila role tidak memenuhi,
- *     tampilkan "Akses ditolak" dan kembalikan ke HOME_URL.
- *  4. Elemen beratribut data-security-requires-role="admin,operator"
- *     disembunyikan bila role tidak cocok (opsional, opt-in via markup).
- *
- * ACCESS_FAIL_CLOSED (default false): bila true, kegagalan jaringan saat
- * validasi membuat halaman ditolak (fail-closed). Default fail-open agar
- * aplikasi existing tidak rusak ketika server sesaat tidak reachable.
- * Untuk SPA, panggil AppSecurity.recheckRoute() setiap ganti route.
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * KEJUJURAN ARSITEKTUR (WAJIB DIBACA):
+ * Pemeriksaan di browser HANYA lapisan UX. Siapa pun dapat
+ * membuka DevTools. Perlindungan SEBENARNYA wajib di server:
+ * setiap API/halaman terlindungi harus memverifikasi sesi
+ * (cookie/JWT) di backend. Gunakan server/security-server.js
+ * (verifySession) atau middleware autentikasi yang sudah ada.
+ * ============================================================
+ */
 
-  var NS = global.AppSecurity = global.AppSecurity || {};
-  var CFG = global.SECURITY_CONFIG || {};
-  var U = NS.utils || {};
-  var log = NS.log || function () {};
-  var audit = function (ev, det, sev) { return NS.audit && NS.audit(ev, det, sev); };
+import { isBrowser } from './utils.js';
+import { audit, AUDIT_EVENTS } from './audit-log.js';
+import { isSessionValid, getActiveSession } from './session.js';
 
-  function rulesFor(path) {
-    var rules = CFG.ROLE_RULES || [];
-    var matched = [];
-    for (var i = 0; i < rules.length; i++) {
-      var rule = rules[i];
-      if (rule && rule.pattern && U.matchesPath(path, [rule.pattern])) {
-        matched = matched.concat(rule.roles || []);
-      }
-    }
-    return matched; // array kosong = tidak ada syarat role khusus
-  }
+let config = null;
 
-  function rolesIntersect(required, owned) {
-    if (!required || !required.length) { return true; }
-    if (!owned || !owned.length) { return false; }
-    for (var i = 0; i < required.length; i++) {
-      if (owned.indexOf(required[i]) !== -1) { return true; }
-    }
-    return false;
-  }
+export function initAccessControl(cfg) {
+  config = cfg;
+  if (!isBrowser()) return;
 
-  function denyAccess(reason, requiredRoles) {
-    audit(NS.AuditLog ? NS.AuditLog.EVENTS.SENSITIVE_ACTION : 'SENSITIVE_ACTION',
-      { action: 'ACCESS_DENIED', path: global.location.pathname, reason: reason, requiredRoles: requiredRoles }, 'warn');
-    U.overlay && U.overlay({
-      title: 'Akses Ditolak',
-      message: 'Anda tidak memiliki izin untuk membuka halaman ini.',
-      buttons: [{
-        label: 'Kembali ke Beranda', primary: true, onClick: function () {
-          global.location.href = CFG.HOME_URL || '/';
-        }
-      }]
+  const path = window.location.pathname;
+
+  // Gerbang 1: halaman terlindungi butuh sesi valid
+  if (isProtectedPath(path) && !isSessionValid()) {
+    audit(AUDIT_EVENTS.SENSITIVE_ACTION, {
+      action: 'ACCESS_DENIED',
+      path,
+      reason: 'NO_VALID_SESSION',
     });
-    setTimeout(function () {
-      if (global.location.pathname !== (CFG.HOME_URL || '/')) {
-        global.location.href = CFG.HOME_URL || '/';
-      }
-    }, 6000);
+    redirectToLogin();
+    return;
   }
 
-  /* ----------------------------- Pemeriksaan ------------------------------ */
-  function enforce() {
-    if (CFG.ACCESS_CONTROL_ENABLED === false) { return Promise.resolve(true); }
-    if (!U.isProtectedPage || !U.isProtectedPage()) { return Promise.resolve(true); }
-
-    var path = global.location.pathname;
-    var requiredRoles = rulesFor(path);
-
-    return NS.Session.validate().then(function (result) {
-      // Session tidak valid sudah ditangani Session (redirect login).
-      if (result && result.valid === false) { return false; }
-
-      if (result && result.unknown) {
-        // Validasi tidak dapat dipastikan (endpoint kosong / network error)
-        if (CFG.ACCESS_FAIL_CLOSED === true) {
-          denyAccess('validation_unavailable', requiredRoles);
-          return false;
-        }
-        log('access-control: validasi tidak tersedia — fail-open (config)');
-      }
-
-      if (requiredRoles.length) {
-        var owned = NS.Session.getRoles();
-        if (!rolesIntersect(requiredRoles, owned)) {
-          log('role tidak memenuhi:', owned, 'butuh', requiredRoles);
-          denyAccess('role_insufficient', requiredRoles);
-          return false;
-        }
-      }
-      applyElementVisibility();
-      return true;
-    }).catch(function () {
-      if (CFG.ACCESS_FAIL_CLOSED === true) {
-        denyAccess('validation_error', requiredRoles);
-        return false;
-      }
-      return true;
-    });
+  // Gerbang 2: halaman admin butuh role admin
+  if (isAdminPath(path)) {
+    const session = getActiveSession();
+    if (session && isSessionValid() && session.role !== 'admin') {
+      audit(AUDIT_EVENTS.SENSITIVE_ACTION, {
+        action: 'ADMIN_ACCESS_DENIED',
+        path,
+        role: session.role,
+      });
+      showForbidden();
+    }
   }
+}
 
-  /* --------------- Visibilitas elemen (opt-in via markup) ----------------- */
-  function applyElementVisibility() {
-    try {
-      var els = document.querySelectorAll('[data-security-requires-role]');
-      var owned = NS.Session.getRoles() || [];
-      for (var i = 0; i < els.length; i++) {
-        var needed = (els[i].getAttribute('data-security-requires-role') || '')
-          .split(',').map(function (s) { return s.trim(); }).filter(Boolean);
-        if (needed.length && !rolesIntersect(needed, owned)) {
-          els[i].style.display = 'none';          // hanya kosmetik; backend tetap wajib memeriksa!
-        }
-      }
-    } catch (e) { log('element visibility error:', e && e.message); }
+/** Apakah path masuk daftar halaman terlindungi? */
+export function isProtectedPath(path) {
+  if (!config) return false;
+  return config.PROTECTED_ROUTES.some((route) => {
+    const r = String(route);
+    return path === r || path.startsWith(r + '/') || path === r + '/' || path.endsWith(r);
+  });
+}
+
+/** Apakah path masuk daftar halaman admin? */
+export function isAdminPath(path) {
+  if (!config) return false;
+  return config.ADMIN_ROUTES.some((route) => {
+    const r = String(route);
+    return path === r || path.startsWith(r + '/') || path === r + '/' || path.endsWith(r);
+  });
+}
+
+/**
+ * Boleh akses path ini dengan sesi saat ini? (untuk menu/nav UI)
+ * @returns {boolean}
+ */
+export function canAccess(path) {
+  if (!config) return true;
+  if (!isProtectedPath(path)) return true;
+  if (!isSessionValid()) return false;
+  if (isAdminPath(path)) {
+    const s = getActiveSession();
+    return !!s && s.role === 'admin';
   }
+  return true;
+}
 
-  /* -------------------------------- Init ---------------------------------- */
-  function init() {
-    if (CFG.ACCESS_CONTROL_ENABLED === false) { log('access-control nonaktif (config)'); return; }
-    enforce();
+// ------------------------------------------------------------ internal ----
+
+function redirectToLogin() {
+  if (!isBrowser() || !config) return;
+  try {
+    const url = new URL(config.LOGIN_PAGE, window.location.origin);
+    url.searchParams.set('reason', 'login_required');
+    // Simpan tujuan awal agar setelah login bisa kembali
+    url.searchParams.set('next', window.location.pathname + window.location.search);
+    window.location.replace(url.toString());
+  } catch {
+    window.location.replace(config.LOGIN_PAGE);
   }
+}
 
-  function recheckRoute() {
-    // Untuk SPA: panggil setiap kali route berubah (React Router, dsb.)
-    enforce();
-  }
-
-  function requireRole(roles) {
-    var owned = NS.Session.getRoles() || [];
-    var ok = rolesIntersect(roles || [], owned);
-    if (!ok) { denyAccess('require_role', roles); }
-    return ok;
-  }
-
-  NS.AccessControl = {
-    init: init,
-    recheckRoute: recheckRoute,
-    requireRole: requireRole,
-    rulesFor: rulesFor
-  };
-})(window);
+function showForbidden() {
+  const message = config?.MESSAGES?.ACCESS_FORBIDDEN || 'Akses ditolak.';
+  // Tampilkan pesan, lalu kembalikan pengguna ke halaman sebelumnya
+  const overlay = document.createElement('div');
+  overlay.setAttribute('data-security-overlay', 'true');
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:#fff;border-radius:12px;padding:32px;max-width:420px;text-align:center;font-family:system-ui,sans-serif;';
+  const title = document.createElement('div');
+  title.textContent = 'Akses Ditolak';
+  title.style.cssText = 'font-size:20px;font-weight:700;color:#8a1a12;margin-bottom:10px;';
+  const msg = document.createElement('div');
+  msg.textContent = message; // textContent = aman
+  msg.style.cssText = 'font-size:14px;color:#444;line-height:1.6;';
+  box.appendChild(title);
+  box.appendChild(msg);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(() => {
+    if (window.history.length > 1) window.history.back();
+    else window.location.replace('/');
+  }, 2500);
+}

@@ -1,442 +1,523 @@
-/* ============================================================================
- * /security/server/security-server.js — SECURITY MIDDLEWARE (Node/Express)
- * ----------------------------------------------------------------------------
- * Lapisan SERVER-SIDE yang melengkapi /security/ frontend. Murni Node.js +
- * Express — TANPA dependensi tambahan (crypto/fs/path bawaan).
+/**
+ * ============================================================
+ * SECURITY MODULE (server) - security-server.js
+ * ============================================================
+ * Guard server TANPA dependensi eksternal (Node.js murni).
  *
- * ⚠ INI LAPISAN YANG SESUNGGUHNYA untuk:
- *   - Rate limiting salah password (3x -> cooldown)  [tidak bisa dilewati]
- *   - Validasi & invalidasi session                  [sumber kebenaran]
- *   - Single session (login baru mencabut session lama -> 409)
- *   - Verifikasi CSRF
- *   - Security header HTTP asli (CSP, HSTS, dst.)
- *   - Penyimpanan audit log ke file JSONL
+ * Integrasi Express (cara paling umum) - DUA baris saja:
  *
- * PEMASANGAN MINIMAL (satu baris + opsional):
- *   const security = require('./security/server/security-server')
- *                      .createSecurity({ ...opsi sesuai kebutuhan... });
- *   app.use(express.json());                    // agar blokir per-username akurat
- *   app.use(security.securityHeaders);          // header HTTP
- *   app.use('/security', security.router);      // endpoint bawaan
+ *   const { createSecurity } = require('/security/server/security-server.js');
+ *   const sec = createSecurity({ loginPaths: ['/api/login'] });
+ *   app.use(sec.applyExpress());          // header + endpoint /security/*
+ *   app.post('/api/login', sec.loginGuard(), loginHandler);
  *
- *   // Bungkus endpoint login EXISTING (ubah 1 baris di route login):
- *   app.post('/api/auth/login', security.loginGuard(), loginHandlerLama);
- *   // Di dalam loginHandlerLama, saat kredensial valid:
- *   security.helpers.issueSession(req, res, user.username, user.roles);
+ * Integrasi Node http murni:
  *
- * Endpoint bawaan (sesuai config.js frontend):
- *   GET  /security/csrf                  -> { token }
- *   GET  /security/session/validate      -> 200 | 401 | 409 (dicabut)
- *   POST /security/session/logout        -> 200 (hapus session + cookie)
- *   POST /security/session/heartbeat     -> 200 (perpanjang sesi)
- *   POST /security/audit                 -> simpan batch audit (JSONL)
- * ==========================================================================*/
+ *   const sec = createSecurity({});
+ *   sec.attachTo(server);                 // header + endpoint otomatis
+ *
+ * Yang dilakukan file ini:
+ * 1. Security headers di SEMUA response (CSP opsional, default
+ *    hanya header "aman" agar tidak merusak aplikasi yang ada).
+ * 2. Rate limit login: 3x gagal -> cooldown 5 menit (SEMENTARA,
+ *    tidak pernah permanen), per IP+username, memori internal.
+ * 3. Verifikasi token sesi HMAC-SHA256 (opsional) ATAU delegasi
+ *    ke fungsi verifySession milik aplikasi Anda.
+ * 4. Registry sesi single-session: login baru menggantikan sesi
+ *    lama; heartbeat endpoint menjawab {valid:false,...}.
+ * 5. Endpoint: POST /security/heartbeat, POST /security/audit,
+ *    POST /security/logout (path prefix bisa diubah).
+ * 6. Sink audit log dari browser (redaksi dilakukan di client;
+ *    file ini melakukan redaksi LAYER-2 sebagai jaring pengaman).
+ *
+ * CATATAN JUJUR: penyimpanan in-memory hilang saat proses
+ * restart dan tidak dibagi antar instance cluster. Untuk
+ * produksi multi-instance, ganti store dengan Redis (lihat
+ * README bagian "Integrasi Backend").
+ * ============================================================
+ */
+
 'use strict';
 
-var crypto = require('crypto');
-var fs = require('fs');
-var path = require('path');
-var express = require('express');
+const crypto = require('crypto');
 
-/* ------------------------------ Utilitas -------------------------------- */
-function randomToken() {
-  return crypto.randomBytes(32).toString('hex');
+const DEFAULTS = {
+  // Rute login aplikasi yang dilindungi rate limit
+  loginPaths: ['/api/login', '/login'],
+  maxAttempts: 3,
+  cooldownMs: 5 * 60 * 1000,      // SEMENTARA - tidak pernah permanen
+  attemptWindowMs: 15 * 60 * 1000,
+  failureStatuses: [401, 403],
+
+  // Header keamanan
+  headers: {
+    enabled: true,
+    csp: null,                    // isi string CSP saat aplikasi siap; null = tidak dikirim
+    hsts: 'max-age=31536000; includeSubDomains', // hanya dikirim via https
+    xContentTypeOptions: 'nosniff',
+    frameOptions: 'DENY',
+    referrerPolicy: 'strict-origin-when-cross-origin',
+    permissionsPolicy: 'camera=(), microphone=(), geolocation=()',
+  },
+
+  // Endpoint modul
+  apiPrefix: '/security',         // => /security/heartbeat, /security/audit, /security/logout
+
+  // Single-session
+  singleSession: true,            // login baru menggantikan sesi lama per user
+
+  // CSRF (double-submit) - default MODE LAPOR agar tidak merusak API yang ada
+  csrf: {
+    enabled: false,               // true = tolak request mutasi tanpa header yang cocok
+    cookieName: 'sec_csrf',
+    headerName: 'X-CSRF-Token',
+    reportOnly: true,             // true = catat pelanggaran saja, jangan tolak
+  },
+
+  // Verifikasi sesi
+  sessionSecret: process.env.SECURITY_SESSION_SECRET || null, // kunci HMAC (opsional)
+  verifySession: null,            // alternatif: fungsi async(req) => {valid, userId, role}
+
+  // Audit
+  onAudit: null,                  // callback (entry) => void; log juga disimpan di memori
+  auditMaxMemory: 1000,
+};
+
+// ============================================================
+// Store in-memory (ganti dengan Redis untuk produksi multi-instance)
+// ============================================================
+function createMemoryStore() {
+  return {
+    loginAttempts: new Map(),  // key "ip|user" -> { failures: number[], blockedUntil: number }
+    sessions: new Map(),       // userId -> sessionId terbaru (single session)
+    revoked: new Set(),        // sessionId yang dicabut
+    audit: [],
+  };
 }
-function parseCookies(header) {
-  var out = {};
-  if (!header) { return out; }
-  String(header).split(';').forEach(function (part) {
-    var eq = part.indexOf('=');
-    if (eq === -1) { return; }
-    out[part.slice(0, eq).trim()] = decodeURIComponent(part.slice(eq + 1).trim());
-  });
+
+// ============================================================
+// Token sesi HMAC (opsional - untuk aplikasi tanpa auth sendiri)
+// Format: base64url(payload).base64url(hmac)
+// ============================================================
+function signSession(payload, secret) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifySessionToken(token, secret) {
+  try {
+    const [body, sig] = String(token || '').split('.');
+    if (!body || !sig) return { valid: false, reason: 'MALFORMED' };
+    const expected = crypto.createHmac('sha256', secret).update(body).digest('base64url');
+    const a = Buffer.from(sig);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return { valid: false, reason: 'BAD_SIGNATURE' };
+    }
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (payload.exp && Date.now() > payload.exp) {
+      return { valid: false, reason: 'SESSION_EXPIRED' };
+    }
+    return { valid: true, payload };
+  } catch {
+    return { valid: false, reason: 'MALFORMED' };
+  }
+}
+
+// ============================================================
+// Redaksi layer-2 (jaring pengaman di server)
+// ============================================================
+const FORBIDDEN = ['password', 'passwd', 'pwd', 'token', 'secret', 'apikey',
+  'credential', 'authorization', 'cookie', 'privatekey', 'creditcard'];
+
+function scrub(obj, depth = 0) {
+  if (depth > 6 || obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map((v) => scrub(v, depth + 1));
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const nk = String(k).toLowerCase().replace(/[^a-z0-9]/g, '');
+    out[k] = FORBIDDEN.some((f) => nk.includes(f)) ? '[REDACTED]' : scrub(v, depth + 1);
+  }
   return out;
 }
-var SENSITIVE_KEY_RE = /pass(word)?|pwd|token|secret|authorization|auth|credential|api[_-]?key|apikey|db[_-]?pass(word)?|private[_-]?key|cookie/i;
-function scrub(value, depth) {
-  depth = depth || 0;
-  if (depth > 6) { return '[DEEP]'; }
-  if (value === null || value === undefined) { return value; }
-  if (typeof value === 'string') { return value.length > 300 ? value.slice(0, 300) : value; }
-  if (typeof value === 'number' || typeof value === 'boolean') { return value; }
-  if (Array.isArray(value)) { return value.slice(0, 20).map(function (v) { return scrub(v, depth + 1); }); }
-  if (typeof value === 'object') {
-    var clean = {};
-    Object.keys(value).forEach(function (key) {
-      clean[key] = SENSITIVE_KEY_RE.test(key) ? '[REDACTED]' : scrub(value[key], depth + 1);
-    });
-    return clean;
-  }
-  return String(value);
-}
 
-/* ============================ createSecurity ============================== */
-function createSecurity(options) {
-  var opts = Object.assign({
-    cookieName: 'app_session',          // nama cookie session
-    sessionTtlMinutes: 30,              // masa berlaku (sliding)
-    singleSession: true,                // login baru mencabut session lama
-    csrfCookieName: 'XSRF-TOKEN',
-    csrfHeaderName: 'x-csrf-token',
-    maxLoginAttempts: 3,
-    loginCooldownMs: 5 * 60000,
-    loginEscalation: true,
-    loginCooldownMaxMs: 30 * 60000,
-    loginFailStatus: [400, 401, 403, 429],
-    csrfProtectMethods: ['POST', 'PUT', 'PATCH', 'DELETE'],
-    csrfExemptPaths: ['/security/csrf', '/security/audit'],
-    setSecurityHeaders: true,
-    csp: null,                          // string CSP — ISI SETELAH DIUJI (lihat README)
-    hsts: true,                         // hanya efektif via HTTPS
-    sameSite: 'lax',                    // 'lax' | 'strict'
-    secure: 'auto',                     // 'auto' | true | false
-    basePath: '/security',
-    auditDir: path.join(process.cwd(), 'security', 'logs')
-  }, options || {});
+// ============================================================
+// Factory utama
+// ============================================================
+function createSecurity(options = {}) {
+  const o = mergeOptions(DEFAULTS, options);
+  const store = createMemoryStore();
+  const startedAt = new Date().toISOString();
 
-  /* ------------------------------- Stores --------------------------------- */
-  var sessions = new Map();   // sid -> {user, roles, deviceId, createdAt, lastSeen, expiresAt, superseded}
-  var byUser = new Map();     // user -> Set<sid>
-  var attempts = new Map();   // "ip|user" -> {count, blockedUntil, escalations, updatedAt}
-  var csrfTokens = new Map(); // token -> expiresAt
-
-  function cleanup() {
-    var now = Date.now();
-    sessions.forEach(function (s, sid) {
-      if (s.expiresAt < now) {
-        sessions.delete(sid);
-        var set = byUser.get(s.user);
-        if (set) { set.delete(sid); if (!set.size) { byUser.delete(s.user); } }
-      }
-    });
-    csrfTokens.forEach(function (exp, tok) { if (exp < now) { csrfTokens.delete(tok); } });
-    attempts.forEach(function (a, key) {
-      if (a.updatedAt < now - 3600000) { attempts.delete(key); }
-    });
-  }
-  var cleanupTimer = setInterval(cleanup, 5 * 60000);
-  if (cleanupTimer.unref) { cleanupTimer.unref(); }
-
-  /* -------------------------------- Audit --------------------------------- */
-  function writeAudit(event, details, severity) {
-    try {
-      var entry = {
-        ts: new Date().toISOString(),
-        event: String(event || 'UNKNOWN'),
-        severity: severity || 'info',
-        ip: (details && details.ip) || '',
-        details: scrub(details || {})
-      };
-      fs.mkdirSync(opts.auditDir, { recursive: true });
-      var file = path.join(opts.auditDir, 'audit-' + entry.ts.slice(0, 10) + '.jsonl');
-      fs.appendFileSync(file, JSON.stringify(entry) + '\n');
-    } catch (e) {
-      console.warn('[security] audit gagal ditulis:', e.message);
-    }
-  }
-
-  /* ------------------------------- Cookie --------------------------------- */
-  function isSecureReq(req) {
-    if (opts.secure === true) { return true; }
-    if (opts.secure === false) { return false; }
-    return req.secure || req.headers['x-forwarded-proto'] === 'https';
-  }
-  function setSessionCookie(req, res, sid, maxAgeMs) {
-    var flags = [
-      opts.cookieName + '=' + sid,
-      'Path=/',
-      'HttpOnly',
-      'SameSite=' + (opts.sameSite === 'strict' ? 'Strict' : 'Lax'),
-      'Max-Age=' + Math.floor(maxAgeMs / 1000)
-    ];
-    if (isSecureReq(req)) { flags.push('Secure'); }   // Secure; HttpOnly; SameSite
-    res.setHeader('Set-Cookie', flags.join('; '));
-  }
-  function clearSessionCookie(res) {
-    res.setHeader('Set-Cookie', opts.cookieName + '=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0');
-  }
-
-  /* ------------------------------ Session --------------------------------- */
-  function issueSession(req, res, user, roles, meta) {
-    var sid = randomToken();
-    var now = Date.now();
-    var session = {
-      user: String(user || 'unknown'),
-      roles: Array.isArray(roles) ? roles : [],
-      deviceId: req.headers['x-device-id'] || '',
-      createdAt: now,
-      lastSeen: now,
-      expiresAt: now + opts.sessionTtlMinutes * 60000,
-      superseded: false
-    };
-    if (meta) { session.meta = scrub(meta); }
-
-    // SINGLE SESSION: login baru (device lain) mencabut session lama user.
-    // Browser lama akan menerima 409 pada validate -> tampil pesan ramah.
-    if (opts.singleSession) {
-      var oldSet = byUser.get(session.user);
-      if (oldSet) {
-        oldSet.forEach(function (oldSid) {
-          if (oldSid !== sid && sessions.has(oldSid)) {
-            sessions.get(oldSid).superseded = true;
-            sessions.get(oldSid).expiresAt = now + 60000; // beri waktu singkat
-          }
-        });
-      }
-    }
-    sessions.set(sid, session);
-    if (!byUser.has(session.user)) { byUser.set(session.user, new Set()); }
-    byUser.get(session.user).add(sid);
-    setSessionCookie(req, res, sid, opts.sessionTtlMinutes * 60000);
-    writeAudit('LOGIN_SUCCESS', { user: session.user, ip: req.ip, deviceId: session.deviceId });
-    return sid;
-  }
-
-  function revoke(sid, reason) {
-    var s = sessions.get(sid);
-    if (!s) { return false; }
-    sessions.delete(sid);
-    var set = byUser.get(s.user);
-    if (set) { set.delete(sid); if (!set.size) { byUser.delete(s.user); } }
-    writeAudit('LOGOUT', { user: s.user, reason: reason || 'user' });
-    return true;
-  }
-
-  function getSession(req) {
-    var cookies = parseCookies(req.headers.cookie);
-    var sid = cookies[opts.cookieName];
-    if (!sid) { return null; }
-    var s = sessions.get(sid);
-    if (!s) { return null; }
-    var now = Date.now();
-    if (s.expiresAt < now) {
-      revoke(sid, 'expired');
-      return null;
-    }
-    // Sliding expiration
-    s.lastSeen = now;
-    s.expiresAt = now + opts.sessionTtlMinutes * 60000;
-    return { sid: sid, session: s };
-  }
-
-  /* -------------------------- Login rate limiting -------------------------- */
+  // ---------- Rate limit login ----------
   function attemptKey(req) {
-    var bodyUser = '';
-    try {
-      bodyUser = (req.body && (req.body.username || req.body.email || req.body.user)) || '';
-    } catch (e) { /* noop */ }
-    return (req.ip || 'unknown') + '|' + String(bodyUser).toLowerCase();
+    const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown')
+      .toString().split(',')[0].trim();
+    const user = String((req.body && req.body.username) || req.headers['x-username'] || '').toLowerCase();
+    return `${ip}|${user}`;
   }
-  function loginGuard() {
-    return function (req, res, next) {
-      var key = attemptKey(req);
-      var a = attempts.get(key) || { count: 0, blockedUntil: 0, escalations: 0, updatedAt: Date.now() };
-      var now = Date.now();
 
-      if (a.blockedUntil > now) {
-        writeAudit('LOGIN_BLOCKED', { ip: req.ip, retryInMs: a.blockedUntil - now }, 'warn');
-        res.setHeader('Retry-After', Math.ceil((a.blockedUntil - now) / 1000));
+  function isBlocked(key) {
+    const rec = store.loginAttempts.get(key);
+    if (!rec) return { blocked: false };
+    const now = Date.now();
+    if (rec.blockedUntil && now < rec.blockedUntil) {
+      return { blocked: true, retryAfterMs: rec.blockedUntil - now };
+    }
+    if (rec.blockedUntil && now >= rec.blockedUntil) {
+      store.loginAttempts.delete(key); // cooldown lewat -> reset penuh
+    }
+    return { blocked: false };
+  }
+
+  function recordFailure(key) {
+    const now = Date.now();
+    const rec = store.loginAttempts.get(key) || { failures: [], blockedUntil: null };
+    rec.failures = rec.failures.filter((t) => now - t < o.attemptWindowMs);
+    rec.failures.push(now);
+    if (rec.failures.length >= o.maxAttempts) {
+      // HANYA cooldown berhingga (sesuai spesifikasi: tanpa blokir permanen)
+      rec.blockedUntil = now + o.cooldownMs;
+      rec.failures = [];
+      store.loginAttempts.set(key, rec);
+      pushAudit('LOGIN_BLOCKED', { key: hashKey(key), until: new Date(rec.blockedUntil).toISOString() });
+      return { blocked: true };
+    }
+    store.loginAttempts.set(key, rec);
+    pushAudit('LOGIN_FAILED', { key: hashKey(key) });
+    return { blocked: false };
+  }
+
+  function recordSuccess(key) {
+    store.loginAttempts.delete(key);
+  }
+
+  // ---------- Single-session registry ----------
+  function registerSession(userId, sessionId) {
+    if (!o.singleSession || !userId || !sessionId) return;
+    const prev = store.sessions.get(userId);
+    if (prev && prev !== sessionId) store.revoked.add(prev); // sesi lama dicabut
+    store.sessions.set(userId, sessionId);
+  }
+
+  function revokeUser(userId) {
+    const sid = store.sessions.get(userId);
+    if (sid) store.revoked.add(sid);
+    store.sessions.delete(userId);
+    pushAudit('SESSION_REVOKED', { userId: hashKey(String(userId)) });
+  }
+
+  function heartbeat(userId, sessionId) {
+    // Tidak terdaftar = aplikasi belum memakai registry -> dianggap valid
+    // agar modul TIDAK pernah merusak autentikasi yang sudah ada.
+    const latest = userId ? store.sessions.get(String(userId)) : undefined;
+    if (latest === undefined && !store.revoked.has(sessionId)) {
+      return { valid: true };
+    }
+    if (store.revoked.has(sessionId)) {
+      return { valid: false, reason: 'SESSION_REVOKED' };
+    }
+    if (o.singleSession && latest && latest !== sessionId) {
+      return { valid: false, reason: 'SESSION_REVOKED' };
+    }
+    return { valid: true };
+  }
+
+  // ---------- Audit ----------
+  function pushAudit(event, detail) {
+    const entry = scrub({ ts: new Date().toISOString(), event, detail, source: 'server' });
+    store.audit.push(entry);
+    if (store.audit.length > o.auditMaxMemory) store.audit.shift();
+    if (typeof o.onAudit === 'function') {
+      try { o.onAudit(entry); } catch { /* callback user error tidak boleh menjatuhkan server */ }
+    }
+  }
+
+  function receiveBrowserLogs(logs) {
+    if (!Array.isArray(logs)) return 0;
+    let n = 0;
+    for (const log of logs.slice(0, 100)) {
+      if (!log || typeof log !== 'object') continue;
+      const entry = scrub({ ...log, receivedAt: new Date().toISOString(), source: 'browser' });
+      store.audit.push(entry);
+      if (store.audit.length > o.auditMaxMemory) store.audit.shift();
+      if (typeof o.onAudit === 'function') { try { o.onAudit(entry); } catch { /* noop */ } }
+      n += 1;
+    }
+    return n;
+  }
+
+  // ---------- Security headers ----------
+  function applyHeaders(res, req) {
+    if (!o.headers.enabled) return;
+    const h = res.setHeader ? res.setHeader.bind(res) : () => {};
+    if (o.headers.csp) h('Content-Security-Policy', o.headers.csp);
+    if (o.headers.hsts && isHttps(req)) h('Strict-Transport-Security', o.headers.hsts);
+    if (o.headers.xContentTypeOptions) h('X-Content-Type-Options', o.headers.xContentTypeOptions);
+    if (o.headers.frameOptions) h('X-Frame-Options', o.headers.frameOptions);
+    if (o.headers.referrerPolicy) h('Referrer-Policy', o.headers.referrerPolicy);
+    if (o.headers.permissionsPolicy) h('Permissions-Policy', o.headers.permissionsPolicy);
+  }
+
+  function isHttps(req) {
+    return !!(
+      req.socket?.encrypted ||
+      (req.headers['x-forwarded-proto'] || '').toString().includes('https')
+    );
+  }
+
+  // ---------- CSRF ----------
+  function checkCsrf(req) {
+    if (!o.csrf.enabled) return { ok: true };
+    const method = (req.method || 'GET').toUpperCase();
+    if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return { ok: true };
+    const cookies = parseCookies(req.headers.cookie || '');
+    // Hanya berlaku bila autentikasi cookie terdeteksi
+    const hasSessionCookie = Object.keys(cookies).some((c) => /sess|auth|token|jwt/i.test(c));
+    if (!hasSessionCookie) return { ok: true };
+
+    const cookieTok = cookies[o.csrf.cookieName];
+    const headerTok = req.headers[o.csrf.headerName.toLowerCase()];
+    const ok = !!cookieTok && !!headerTok && cookieTok === headerTok;
+    if (ok) return { ok: true };
+    if (o.csrf.reportOnly) {
+      pushAudit('CSRF_VIOLATION_REPORT', { path: req.url });
+      return { ok: true };
+    }
+    pushAudit('CSRF_VIOLATION_BLOCKED', { path: req.url });
+    return { ok: false };
+  }
+
+  // ============================================================
+  // Express middlewares
+  // ============================================================
+
+  /** Pasang di paling atas: headers + endpoint /security/* */
+  function applyExpress() {
+    return function securityExpressMiddleware(req, res, next) {
+      applyHeaders(res, req);
+
+      // Endpoint internal modul (sebelum handler aplikasi)
+      if (req.path && req.path.startsWith(o.apiPrefix + '/')) {
+        return handleApi(req, res, () => next());
+      }
+
+      // Header saja - jangan sentuh request lain
+      return next();
+    };
+  }
+
+  /** Pasang pada rute login: rate limit + pencatatan otomatis hasil login */
+  function loginGuard() {
+    return function loginGuardMiddleware(req, res, next) {
+      const key = attemptKey(req);
+      const block = isBlocked(key);
+      if (block.blocked) {
+        const secs = Math.ceil(block.retryAfterMs / 1000);
+        res.setHeader('Retry-After', String(secs));
         return res.status(429).json({
-          success: false,
-          error: 'TOO_MANY_ATTEMPTS',
-          message: 'Terlalu banyak percobaan login gagal. Coba lagi nanti.',
-          retryAfterSeconds: Math.ceil((a.blockedUntil - now) / 1000)
+          error: 'LOGIN_BLOCKED',
+          message: `Terlalu banyak percobaan login gagal. Coba lagi dalam ${Math.floor(secs / 60)} menit ${secs % 60} detik.`,
+          retryAfter: secs,
         });
       }
-      if (a.blockedUntil && a.blockedUntil <= now) { a.count = 0; a.blockedUntil = 0; }
 
-      // Tegakkan hasil lewat event 'finish' — status respons menentukan gagal/sukses
-      res.on('finish', function () {
-        var status = res.statusCode;
-        var cur = attempts.get(key) || a;
-        cur.updatedAt = Date.now();
-        if (opts.loginFailStatus.indexOf(status) !== -1) {
-          cur.count += 1;
-          writeAudit('LOGIN_FAILED', { ip: req.ip, attempts: cur.count },
-            cur.count >= opts.maxLoginAttempts ? 'warn' : 'info');
-          if (cur.count >= opts.maxLoginAttempts) {
-            var base = opts.loginCooldownMs;
-            var factor = opts.loginEscalation ? Math.pow(2, cur.escalations || 0) : 1;
-            cur.blockedUntil = Date.now() + Math.min(base * factor, opts.loginCooldownMaxMs);
-            cur.escalations = (cur.escalations || 0) + 1;
-            cur.count = 0;
-            writeAudit('LOGIN_BLOCKED', {
-              ip: req.ip,
-              cooldownMinutes: Math.round((cur.blockedUntil - Date.now()) / 60000)
-            }, 'warn');
-          }
-          attempts.set(key, cur);
-        } else if (status >= 200 && status < 300) {
-          attempts.delete(key);   // sukses -> reset penuh (TIDAK permanent lock)
+      // Catat hasil otomatis dari status response (tanpa mengubah handler login)
+      res.on('finish', () => {
+        if (o.failureStatuses.includes(res.statusCode)) {
+          recordFailure(key);
+        } else if (res.statusCode >= 200 && res.statusCode < 300) {
+          recordSuccess(key);
+          pushAudit('LOGIN_SUCCESS', { key: hashKey(key) });
+          // Jika handler login menandai userId, daftarkan sesi single-session
+          const uid = res.getHeader && res.getHeader('x-user-id');
+          if (uid) registerSession(String(uid), req.headers['x-session-id'] || key);
         }
       });
-      next();
+
+      return next();
     };
   }
 
-  /* ------------------------------ CSRF ------------------------------------ */
-  function issueCsrf(req, res) {
-    var token = randomToken();
-    var ttl = 2 * 3600000; // 2 jam
-    csrfTokens.set(token, Date.now() + ttl);
-    res.setHeader('Set-Cookie', opts.csrfCookieName + '=' + token +
-      '; Path=/; SameSite=' + (opts.sameSite === 'strict' ? 'Strict' : 'Lax') +
-      (isSecureReq(req) ? '; Secure' : '') + '; Max-Age=' + Math.floor(ttl / 1000));
-    // Cookie CSRF TIDAK HttpOnly (pola double-submit); bukan credential.
-    res.json({ token: token });
-  }
-  function csrfProtect() {
-    return function (req, res, next) {
-      if (opts.csrfProtectMethods.indexOf(req.method) === -1) { return next(); }
-      var p = req.path;
-      for (var i = 0; i < opts.csrfExemptPaths.length; i++) {
-        if (p.indexOf(opts.csrfExemptPaths[i]) === 0) { return next(); }
+  /** Verifikasi sesi untuk rute terlindungi (opsional). */
+  function requireSession() {
+    return async function requireSessionMiddleware(req, res, next) {
+      // 1) Delegasi ke verifier aplikasi jika ada
+      if (typeof o.verifySession === 'function') {
+        try {
+          const verdict = await o.verifySession(req);
+          if (verdict && verdict.valid) return next();
+          return res.status(401).json({ error: 'SESSION_INVALID', reason: verdict && verdict.reason });
+        } catch (err) {
+          return res.status(500).json({ error: 'VERIFY_ERROR' });
+        }
       }
-      var header = req.headers[opts.csrfHeaderName];
-      var cookies = parseCookies(req.headers.cookie);
-      var cookieToken = cookies[opts.csrfCookieName];
-      // Double-submit: header harus cocok dengan cookie; token harus dikenal.
-      if (header && cookieToken && header === cookieToken && csrfTokens.has(header)) {
-        return next();
+      // 2) Verifikasi HMAC bawaan (butuh sessionSecret)
+      if (o.sessionSecret) {
+        const token = extractToken(req);
+        const verdict = verifySessionToken(token, o.sessionSecret);
+        if (verdict.valid) {
+          req.securitySession = verdict.payload;
+          return next();
+        }
+        return res.status(401).json({ error: 'SESSION_INVALID', reason: verdict.reason });
       }
-      return res.status(403).json({ success: false, error: 'CSRF_INVALID' });
+      // 3) Tidak dikonfigurasi: JANGAN blokir (agar tidak merusak app),
+      //    cukup beri peringatan sekali.
+      warnOnce('requireSession dipasang tanpa sessionSecret/verifySession - verifikasi dilewati.');
+      return next();
     };
   }
 
-  /* --------------------------- Security headers --------------------------- */
-  function securityHeaders(req, res, next) {
-    if (opts.setSecurityHeaders === false) { return next(); }
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-    if (opts.csp) { res.setHeader('Content-Security-Policy', opts.csp); }
-    if (opts.hsts && isSecureReq(req)) {
-      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  // ============================================================
+  // Endpoint internal (dipakai oleh Express applyExpress & attachTo)
+  // ============================================================
+  function handleApi(req, res, next) {
+    const path = (req.url || '').split('?')[0];
+    const isExpressPath = typeof req.path === 'string' ? req.path.startsWith(o.apiPrefix + '/') : false;
+    const sub = isExpressPath
+      ? req.path.slice(o.apiPrefix.length)
+      : path.slice(o.apiPrefix.length);
+
+    if (req.method === 'POST' && sub === '/heartbeat') {
+      return readJson(req, (body) => {
+        const verdict = heartbeat(body && body.userId, body && body.sessionId);
+        return sendJson(res, 200, verdict);
+      });
     }
-    next();
-  }
-
-  /* --------------------------- Rate limit umum ---------------------------- */
-  function rateLimit(windowMs, max, keyFn) {
-    var hits = new Map();
-    windowMs = windowMs || 60000;
-    max = max || 100;
-    return function (req, res, next) {
-      var key = keyFn ? keyFn(req) : (req.ip || 'unknown');
-      var now = Date.now();
-      var rec = hits.get(key) || { count: 0, resetAt: now + windowMs };
-      if (now > rec.resetAt) { rec.count = 0; rec.resetAt = now + windowMs; }
-      rec.count += 1;
-      hits.set(key, rec);
-      if (rec.count > max) {
-        res.setHeader('Retry-After', Math.ceil((rec.resetAt - now) / 1000));
-        return res.status(429).json({ success: false, error: 'RATE_LIMITED' });
-      }
-      next();
-    };
-  }
-
-  /* ------------------------------- Router --------------------------------- */
-  var router = express.Router();
-  router.use(express.json({ limit: '64kb' }));
-
-  router.get('/csrf', function (req, res) { issueCsrf(req, res); });
-
-  router.get('/session/validate', function (req, res) {
-    var found = getSession(req);
-    if (!found) { return res.status(401).json({ valid: false, reason: 'expired' }); }
-    if (found.session.superseded) {
-      revoke(found.sid, 'superseded');
-      writeAudit('SESSION_REVOKED', { user: found.session.user, reason: 'superseded' }, 'warn');
-      return res.status(409).json({ valid: false, reason: 'superseded' });
+    if (req.method === 'POST' && sub === '/audit') {
+      return readJson(req, (body) => {
+        const n = receiveBrowserLogs(body && body.logs);
+        return sendJson(res, 204, null);
+      });
     }
-    res.json({
-      valid: true,
-      user: found.session.user,
-      roles: found.session.roles,
-      expiresAt: new Date(found.session.expiresAt).toISOString()
+    if (req.method === 'POST' && sub === '/logout') {
+      return readJson(req, (body) => {
+        if (body && body.sessionId) store.revoked.add(String(body.sessionId));
+        pushAudit('LOGOUT', { sessionId: body ? hashKey(String(body.sessionId || '')) : '-' });
+        return sendJson(res, 200, { ok: true });
+      });
+    }
+    if (req.method === 'GET' && sub === '/health') {
+      return sendJson(res, 200, { ok: true, since: startedAt });
+    }
+    if (typeof next === 'function') return next();
+    return sendJson(res, 404, { error: 'NOT_FOUND' });
+  }
+
+  // ============================================================
+  // Integrasi Node http murni
+  // ============================================================
+  function attachTo(server) {
+    const listeners = server.listeners('request').slice();
+    // Hapus listener lama, pasang wrapper kami di depan
+    server.removeAllListeners('request');
+    server.addListener('request', (req, res) => {
+      applyHeaders(res, req);
+
+      const url = (req.url || '').split('?')[0];
+      if (url.startsWith(o.apiPrefix + '/')) {
+        return handleApi(req, res, () => {
+          for (const l of listeners) l.call(server, req, res);
+        });
+      }
+
+      for (const l of listeners) l.call(server, req, res);
     });
-  });
-
-  router.post('/session/logout', function (req, res) {
-    var found = getSession(req);
-    if (found) { revoke(found.sid, (req.body && req.body.reason) || 'user'); }
-    clearSessionCookie(res);
-    res.json({ success: true });
-  });
-
-  router.post('/session/heartbeat', function (req, res) {
-    var found = getSession(req);
-    if (!found) { return res.status(401).json({ valid: false }); }
-    if (found.session.superseded) {
-      return res.status(409).json({ valid: false, reason: 'superseded' });
-    }
-    res.json({ valid: true, expiresAt: new Date(found.session.expiresAt).toISOString() });
-  });
-
-  router.post('/audit', function (req, res) {
-    var batch = Array.isArray(req.body) ? req.body : [req.body];
-    batch.forEach(function (entry) {
-      if (entry && entry.event) {
-        writeAudit(entry.event, Object.assign({ ip: req.ip }, entry.details || {}), entry.severity);
-      }
-    });
-    res.json({ success: true });
-  });
-
-  /* -------------------------- requireAuth/requireRoles -------------------- */
-  function requireAuth() {
-    return function (req, res, next) {
-      var found = getSession(req);
-      if (!found) { return res.status(401).json({ success: false, error: 'UNAUTHENTICATED' }); }
-      if (found.session.superseded) {
-        return res.status(409).json({ success: false, error: 'SESSION_SUPERSEDED' });
-      }
-      req.securitySession = found.session;
-      req.securitySid = found.sid;
-      next();
-    };
-  }
-  function requireRoles() {
-    var roles = Array.prototype.slice.call(arguments);
-    return function (req, res, next) {
-      if (!req.securitySession) { return res.status(401).json({ success: false, error: 'UNAUTHENTICATED' }); }
-      var owned = req.securitySession.roles || [];
-      var ok = roles.some(function (r) { return owned.indexOf(r) !== -1; });
-      if (!ok) {
-        writeAudit('ROLE_CHANGED', { user: req.securitySession.user, denied: roles, path: req.path }, 'warn');
-        return res.status(403).json({ success: false, error: 'FORBIDDEN' });
-      }
-      next();
-    };
+    return server;
   }
 
-  /* ------------------------------- Cleanup on exit ------------------------ */
-  var api = {
-    router: router,
-    securityHeaders: securityHeaders,
-    loginGuard: loginGuard,
-    csrfProtect: csrfProtect,
-    requireAuth: requireAuth,
-    requireRoles: requireRoles,
-    rateLimit: rateLimit,
-    helpers: {
-      issueSession: issueSession,
-      revoke: revoke,
-      revokeAllForUser: function (user, reason) {
-        var set = byUser.get(String(user));
-        if (!set) { return 0; }
-        var n = 0;
-        Array.from(set).forEach(function (sid) { if (revoke(sid, reason || 'revoked')) { n++; } });
-        return n;
-      },
-      audit: writeAudit,
-      getSession: function (req) { var f = getSession(req); return f ? f.session : null; }
-    },
-    _stores: { sessions: sessions, attempts: attempts, csrfTokens: csrfTokens } // untuk testing
+  // ---------- API programmatik ----------
+  return {
+    // Express
+    applyExpress,
+    loginGuard,
+    requireSession,
+    // Node murni
+    attachTo,
+    // Programmatik (untuk dipanggil dari handler login aplikasi)
+    registerSession,
+    revokeUser,
+    revokeSession: (sessionId) => store.revoked.add(String(sessionId)),
+    heartbeat,
+    verifySessionToken: (token) => o.sessionSecret ? verifySessionToken(token, o.sessionSecret) : { valid: false, reason: 'NO_SECRET' },
+    signSession: (payload) => o.sessionSecret ? signSession({ ...payload, iat: Date.now(), exp: Date.now() + 60 * 60 * 1000 }, o.sessionSecret) : null,
+    // Audit
+    getAuditLogs: () => store.audit.slice(),
+    clearAuditLogs: () => { store.audit.length = 0; },
+    // Util
+    _store: store, // untuk pengujian
   };
-  return api;
 }
 
-module.exports = { createSecurity: createSecurity };
+// ============================================================
+// Helper Node murni
+// ============================================================
+function readJson(req, cb) {
+  let data = '';
+  req.on('data', (c) => {
+    data += c;
+    if (data.length > 1e6) req.destroy(); // batas 1MB
+  });
+  req.on('end', () => {
+    try { cb(data ? JSON.parse(data) : {}); }
+    catch { cb({}); }
+  });
+}
+
+function sendJson(res, status, obj) {
+  if (res.headersSent) return;
+  if (status === 204) { res.statusCode = 204; return res.end(); }
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(obj || {}));
+}
+
+function parseCookies(header) {
+  const out = {};
+  for (const part of String(header).split(';')) {
+    const i = part.indexOf('=');
+    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+  }
+  return out;
+}
+
+function extractToken(req) {
+  const auth = req.headers.authorization || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7);
+  const cookies = parseCookies(req.headers.cookie || '');
+  return cookies.sec_session_token || '';
+}
+
+function hashKey(key) {
+  // Jangan catat IP/username mentah di log server
+  return crypto.createHash('sha256').update(String(key)).digest('hex').slice(0, 16);
+}
+
+let warned = false;
+function warnOnce(msg) {
+  if (warned) return;
+  warned = true;
+  console.warn('[security-server]', msg);
+}
+
+function mergeOptions(base, override) {
+  const out = JSON.parse(JSON.stringify(base));
+  if (!override || typeof override !== 'object') return out;
+  for (const [k, v] of Object.entries(override)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && out[k] && typeof out[k] === 'object') {
+      out[k] = { ...out[k], ...v };
+    } else if (v !== undefined) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+module.exports = {
+  createSecurity,
+  signSession,
+  verifySessionToken,
+  DEFAULT_SECURITY_OPTIONS: DEFAULTS,
+};

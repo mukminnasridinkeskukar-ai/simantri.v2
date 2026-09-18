@@ -1,246 +1,173 @@
-/* ============================================================================
- * /security/config.js — KONFIGURASI TERPUSAT SECURITY MODULE
- * ============================================================================
- * SELURUH pengaturan keamanan ada di file INI SAJA.
- * Jangan mencari/mengubah angka konfigurasi di file modul lain.
+/**
+ * ============================================================
+ * SECURITY MODULE - config.js
+ * ============================================================
+ * SATU-SATUNYA sumber konfigurasi untuk seluruh modul keamanan.
  *
- * Cara cepat mengubah:
- *   - Timeout auto-logout      -> INACTIVITY_TIMEOUT_MINUTES
- *   - Batas salah password     -> MAX_LOGIN_ATTEMPTS
- *   - Cooldown blokir login    -> LOGIN_COOLDOWN_MINUTES
- *   - Single session           -> SINGLE_SESSION_MODE / ALLOW_MULTIPLE_SESSIONS
- *   - Matikan modul tertentu   -> ubah flag <NAMA_MODUL>_ENABLED menjadi false
+ * Semua fitur AKTIF secara default (secure-by-default).
+ * Cara mengubah nilai:
+ *   1. Edit langsung file ini, ATAU
+ *   2. Kirim override saat inisialisasi:
+ *        initSecurity({ INACTIVITY_TIMEOUT: 10 * 60 * 1000 })
  *
- * CATATAN STRUKTUR: contoh struktur pada spesifikasi memiliki
- * config/security-config.js. Sesuai prinsip "jangan menyebarkan konfigurasi
- * ke banyak file" dan "jangan membuat file yang tidak diperlukan", file
- * tersebut TIDAK dibuat — config.js ini adalah sumber kebenaran tunggal.
- *
- * OVERRIDE PER HALAMAN (opsional, tanpa menyentuh file ini):
- *   Definisikan window.SECURITY_CONFIG_OVERRIDES SEBELUM script security.js
- *   dimuat, contoh:
- *   <script>window.SECURITY_CONFIG_OVERRIDES = { INACTIVITY_TIMEOUT_MINUTES: 30 };</script>
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * PENTING: Modul TIDAK memiliki konfigurasi tersembunyi.
+ * Semua yang dapat dikontrol ada di file ini.
+ * ============================================================
+ */
 
-  var SECURITY_CONFIG = {
+import { deepMerge } from './utils.js';
 
-    /* ------------------------------------------------------------------
-     * MASTER SWITCH
-     * ------------------------------------------------------------------ */
-    // false = seluruh security module nonaktif (tidak melakukan apa pun).
-    SECURITY_ENABLED: true,
-    DEBUG: false,                    // true = log internal modul ke console
-    ENVIRONMENT: 'production',       // 'production' | 'development'
+export const SECURITY_VERSION = '1.0.0';
 
-    /* ------------------------------------------------------------------
-     * HALAMAN & NAVIGASI
-     * Pola mendukung glob: '/admin/**' (semua kedalaman), '/data/*'
-     * (satu tingkat), awalan "**" + "/" untuk login.html di lokasi mana pun,
-     * '/' (root exact).
-     * PROTECTED_PATTERNS menentukan halaman yang butuh session valid.
-     * Sesuaikan dengan routing aplikasi Anda (lihat README bagian 3).
-     * ------------------------------------------------------------------ */
-    LOGIN_URL: '/login.html',
-    HOME_URL: '/',
-    PROTECTED_PATTERNS: [
-      '/dashboard/**',
-      '/admin/**',
-      '/operator/**',
-      '/superadmin/**',
-      '/data/**',
-      '/settings/**'
+export const DEFAULT_CONFIG = {
+
+  // ----------------------------------------------------------
+  // MASTER SWITCH - satu saklar untuk seluruh modul keamanan
+  // ----------------------------------------------------------
+  SECURITY_ENABLED: true,
+
+  // ----------------------------------------------------------
+  // [FITUR 1] AUTO LOGOUT - 15 menit tanpa aktivitas
+  // ----------------------------------------------------------
+  INACTIVITY_TIMEOUT: 15 * 60 * 1000,    // 15 menit tanpa aktivitas -> auto logout
+  WARNING_BEFORE_LOGOUT: 2 * 60 * 1000,  // notifikasi peringatan muncul 2 menit sebelum logout (1-2 menit sesuai spesifikasi)
+  REDIRECT_DELAY: 1500,                  // jeda (ms) sebelum redirect ke halaman login agar pesan sempat terlihat
+
+  // ----------------------------------------------------------
+  // [FITUR 2] LOGIN PROTECTION - 3x gagal -> blokir sementara
+  // ----------------------------------------------------------
+  MAX_LOGIN_ATTEMPTS: 3,                 // jumlah percobaan gagal sebelum diblokir
+  LOGIN_COOLDOWN: 5 * 60 * 1000,         // durasi blokir SEMENTARA (5 menit). WAJIB berhingga - tidak ada blokir permanen.
+  ATTEMPT_WINDOW: 15 * 60 * 1000,        // jendela waktu penghitungan percobaan gagal
+
+  // ----------------------------------------------------------
+  // [FITUR 3] SESSION SECURITY
+  // ----------------------------------------------------------
+  SESSION_DURATION: 60 * 60 * 1000,      // masa berlaku absolut sesi (1 jam)
+  SESSION_ROTATION_INTERVAL: 30 * 60 * 1000, // rotasi sessionId minimal tiap 30 menit
+  SERVER: {
+    // Endpoint opsional di backend Anda (jika diisi, modul akan memakainya).
+    // Biarkan null jika backend belum terintegrasi - modul tetap berjalan.
+    heartbeatEndpoint: null,  // contoh: '/security/heartbeat'  (cek sesi masih valid / belum dicabut)
+    logoutEndpoint: null,     // contoh: '/security/logout'     (hancurkan sesi di server)
+    auditEndpoint: null,      // contoh: '/security/audit'      (kirim log audit batch ke server)
+    heartbeatInterval: 30 * 1000, // interval cek heartbeat ke server (ms)
+  },
+
+  // ----------------------------------------------------------
+  // [FITUR 4 & 5] TAB PROTECTION & SINGLE SESSION
+  // ----------------------------------------------------------
+  SINGLE_SESSION_MODE: true,             // login baru mengakhiri sesi lama (mode satu sesi)
+  ALLOW_MULTIPLE_SESSIONS: false,        // false = perangkat/browser lain otomatis dicabut sesinya
+  HEARTBEAT_INTERVAL: 10 * 1000,         // interval detak antar-tab di browser yang sama (ms)
+
+  // ----------------------------------------------------------
+  // [FITUR 6] ACCESS CONTROL - pelindung halaman
+  // ----------------------------------------------------------
+  PROTECTED_ROUTES: ['/dashboard', '/admin'], // path yang wajib punya sesi valid
+  ADMIN_ROUTES: ['/admin'],                   // path khusus role 'admin'
+  LOGIN_PAGE: '/login.html',                  // tujuan redirect saat sesi tidak valid
+
+  // ----------------------------------------------------------
+  // [FITUR 7] XSS PROTECTION
+  // ----------------------------------------------------------
+  XSS: {
+    enabled: true,
+    warnOnDangerousAPI: false,           // true = console.warn setiap ada kode yang memakai innerHTML/document.write (mode audit dev)
+    allowedTags: [                       // tag yang diizinkan sanitizer bawaan (fallback jika DOMPurify tidak ada)
+      'a', 'b', 'strong', 'i', 'em', 'u', 'br', 'p', 'span', 'div',
+      'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'table', 'thead', 'tbody', 'tr', 'td', 'th', 'blockquote', 'code', 'pre',
     ],
-    PUBLIC_PATTERNS: [
-      '/',
-      '/index.html',
-      '**/login.html',
-      '**/login',
-      '**/login.php',
-      '**/register*',
-      '**/forgot-password*',
-      '**/404*',
-      '**/error*'
-    ],
+    allowedAttrs: ['href', 'title', 'alt', 'class', 'target', 'rel'],
+  },
 
-    /* ------------------------------------------------------------------
-     * AUTENTIKASI
-     * AUTH_MODE 'cookie' : session cookie server (HttpOnly) — CSRF aktif.
-     * AUTH_MODE 'jwt'    : token di localStorage/storage lain; validasi
-     *                      tetap WAJIB dilakukan backend. CSRF otomatis
-     *                      dinonaktifkan (bearer token tidak rentan CSRF).
-     * JWT_STORAGE_KEY    : nama key localStorage yang menyimpan JWT
-     *                      (contoh: 'accessToken'). Kosong bila tidak JWT.
-     * ------------------------------------------------------------------ */
-    AUTH_MODE: 'cookie',
-    JWT_STORAGE_KEY: '',
+  // ----------------------------------------------------------
+  // [FITUR 8] CSRF PROTECTION (double-submit cookie)
+  // Hanya relevan jika autentikasi berbasis cookie.
+  // ----------------------------------------------------------
+  CSRF: {
+    enabled: true,
+    cookieName: 'sec_csrf',
+    headerName: 'X-CSRF-Token',
+    protectedMethods: ['POST', 'PUT', 'PATCH', 'DELETE'],
+  },
 
-    /* ------------------------------------------------------------------
-     * AUTO LOGOUT (ketidaktifan)
-     * Jika pengguna tidak beraktivitas selama INACTIVITY_TIMEOUT_MINUTES:
-     * session divalidasi -> diinvalidasi -> user diarahkan ke login ->
-     * notifikasi ditampilkan. Peringatan muncul WARNING_BEFORE_MINUTES
-     * sebelum logout (silakan 1–2 menit).
-     * ------------------------------------------------------------------ */
-    AUTO_LOGOUT_ENABLED: true,
-    INACTIVITY_TIMEOUT_MINUTES: 15,
-    WARNING_BEFORE_MINUTES: 2,
-    // true = saat pengguna beraktivitas, kirim heartbeat agar server
-    // memperpanjang umur session server (jika endpoint disediakan).
-    HEARTBEAT_ON_ACTIVITY: false,
+  // ----------------------------------------------------------
+  // [FITUR 9] SECURITY HEADERS (client: meta CSP terbatas;
+  // header asli wajib dipasang di server - lihat README)
+  // ----------------------------------------------------------
+  HEADERS: {
+    enabled: true,
+    injectMetaCSP: false,                // default false: CSP via <meta> lebih lemah & bisa merusak aplikasi; pasang di server.
+    csp: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+  },
 
-    /* ------------------------------------------------------------------
-     * LOGIN PROTECTION (salah password)
-     * Percobaan 1 gagal -> 2 gagal -> ke-3: BLOKIR SEMENTARA (cooldown),
-     * TIDAK permanent lock. Client-side hanya lapisan UX; penegakan
-     * sebenarnya WAJIB di server (lihat /security/server/security-server.js).
-     * ------------------------------------------------------------------ */
-    LOGIN_PROTECTION_ENABLED: true,
-    LOGIN_ENDPOINT: '/api/auth/login',   // endpoint login EXISTING aplikasi
-    MAX_LOGIN_ATTEMPTS: 3,
-    LOGIN_COOLDOWN: true,
-    LOGIN_COOLDOWN_MINUTES: 5,
-    LOGIN_COOLDOWN_ESCALATION: true,     // blokir berulang -> cooldown x2
-    LOGIN_COOLDOWN_MAX_MINUTES: 30,      // batas atas cooldown (menit)
-    // Kode status HTTP yang dianggap "login gagal" dari endpoint login.
-    LOGIN_FAIL_STATUS: [400, 401, 403, 429],
+  // ----------------------------------------------------------
+  // [FITUR 10] AUDIT LOG
+  // ----------------------------------------------------------
+  AUDIT: {
+    enabled: true,
+    ttlMs: 7 * 24 * 60 * 60 * 1000,      // entri cache lokal kedaluwarsa setelah 7 hari
+    maxEntries: 500,                     // batas entri di penyimpanan lokal (ring buffer)
+    endpoint: null,                      // sama dengan SERVER.auditEndpoint (bisa diisi salah satu)
+    flushIntervalMs: 30 * 1000,          // kirim batch tiap 30 detik jika endpoint diisi
+    batchSize: 20,                       // atau langsung kirim saat antrean penuh
+    consoleMirror: false,                // true = tampilkan juga di console (mode dev)
+  },
 
-    /* ------------------------------------------------------------------
-     * SESSION SECURITY
-     * Endpoint mengikuti middleware di /security/server/ (bila dipasang).
-     * Bila backend Anda sudah punya endpoint sendiri, cukup ganti URL-nya.
-     * Kosongkan ('') endpoint yang belum tersedia — modul akan berjalan
-     * dalam mode degradasi tanpa error (lihat README bagian Limitasi).
-     * ------------------------------------------------------------------ */
-    SESSION_VALIDATION_ENABLED: true,
-    SESSION_VALIDATE_ENDPOINT: '/security/session/validate',
-    SESSION_LOGOUT_ENDPOINT: '/security/session/logout',
-    SESSION_HEARTBEAT_ENDPOINT: '/security/session/heartbeat',
-    SESSION_CHECK_INTERVAL_SECONDS: 60,  // polling validasi berkala
-    SESSION_CACHE_SECONDS: 30,           // cache hasil validasi (hindari spam)
+  // ----------------------------------------------------------
+  // PESAN PENGGUNA (Bahasa Indonesia)
+  // ----------------------------------------------------------
+  MESSAGES: {
+    SESSION_TIMEOUT: 'Sesi Anda telah berakhir karena tidak ada aktivitas selama {minutes} menit. Silakan login kembali.',
+    SESSION_WARNING: 'Sesi Anda akan berakhir dalam {seconds} detik karena tidak ada aktivitas. Klik "Tetap Masuk" untuk melanjutkan.',
+    SESSION_REVOKED: 'Sesi Anda diakhiri karena akun ini digunakan untuk login dari perangkat atau browser lain.',
+    SESSION_EXPIRED: 'Sesi Anda telah berakhir. Silakan login kembali.',
+    LOGIN_BLOCKED: 'Terlalu banyak percobaan login gagal. Silakan coba lagi dalam {time}.',
+    LOGGED_OUT: 'Anda telah keluar dengan aman.',
+    ACCESS_FORBIDDEN: 'Anda tidak memiliki izin untuk mengakses halaman ini.',
+  },
+};
 
-    SINGLE_SESSION_MODE: true,           // kebijakan single session
-    ALLOW_MULTIPLE_SESSIONS: false,      // false = login baru mencabut session lama
-    WATCH_401: true,                     // respons 401 global -> logout otomatis
+/**
+ * Gabungkan konfigurasi default dengan override pengguna,
+ * lalu validasi & kunci (freeze) hasilnya.
+ * @param {object} userConfig - override parsial, mis. { INACTIVITY_TIMEOUT: 300000 }
+ * @returns {object} konfigurasi final (frozen)
+ */
+export function configure(userConfig = {}) {
+  const base = JSON.parse(JSON.stringify(DEFAULT_CONFIG)); // deep clone
+  const cfg = deepMerge(base, userConfig);
 
-    /* ------------------------------------------------------------------
-     * TAB PROTECTION
-     * 'allow-same-session' : beberapa tab dalam session sama DIIZINKAN
-     *                        (hanya sinkronisasi logout/aktivitas).
-     * 'single-active-tab'  : hanya satu tab aktif; tab kedua diblokir.
-     * Validasi utama tab/device tetap dilakukan server.
-     * ------------------------------------------------------------------ */
-    TAB_PROTECTION: true,
-    TAB_POLICY: 'allow-same-session',
-
-    /* ------------------------------------------------------------------
-     * CSRF (untuk AUTH_MODE 'cookie')
-     * Token diambil dari: meta tag <meta name="csrf-token">, cookie
-     * CSRF_COOKIE_NAME (double-submit), atau CSRF_TOKEN_ENDPOINT.
-     * Header TIDAK ditambahkan bila aplikasi sudah mengirim header
-     * dengan nama yang sama (tidak bertabrakan dengan system existing).
-     * ------------------------------------------------------------------ */
-    CSRF_PROTECTION: true,
-    CSRF_TOKEN_ENDPOINT: '/security/csrf',
-    CSRF_COOKIE_NAME: 'XSRF-TOKEN',
-    CSRF_HEADER_NAME: 'X-CSRF-Token',
-    CSRF_METHODS: ['POST', 'PUT', 'PATCH', 'DELETE'],
-    CSRF_EXCLUDE_PATHS: [],              // pola path yang dikecualikan
-
-    /* ------------------------------------------------------------------
-     * XSS
-     * XSS_DOM_GUARD: hapus <script> yang disisipkan DINAMIS ke DOM
-     * setelah halaman dimuat (statis milik aplikasi tidak disentuh).
-     * ------------------------------------------------------------------ */
-    XSS_PROTECTION: true,
-    XSS_DOM_GUARD: true,
-
-    /* ------------------------------------------------------------------
-     * SECURITY HEADERS
-     * Header HTTP sebenarnya harus diset di SERVER (lihat
-     * /security/server/ + README bagian 9). File security-headers.js
-     * hanya lapisan tambahan: framebust + meta CSP (opsional).
-     * META_CSP kosong = TIDAK di-set (hindari merusak aplikasi existing).
-     * ------------------------------------------------------------------ */
-    SECURITY_HEADERS: true,
-    FRAMEBUST: true,
-    META_CSP: '',
-
-    /* ------------------------------------------------------------------
-     * ACCESS CONTROL (lapisan frontend — backend tetap wajib memverifikasi)
-     * ROLE_RULES contoh:
-     *   [ { pattern: '/admin/**',      roles: ['admin'] },
-     *     { pattern: '/operator/**',   roles: ['admin', 'operator'] },
-     *     { pattern: '/superadmin/**', roles: ['superadmin'] } ]
-     * ACCESS_FAIL_CLOSED true  = validasi gagal (network error) -> tolak akses
-     * ACCESS_FAIL_CLOSED false = fail-open agar aplikasi tidak rusak (default)
-     * ------------------------------------------------------------------ */
-    ACCESS_CONTROL_ENABLED: true,
-    ACCESS_FAIL_CLOSED: false,
-    ROLE_RULES: [],
-
-    /* ------------------------------------------------------------------
-     * AUDIT LOG
-     * Event di-cache lokal lalu dikirim batch ke AUDIT_REMOTE_ENDPOINT.
-     * Modul TIDAK PERNAH mencatat password/token/secret (auto-redaksi).
-     * ------------------------------------------------------------------ */
-    AUDIT_LOG: true,
-    AUDIT_REMOTE_ENDPOINT: '/security/audit',
-    AUDIT_FLUSH_INTERVAL_SECONDS: 30,
-    AUDIT_LOCAL_MAX: 200,
-    AUDIT_LOCAL_RETENTION_DAYS: 7,
-
-    /* ------------------------------------------------------------------
-     * DEVICE / BROWSER SESSION
-     * ID perangkat acak (bukan fingerprint invasif) dikirim sebagai
-     * header saat login/validasi agar server bisa membedakan perangkat.
-     * ------------------------------------------------------------------ */
-    DEVICE_ID_STORAGE_KEY: 'security_device_id',
-    SEND_DEVICE_ID_HEADER: true,
-    DEVICE_ID_HEADER: 'X-Device-Id',
-
-    /* ------------------------------------------------------------------
-     * PENGHAPUSAN SAAT LOGOUT
-     * Hanya kunci storage milik aplikasi yang AMAN untuk dihapus.
-     * Jangan memasukkan data non-credential di sini. Cookie HttpOnly
-     * dihapus oleh SERVER melalui endpoint logout (bukan dari JS).
-     * ------------------------------------------------------------------ */
-    CLEAR_ON_LOGOUT_KEYS: [],            // contoh: ['accessToken', 'refreshToken']
-
-    /* ------------------------------------------------------------------
-     * INTERNAL (tidak perlu diubah)
-     * ------------------------------------------------------------------ */
-    NOTICE_KEY: 'security_notice',
-    SESSION_INFO_KEY: 'security_session_info',
-    AL_DEADLINE_KEY: 'security_al_deadline',
-    CHANNEL_NAME: 'app-security-channel'
-  };
-
-  /* --------------------------------------------------------------------
-   * Deep merge sederhana untuk SECURITY_CONFIG_OVERRIDES
-   * ------------------------------------------------------------------ */
-  function mergeOverride(target, source) {
-    if (!source || typeof source !== 'object') { return target; }
-    Object.keys(source).forEach(function (key) {
-      var value = source[key];
-      if (Array.isArray(value)) {
-        target[key] = value.slice();           // array: ganti utuh
-      } else if (value && typeof value === 'object') {
-        if (!target[key] || typeof target[key] !== 'object') { target[key] = {}; }
-        mergeOverride(target[key], value);
-      } else if (typeof value !== 'undefined') {
-        target[key] = value;
-      }
-    });
-    return target;
+  // ---- Validasi pencegahan konfigurasi berbahaya ----
+  // Peringatan harus lebih pendek dari timeout itu sendiri.
+  if (cfg.WARNING_BEFORE_LOGOUT >= cfg.INACTIVITY_TIMEOUT) {
+    cfg.WARNING_BEFORE_LOGOUT = Math.max(60 * 1000, Math.floor(cfg.INACTIVITY_TIMEOUT / 3));
+  }
+  if (cfg.WARNING_BEFORE_LOGOUT < 15 * 1000) {
+    cfg.WARNING_BEFORE_LOGOUT = 15 * 1000; // minimal 15 detik agar manusia sempat membaca
   }
 
-  try {
-    if (global.SECURITY_CONFIG_OVERRIDES && typeof global.SECURITY_CONFIG_OVERRIDES === 'object') {
-      mergeOverride(SECURITY_CONFIG, global.SECURITY_CONFIG_OVERRIDES);
-    }
-  } catch (e) { /* abaikan — jangan pernah merusak halaman */ }
+  // Batas login tidak boleh 0/negatif, dan cooldown WAJIB berhingga
+  // (prinsip: hanya blokir sementara, tidak pernah permanen).
+  if (!Number.isFinite(cfg.MAX_LOGIN_ATTEMPTS) || cfg.MAX_LOGIN_ATTEMPTS < 1) {
+    cfg.MAX_LOGIN_ATTEMPTS = 3;
+  }
+  if (!Number.isFinite(cfg.LOGIN_COOLDOWN) || cfg.LOGIN_COOLDOWN <= 0) {
+    cfg.LOGIN_COOLDOWN = 5 * 60 * 1000;
+  }
+  if (!Number.isFinite(cfg.SESSION_DURATION) || cfg.SESSION_DURATION < 5 * 60 * 1000) {
+    cfg.SESSION_DURATION = 60 * 60 * 1000;
+  }
+  if (!Array.isArray(cfg.PROTECTED_ROUTES)) cfg.PROTECTED_ROUTES = DEFAULT_CONFIG.PROTECTED_ROUTES.slice();
+  if (!Array.isArray(cfg.ADMIN_ROUTES)) cfg.ADMIN_ROUTES = DEFAULT_CONFIG.ADMIN_ROUTES.slice();
+  if (!cfg.LOGIN_PAGE) cfg.LOGIN_PAGE = '/login.html';
 
-  global.SECURITY_CONFIG = SECURITY_CONFIG;
-})(window);
+  // Sinkronkan endpoint audit ganda
+  if (!cfg.AUDIT.endpoint && cfg.SERVER.auditEndpoint) {
+    cfg.AUDIT.endpoint = cfg.SERVER.auditEndpoint;
+  }
+
+  return Object.freeze(cfg);
+}

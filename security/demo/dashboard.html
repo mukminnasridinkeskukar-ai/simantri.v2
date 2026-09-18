@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Demo - Security Module</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #f3f4f8; min-height: 100vh; }
+  header { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 14px 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+  header h1 { font-size: 17px; color: #333; }
+  .userbox { font-size: 13px; color: #666; display: flex; gap: 14px; align-items: center; }
+  .logout { background: #d93025; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+  .wrap { max-width: 960px; margin: 24px auto; padding: 0 20px; display: grid; gap: 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px 22px; }
+  .card h2 { font-size: 14px; color: #555; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .stat div { background: #f8f9fc; border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #555; }
+  .stat b { display: block; font-size: 18px; color: #333; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .fast { background: #fff8e1; border: 1px solid #f5a623; color: #8a5a00; font-size: 13px; border-radius: 8px; padding: 12px 14px; line-height: 1.6; }
+  button.act { background: #5b5fd9; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; margin: 4px 6px 4px 0; }
+  button.act.ghost { background: #eee; color: #444; }
+  .xss-out { margin-top: 10px; padding: 10px 12px; border: 1px dashed #cbd0dc; border-radius: 8px; font-size: 13px; color: #333; min-height: 20px; background: #fafbff; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eef0f5; }
+  th { color: #888; font-weight: 600; }
+  .ev { font-family: ui-monospace, monospace; font-size: 11px; background: #f0f1f8; padding: 2px 6px; border-radius: 4px; }
+  a { color: #5b5fd9; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Dashboard Demo — Modul Keamanan Aktif</h1>
+    <div class="userbox">
+      <span id="whoami">…</span>
+      <button class="logout" id="btnLogout">Keluar</button>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div id="fastNote" class="fast" style="display:none">
+      <b>MODE UJI CEPAT AKTIF</b> (?fast=1): auto-logout 60 detik, peringatan 20 detik.
+      Diamkan tab ini dan amati peringatan + logout otomatis. Tambahkan aktivitas (klik/ketik)
+      untuk mereset timer.
+    </div>
+
+    <div class="card">
+      <h2>Status Sesi (detik demi detik)</h2>
+      <div class="stat">
+        <div>Auto-logout dalam<b id="idleLeft">–</b></div>
+        <div>Sesi berakhir dalam<b id="sessLeft">–</b></div>
+        <div>Session ID<b id="sid" style="font-size:12px">–</b></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Uji Proteksi Tab (Fitur 4)</h2>
+      <p style="font-size:13px;color:#555;line-height:1.7">
+        Buka halaman ini di <b>tab baru</b> — sesi tetap sah (tab baru pada sesi yang sama
+        <b>bukan</b> serangan). Tapi jika Anda login ulang sebagai user lain di tab lain,
+        tab-tab lama akan otomatis dicabut sesinya (single session).
+      </p>
+      <div style="margin-top:10px">
+        <button class="act" onclick="window.open(location.href,'_blank')">Buka Tab Baru (sesi sama)</button>
+        <a class="act" style="display:inline-block;text-decoration:none" href="/security/demo/index.html">Ke Halaman Login</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Uji XSS (Fitur 7)</h2>
+      <p style="font-size:13px;color:#555;line-height:1.7">
+        Payload uji: <code style="font-size:12px">&lt;img src=x onerror=alert(1)&gt;&lt;b&gt;Halo&lt;/b&gt;</code>
+      </p>
+      <div style="margin-top:10px">
+        <button class="act" id="btnXssSafe">Tulis dengan safeHTML (disanitasi)</button>
+        <button class="act ghost" id="btnXssRaw">Tulis dengan innerHTML (berbahaya — hanya demo)</button>
+        <button class="act ghost" id="btnXssText">Tulis dengan safeText (textContent)</button>
+      </div>
+      <div id="xssOut" class="xss-out"></div>
+    </div>
+
+    <div class="card">
+      <h2>Audit Log Lokal (Fitur 10)</h2>
+      <p style="font-size:12px;color:#999;margin-bottom:10px">
+        Field sensitif (password/token/secret) otomatis [REDACTED]. Cache lokal kedaluwarsa 7 hari.
+      </p>
+      <table>
+        <thead><tr><th>Waktu</th><th>Event</th><th>Detail</th></tr></thead>
+        <tbody id="auditBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initSecurity } from '../security.js';
+
+    // Mode uji cepat untuk demo: ?fast=1
+    const fast = new URLSearchParams(location.search).has('fast');
+
+    const sec = initSecurity({
+      LOGIN_PAGE: '/security/demo/index.html',
+      PROTECTED_ROUTES: ['/security/demo/dashboard.html', '/security/demo/admin.html'],
+      ADMIN_ROUTES: ['/security/demo/admin.html'],
+      ...(fast ? { INACTIVITY_TIMEOUT: 60 * 1000, WARNING_BEFORE_LOGOUT: 20 * 1000 } : {}),
+    });
+
+    // ---------- Info sesi ----------
+    const session = sec.session.get();
+    if (!sec.session.isValid()) location.replace('/security/demo/index.html?reason=login_required');
+
+    document.getElementById('whoami').textContent =
+      `👤 ${session.userId} (${session.role})`;
+    document.getElementById('sid').textContent = session.sessionId.slice(0, 12) + '…';
+
+    const idleEl = document.getElementById('idleLeft');
+    const sessEl = document.getElementById('sessLeft');
+    setInterval(() => {
+      const idle = Math.max(0, Math.ceil(sec.autoLogout.getRemainingMs() / 1000));
+      const sess = Math.max(0, Math.ceil(sec.session.remainingMs() / 1000));
+      idleEl.textContent = `${Math.floor(idle / 60)}m ${idle % 60}s`;
+      sessEl.textContent = `${Math.floor(sess / 60)}m ${sess % 60}s`;
+    }, 1000);
+
+    document.getElementById('btnLogout').addEventListener('click', () => sec.session.logout('LOGOUT'));
+
+    // ---------- Uji XSS ----------
+    const out = document.getElementById('xssOut');
+    const PAYLOAD = '<img src=x onerror=alert(1)><b>Halo dari payload</b>';
+    document.getElementById('btnXssSafe').addEventListener('click', () => sec.xss.safeHTML(out, PAYLOAD));
+    document.getElementById('btnXssText').addEventListener('click', () => sec.xss.safeText(out, PAYLOAD));
+    document.getElementById('btnXssRaw').addEventListener('click', () => {
+      // TIDAK direkomendasikan — ini untuk menunjukkan bedanya secara nyata.
+      out.innerHTML = PAYLOAD;
+    });
+
+    // ---------- Audit log ----------
+    function renderAudit() {
+      const tbody = document.getElementById('auditBody');
+      tbody.innerHTML = '';
+      const logs = sec.audit.get().slice(-15).reverse();
+      for (const log of logs) {
+        const tr = document.createElement('tr');
+        const td1 = document.createElement('td');
+        td1.textContent = new Date(log.ts).toLocaleTimeString('id-ID');
+        const td2 = document.createElement('td');
+        const span = document.createElement('span');
+        span.className = 'ev'; span.textContent = log.event;
+        td2.appendChild(span);
+        const td3 = document.createElement('td');
+        td3.textContent = JSON.stringify(log.detail).slice(0, 80);
+        tr.append(td1, td2, td3);
+        tbody.appendChild(tr);
+      }
+    }
+    renderAudit();
+    setInterval(renderAudit, 3000);
+  </script>
+</body>
+</html>

@@ -1,122 +1,137 @@
-/* ============================================================================
- * /security/csrf.js — PROTEKSI CSRF
- * ----------------------------------------------------------------------------
- * Aktif relevan untuk AUTENTIKASI BERBASIS COOKIE. Bila AUTH_MODE = 'jwt'
- * (token dikirim via header Authorization), risiko CSRF jauh lebih rendah
- * dan modul ini otomatis nonaktif agar tidak bertentangan dengan sistem
- * autentikasi existing.
+/**
+ * ============================================================
+ * SECURITY MODULE - csrf.js
+ * ============================================================
+ * FITUR 8: Proteksi CSRF (double-submit cookie).
  *
- * CARA KERJA (frontend):
- *  1. Token diambil berurutan dari:
- *     a. <meta name="csrf-token" content="...">  (bila aplikasi meletakkannya)
- *     b. Cookie CSRF_COOKIE_NAME (pola double-submit cookie)
- *     c. GET CSRF_TOKEN_ENDPOINT -> JSON { token: "..." }
- *  2. Semua request state-changing (CSRF_METHODS) SAME-ORIGIN otomatis
- *     diberi header CSRF_HEADER_NAME.
+ * Cara kerja:
+ * 1. Pastikan cookie CSRF acak ada (dibuat lokal, HttpOnly tidak
+ *    mungkin dari JS - server sebaiknya mengatur cookie aslinya).
+ * 2. Patch window.fetch & XMLHttpRequest agar otomatis menyertakan
+ *    header X-CSRF-Token pada request MUTASI same-origin.
+ * 3. Server (security-server.js / backend Anda) membandingkan
+ *    header vs cookie -> cocok baru diproses.
  *
- * KOMPATIBILITAS:
- *  - Header TIDAK ditambahkan bila aplikasi sudah mengirim header dengan
- *    nama yang sama (tidak menimpa mekanisme CSRF existing).
- *  - CSRF_EXCLUDE_PATHS dapat membebaskan path tertentu.
- *  - Verifikasi token dilakukan di SERVER (lihat /security/server/).
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * KEJUJURAN ARSITEKTUR:
+ * - Hanya relevan untuk autentikasi berbasis cookie. Jika aplikasi
+ *   memakai Authorization header (Bearer), CSRF tidak menjadi
+ *   vektor utama - modul tetap aman dipasang.
+ * - Patch dibuat selektif (same-origin saja) agar TIDAK
+ *   mengganggu API pihak ketiga yang sudah ada.
+ * ============================================================
+ */
 
-  var NS = global.AppSecurity = global.AppSecurity || {};
-  var CFG = global.SECURITY_CONFIG || {};
-  var U = NS.utils || {};
-  var log = NS.log || function () {};
+import { generateId, isBrowser } from './utils.js';
 
-  var token = '';
-  var fetchAttempted = false;
+let config = null;
+let patched = false;
 
-  function readMetaTag() {
-    try {
-      var meta = document.querySelector('meta[name="csrf-token"]');
-      return meta ? (meta.getAttribute('content') || '') : '';
-    } catch (e) { return ''; }
+export function initCsrf(cfg) {
+  if (!isBrowser() || patched) return;
+  config = cfg;
+  if (!config.CSRF.enabled) return;
+  getCsrfToken(); // pastikan cookie token CSRF sudah ada sejak awal
+  patchFetch();
+  patchXHR();
+  patched = true;
+}
+
+/** Ambil token CSRF (buat jika belum ada). */
+export function getCsrfToken() {
+  if (!isBrowser()) return '';
+  let token = readCookie(config?.CSRF?.cookieName || 'sec_csrf');
+  if (!token) {
+    token = generateId(32);
+    // Cookie dibaca JS (bukan HttpOnly) karena pola double-submit.
+    // Keamanan token ini tidak rahasia - yang penting server
+    // membandingkan cookie vs header (attacker situs lain tidak
+    // bisa MEMBACA cookie -> tidak bisa menempel header).
+    document.cookie = `${config?.CSRF?.cookieName || 'sec_csrf'}=${token}; path=/; SameSite=Lax`;
   }
+  return token;
+}
 
-  function readCookie(name) {
+/**
+ * Wrapper fetch yang PASTI menyertakan header CSRF
+ * (untuk kode baru; fetch global sudah dipatch otomatis).
+ */
+export function secureFetch(url, options = {}) {
+  const headers = new Headers(options.headers || {});
+  headers.set(config?.CSRF?.headerName || 'X-CSRF-Token', getCsrfToken());
+  return fetch(url, { ...options, headers, credentials: options.credentials || 'same-origin' });
+}
+
+// ------------------------------------------------------------ internal ----
+
+function readCookie(name) {
+  const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name.replace(/[-_]/g, '\\$&') + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function isSameOrigin(url) {
+  try {
+    const u = new URL(url, location.href);
+    return u.origin === location.origin;
+  } catch { return false; }
+}
+
+function needsCsrfHeader(url, method) {
+  if (!config?.CSRF?.enabled) return false;
+  const m = (method || 'GET').toUpperCase();
+  if (!config.CSRF.protectedMethods.includes(m)) return false;
+  if (!isSameOrigin(url)) return false; // API pihak ketiga: jangan disentuh
+  return true;
+}
+
+function patchFetch() {
+  if (typeof window.fetch !== 'function') return;
+  const originalFetch = window.fetch.bind(window);
+  const headerName = config.CSRF.headerName;
+
+  window.fetch = function patchedFetch(input, init) {
     try {
-      var parts = String(document.cookie || '').split(';');
-      for (var i = 0; i < parts.length; i++) {
-        var kv = parts[i].trim();
-        var eq = kv.indexOf('=');
-        if (eq === -1) { continue; }
-        if (kv.slice(0, eq) === name) { return decodeURIComponent(kv.slice(eq + 1)); }
+      let url = '';
+      let method = init?.method;
+
+      if (typeof input === 'string' || input instanceof URL) {
+        url = String(input);
+      } else if (input instanceof Request) {
+        url = input.url;
+        method = method || input.method;
       }
-    } catch (e) { /* noop */ }
-    return '';
-  }
 
-  function fetchFromEndpoint() {
-    if (fetchAttempted || !CFG.CSRF_TOKEN_ENDPOINT || !U.netFetch) { return Promise.resolve(''); }
-    fetchAttempted = true;
-    return U.netFetch(CFG.CSRF_TOKEN_ENDPOINT, { method: 'GET' })
-      .then(function (resp) {
-        if (!resp || !resp.ok) { return ''; }
-        return resp.json();
-      })
-      .then(function (data) {
-        var t = (data && (data.token || data.csrfToken || data.csrf)) || '';
-        if (t) { setToken(t); }
-        return t;
-      })
-      .catch(function () { return ''; });
-  }
+      if (needsCsrfHeader(url, method)) {
+        init = init ? { ...init } : {};
+        const headers = new Headers(init.headers || (input instanceof Request ? input.headers : undefined));
+        if (!headers.has(headerName)) {
+          headers.set(headerName, getCsrfToken());
+        }
+        init.headers = headers;
+      }
+    } catch { /* bermasalah? lanjutkan tanpa header - jangan pecahkan aplikasi */ }
 
-  function getToken() { return token; }
-
-  function setToken(t) {
-    token = String(t || '');
-    if (token) { log('CSRF token diperbarui'); }
-  }
-
-  // Panggil ulang bila server melakukan rotasi token (mis. setelah login).
-  function refreshToken() {
-    fetchAttempted = false;
-    return fetchFromEndpoint();
-  }
-
-  function isExcluded(path) {
-    return U.matchesPath ? U.matchesPath(path, CFG.CSRF_EXCLUDE_PATHS || []) : false;
-  }
-
-  /* ------------------------- Hook request global ------------------------- */
-  function installRequestHook() {
-    if (!U.Interceptors) { return; }
-    U.Interceptors.addRequestHook(function (ctx) {
-      try {
-        if (!token) { return; }                                    // belum ada token
-        if (CFG.CSRF_METHODS.indexOf(ctx.method) === -1) { return; }
-        if (!ctx.isSameOrigin) { return; }
-        if (isExcluded(U.normalizeUrl ? U.normalizeUrl(ctx.url) : ctx.url)) { return; }
-        ctx.setHeader(CFG.CSRF_HEADER_NAME, token);                 // tidak menimpa header aplikasi
-      } catch (e) { log('csrf hook error:', e && e.message); }
-    });
-  }
-
-  /* ------------------------------- Init ---------------------------------- */
-  function init() {
-    if (CFG.CSRF_PROTECTION === false) { log('CSRF nonaktif (config)'); return; }
-    if (CFG.AUTH_MODE === 'jwt') {
-      log('AUTH_MODE=jwt — CSRF dinonaktifkan (bearer token tidak rentan CSRF)');
-      return;
-    }
-    // 1) meta tag  2) cookie double-submit
-    var t = readMetaTag() || readCookie(CFG.CSRF_COOKIE_NAME);
-    if (t) { setToken(t); }
-    else { fetchFromEndpoint(); }
-    installRequestHook();
-    log('csrf siap');
-  }
-
-  NS.CSRF = {
-    init: init,
-    getToken: getToken,
-    setToken: setToken,
-    refreshToken: refreshToken
+    return originalFetch(input, init);
   };
-})(window);
+}
+
+function patchXHR() {
+  if (typeof XMLHttpRequest === 'undefined') return;
+  const headerName = config.CSRF.headerName;
+  const origOpen = XMLHttpRequest.prototype.open;
+
+  XMLHttpRequest.prototype.open = function patchedOpen(method, url, ...rest) {
+    this.__secUrl = url;
+    this.__secMethod = method;
+    return origOpen.call(this, method, url, ...rest);
+  };
+
+  const origSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function patchedSend(body) {
+    try {
+      if (needsCsrfHeader(this.__secUrl, this.__secMethod)) {
+        this.setRequestHeader(headerName, getCsrfToken());
+      }
+    } catch { /* noop */ }
+    return origSend.call(this, body);
+  };
+}

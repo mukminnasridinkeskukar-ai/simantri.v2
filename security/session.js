@@ -1,312 +1,303 @@
-/* ============================================================================
- * /security/session.js — SESSION SECURITY
- * ----------------------------------------------------------------------------
- * Tanggung jawab:
- *  - Memeriksa & memvalidasi session (berkala + saat halaman dibuka)
- *  - Memeriksa expiration (cookie session: lewat server; JWT: cek exp lokal
- *    bersifat advisory — VALIDASI SEBENARNYA SELALU DI BACKEND)
- *  - Mendeteksi session tidak valid / kedaluwarsa / dicabut (conflict)
- *  - Menangani logout terpusat (server + pembersihan + audit + redirect)
- *  - Menolak halaman protected tanpa session valid (bersama access-control)
- *  - Notifikasi rotasi session (bila server memberi tanda `rotated`)
+/**
+ * ============================================================
+ * SECURITY MODULE - session.js
+ * ============================================================
+ * FITUR 3: Keamanan sesi.
+ * - createSession(): catat sesi baru setelah login berhasil
+ * - isSessionValid() / getActiveSession(): validasi kedaluwarsa
+ * - rotateSession(): rotasi sessionId & ticket berkala
+ * - endSession(): logout aman (hapus kredensial lokal, audit,
+ *   broadcast ke tab lain, lapor server, redirect ke login)
  *
- * Cookie session yang disarankan di server: Secure; HttpOnly; SameSite=Lax
- * (atau Strict); dengan expiration sesuai kebutuhan. JS TIDAK bisa membaca
- * cookie HttpOnly — justru itu yang aman; validasi dilakukan via endpoint.
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * Kredensial yang disimpan di browser HANYA berupa metadata
+ * sesi (sessionId, ticket, userId, role, waktu) - BUKAN
+ * password, BUKAN token server. Token akses milik aplikasi
+ * tidak pernah disentuh modul ini.
+ *
+ * KEJUJURAN ARSITEKTUR:
+ * - Validasi struktur & kedaluwarsa di sini bersifat lokal.
+ * - Verifikasi keaslian sesi WAJIB di server (JWT/cookie
+ *   diverifikasi backend). Gunakan SERVER.heartbeatEndpoint
+ *   agar client mengecek sesi ke server secara berkala.
+ * ============================================================
+ */
 
-  var NS = global.AppSecurity = global.AppSecurity || {};
-  var CFG = global.SECURITY_CONFIG || {};
-  var U = NS.utils || {};
-  var log = NS.log || function () {};
-  var audit = function (ev, det, sev) { return NS.audit && NS.audit(ev, det, sev); };
+import {
+  KEYS, SECURITY_EVENTS, on, emit, isBrowser, generateId,
+  jsonGet, jsonSet, jsonRemove,
+  showSecurityOverlay,
+} from './utils.js';
+import { audit, AUDIT_EVENTS } from './audit-log.js';
+import { clearLoginAttempts } from './login-protection.js';
 
-  var state = {
-    status: 'unknown',            // 'unknown' | 'valid' | 'invalid' | 'revoked'
-    info: null,                   // { user, roles, expiresAt, ... } tanpa token!
-    lastCheck: 0,
-    checkTimer: null,
-    checking: false
+let config = null;
+let serverVerifyTimer = null;
+
+/** Alasan akhir sesi -> event audit */
+const REASON_TO_AUDIT = Object.freeze({
+  LOGOUT: AUDIT_EVENTS.LOGOUT,
+  AUTO_LOGOUT: AUDIT_EVENTS.AUTO_LOGOUT,
+  SESSION_EXPIRED: AUDIT_EVENTS.SESSION_EXPIRED,
+  SESSION_REVOKED: AUDIT_EVENTS.SESSION_REVOKED,
+});
+
+/** Pesan overlay per alasan */
+const REASON_TO_MESSAGE = Object.freeze({
+  LOGOUT: 'LOGGED_OUT',
+  AUTO_LOGOUT: 'SESSION_TIMEOUT',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
+  SESSION_REVOKED: 'SESSION_REVOKED',
+});
+
+export function initSessionSecurity(cfg) {
+  if (config) return; // idempoten
+  config = cfg;
+  startServerVerificationIfConfigured();
+}
+
+// ------------------------------------------------------------
+// Membuat & membaca sesi
+// ------------------------------------------------------------
+
+/**
+ * Catat sesi baru SETELAH autentikasi berhasil di server.
+ * @param {object} data - { userId, role } (opsional)
+ * @returns {object} rekaman sesi
+ */
+export function createSession(data = {}) {
+  if (!isBrowser()) return null;
+
+  // "Login terbaru menang": naikkan versi sesi global.
+  // Tab/perangkat lain yang memakai versi lebih lama akan
+  // mendeteksi ketidakcocokan dan mencabut sesinya sendiri.
+  const prevVersion = parseInt(localStorage.getItem(KEYS.SESSION_VERSION) || '0', 10) || 0;
+  const version = prevVersion + 1;
+
+  const now = Date.now();
+  const session = {
+    sessionId: generateId(24),
+    ticket: generateId(32),
+    userId: data.userId || null,
+    role: data.role || 'user',
+    loginAt: now,
+    expiresAt: now + (config ? config.SESSION_DURATION : 60 * 60 * 1000),
+    version,
+    createdOn: location.hostname,
   };
-  var logoutInProgress = false;
-  var rotationListeners = [];
 
-  /* ------------------------- Info session lokal -------------------------- */
-  // Disimpan di sessionStorage (per tab, hilang saat browser ditutup).
-  // HANYA metadata non-sensitif: nama/role/waktu kedaluwarsa. TANPA token.
-  function saveInfo(info) {
-    state.info = info || null;
-    U.storage && U.storage.sessionSet(CFG.SESSION_INFO_KEY, JSON.stringify(info || {}));
-  }
-  function loadInfo() {
-    var raw = U.storage ? U.storage.sessionGet(CFG.SESSION_INFO_KEY) : null;
-    if (!raw) { return null; }
-    try { return JSON.parse(raw); } catch (e) { return null; }
-  }
-  function clearInfo() {
-    state.info = null;
-    U.storage && U.storage.sessionRemove(CFG.SESSION_INFO_KEY);
-  }
+  localStorage.setItem(KEYS.SESSION_VERSION, String(version));
+  jsonSet(KEYS.SESSION, session);
+  // Tiket per-tab: tab ini sah. Tab BARU nanti boleh mengklaim
+  // sesi yang sama (bukan dianggap serangan) - lihat tab-protection.js
+  // PENTING: simpan tiket sebagai STRING MENTAH (bukan JSON) agar
+  // perbandingan dengan sessionStorage.getItem() selalu konsisten.
+  sessionStorage.setItem(KEYS.TAB_TICKET, session.ticket);
 
-  /* --------------------------- JWT (advisory) ----------------------------- */
-  function decodeJwtPayload(jwt) {
+  clearLoginAttempts(); // login sukses -> reset penghitung gagal
+  audit(AUDIT_EVENTS.LOGIN_SUCCESS, { role: session.role }, { userId: session.userId });
+  emit(SECURITY_EVENTS.SESSION_CREATED, { ...session });
+  return session;
+}
+
+/** Ambil sesi aktif (tanpa memvalidasi kedaluwarsa). */
+export function getActiveSession() {
+  if (!isBrowser()) return null;
+  const s = jsonGet(KEYS.SESSION);
+  if (!s || typeof s !== 'object' || !s.sessionId) return null;
+  return s;
+}
+
+/** Struktur sesi sah? (validasi lokal, bukan pengganti verifikasi server) */
+export function verifySessionStructure(s) {
+  return !!s
+    && typeof s.sessionId === 'string' && s.sessionId.length >= 16
+    && typeof s.ticket === 'string' && s.ticket.length >= 16
+    && Number.isFinite(s.expiresAt)
+    && Number.isFinite(s.version);
+}
+
+/** Sesi aktif dan belum kedaluwarsa? */
+export function isSessionValid() {
+  const s = getActiveSession();
+  if (!s || !verifySessionStructure(s)) return false;
+  return Date.now() < s.expiresAt;
+}
+
+/** Sisa masa berlaku sesi (ms). */
+export function getSessionRemainingMs() {
+  const s = getActiveSession();
+  return s ? Math.max(0, s.expiresAt - Date.now()) : 0;
+}
+
+// ------------------------------------------------------------
+// Klaim tiket per-tab (FITUR 4 - bagian 1)
+// ------------------------------------------------------------
+
+/**
+ * Klaim sesi untuk tab ini.
+ * - Tab baru (sessionStorage kosong) pada sesi yang masih sah
+ *   -> BOLEH klaim (membuka tab baru BUKAN serangan).
+ * - Sesi tidak ada / kedaluwarsa -> tidak ada yang bisa diklaim.
+ * @returns {boolean} true jika tab ini kini memiliki sesi sah
+ */
+export function claimSessionForTab() {
+  if (!isBrowser()) return false;
+  const session = getActiveSession();
+  if (!session || !isSessionValid()) return false;
+
+  const myTicket = sessionStorage.getItem(KEYS.TAB_TICKET);
+  if (myTicket === session.ticket) return true;   // tab ini sudah sah
+  if (myTicket && myTicket !== session.ticket) {
+    // Tiket tab tidak cocok dengan sesi global saat ini:
+    // sesi sudah diganti login yang lebih baru -> tab ini dicabut.
+    endSession('SESSION_REVOKED');
+    return false;
+  }
+  // Tab baru yang sah: klaim tiket sesi global (string mentah, bukan JSON)
+  sessionStorage.setItem(KEYS.TAB_TICKET, session.ticket);
+  return true;
+}
+
+// ------------------------------------------------------------
+// Rotasi sesi
+// ------------------------------------------------------------
+
+/**
+ * Rotasi sessionId & ticket (mempertahankan identitas & expiry).
+ * Dipanggil berkala oleh initSessionSecurity. Rotasi ID sesi
+ * yang SEBENARNYA (cookie/JWT baru) harus dilakukan server.
+ * @param {boolean} force - paksa rotasi walau belum waktunya
+ */
+export function rotateSession(force = false) {
+  const s = getActiveSession();
+  if (!s || !isSessionValid()) return false;
+
+  const interval = config ? config.SESSION_ROTATION_INTERVAL : 30 * 60 * 1000;
+  const age = Date.now() - (s.lastRotatedAt || s.loginAt);
+  if (!force && age < interval) return false;
+
+  s.sessionId = generateId(24); // rotasi ID sesi
+  // CATATAN: ticket SENGAJA tidak diubah — tiket adalah "identitas keluarga
+  // sesi" agar tab-tab lain dalam sesi yang sama tidak tercabut oleh rotasi.
+  // Login BARU selalu membuat tiket baru (itulah pembedanya).
+  s.lastRotatedAt = Date.now();
+  jsonSet(KEYS.SESSION, s);
+
+  audit(AUDIT_EVENTS.SENSITIVE_ACTION, { action: 'SESSION_ROTATED' }, { userId: s.userId });
+  emit(SECURITY_EVENTS.SESSION_ROTATED, { sessionId: s.sessionId });
+  return true;
+}
+
+// ------------------------------------------------------------
+// Mengakhiri sesi (logout manual / otomatis / dicabut)
+// ------------------------------------------------------------
+
+/**
+ * Akhiri sesi dengan aman.
+ * @param {'LOGOUT'|'AUTO_LOGOUT'|'SESSION_EXPIRED'|'SESSION_REVOKED'} reason
+ * @param {object} opts - { notify: boolean=true, redirect: boolean=true }
+ */
+export function endSession(reason = 'LOGOUT', opts = {}) {
+  if (!isBrowser()) return;
+
+  const session = getActiveSession();
+  const myTicket = sessionStorage.getItem(KEYS.TAB_TICKET);
+
+  // 1) Hapus jejak kredensial lokal.
+    // Rekaman sesi global dihapus HANYA jika sesi itu milik tab ini.
+  // Saat tab ini dicabut KARENA login baru menggantikan (SESSION_REVOKED),
+  // rekaman global adalah milik login baru — TIDAK boleh dihapus,
+  // agar tab yang melakukan login baru tetap sah.
+  if (!session || (myTicket && session.ticket === myTicket)) {
+    jsonRemove(KEYS.SESSION);
+  }
+  // Tiket tab ini selalu dihapus (identitas per-tab milik kita).
+  sessionStorage.removeItem(KEYS.TAB_TICKET);
+  // Apakah tab ini pemilik rekaman sesi global?
+  // - Ya  -> logout bersama: rekaman dihapus & saudara se-session ikut diakhiri.
+  // - Tidak -> tab ini HANYA dicabut karena login baru menggantikan;
+  //   rekaman global (milik login baru) tidak disentuh dan TIDAK
+  //   boleh menyiarkan "logout" atas nama sesi milik orang lain.
+  const ownedGlobal = !session || !!(myTicket && session.ticket === myTicket);
+  const mySessionId = session ? session.sessionId : null;
+
+  // 2) Audit (SEBELUM emit, agar listener yang melakukan navigasi tetap aman)
+  const auditEvent = REASON_TO_AUDIT[reason] || AUDIT_EVENTS.LOGOUT;
+  audit(auditEvent, { reason }, { userId: session ? session.userId : null });
+
+  // 3) Beri tahu tab lain. Untuk revoke eksternal (bukan pemilik rekaman
+  //    global), broadcast tidak diperlukan — storage event sudah
+  //    menjangkau tab-tab saudara yang memegang sesi lama.
+  emit(SECURITY_EVENTS.LOGOUT, { reason, sessionId: mySessionId, ownedGlobal });
+
+  // 4) Laporkan ke server (opsional, tidak menunggu jawaban)
+  const logoutEndpoint = config?.SERVER?.logoutEndpoint;
+  if (ownedGlobal && logoutEndpoint && typeof navigator.sendBeacon === 'function') {
     try {
-      var part = String(jwt).split('.')[1];
-      if (!part) { return null; }
-      var b64 = part.replace(/-/g, '+').replace(/_/g, '/');
-      var json = decodeURIComponent(escape(atob(b64)));
-      return JSON.parse(json);
-    } catch (e) { return null; }
-  }
-  // HANYA cek waktu kedaluwarsa lokal. Tanda tangan & keabsahan token
-  // DIVALIDASI DI BACKEND — lokal tidak pernah bisa dipercaya.
-  function jwtExpired() {
-    if (CFG.AUTH_MODE !== 'jwt' || !CFG.JWT_STORAGE_KEY) { return false; }
-    var token = U.storage ? U.storage.get(CFG.JWT_STORAGE_KEY) : null;
-    if (!token) { return true; }                 // tidak ada token = tidak valid
-    var payload = decodeJwtPayload(token);
-    if (!payload || !payload.exp) { return false; } // tak bisa dibaca → serahkan ke server
-    return (payload.exp * 1000) <= Date.now();
+      const blob = new Blob([JSON.stringify({ reason, sessionId: mySessionId })], { type: 'application/json' });
+      navigator.sendBeacon(logoutEndpoint, blob);
+    } catch { /* noop */ }
   }
 
-  /* ----------------------------- Validasi -------------------------------- */
-  function validate(force) {
-    // Cek cepat tanpa jaringan
-    if (!force) {
-      if (jwtExpired()) {
-        handleUnauthorized('token_expired');
-        return Promise.resolve({ valid: false, reason: 'token_expired' });
-      }
-      var cachedAge = (Date.now() - state.lastCheck) / 1000;
-      if (state.status === 'valid' && cachedAge < (CFG.SESSION_CACHE_SECONDS || 30)) {
-        return Promise.resolve({ valid: true, cached: true, info: state.info });
-      }
-    }
-    if (!CFG.SESSION_VALIDATE_ENDPOINT) {
-      // Mode degradasi: endpoint belum tersedia. Jangan blokir aplikasi;
-      // andalkan penanda lokal (masih dianggap "belum terverifikasi" —
-      // keandalan penuh tetap ditangguhkan ke backend, lihat README).
-      var hasMarker = !!(U.storage && U.storage.sessionGet(CFG.SESSION_INFO_KEY));
-      log('validate dilewati: SESSION_VALIDATE_ENDPOINT kosong');
-      return Promise.resolve({ valid: hasMarker || state.status === 'valid', unknown: true });
-    }
-    if (state.checking) {
-      return Promise.resolve({ valid: state.status === 'valid', pending: true });
-    }
-    state.checking = true;
-    return U.netFetch(CFG.SESSION_VALIDATE_ENDPOINT, { method: 'GET' })
-      .then(function (resp) {
-        state.lastCheck = Date.now();
-        if (resp.status === 200) {
-          return resp.json().catch(function () { return {}; }).then(function (data) {
-            state.status = 'valid';
-            saveInfo({
-              user: (data && (data.user || data.username)) || null,
-              roles: (data && data.roles) || [],
-              expiresAt: (data && data.expiresAt) || null,
-              ts: Date.now()
-            });
-            if (data && data.rotated && rotationListeners.length) {
-              rotationListeners.forEach(function (cb) {
-                try { cb(); } catch (e) { log('rotation listener error:', e); }
-              });
-            }
-            return { valid: true, info: state.info };
-          });
-        }
-        if (resp.status === 409 || resp.status === 423) {
-          state.status = 'revoked';
-          handleUnauthorized('revoked');                 // session conflict / device lain
-          return { valid: false, reason: 'revoked' };
-        }
-        if (resp.status === 401 || resp.status === 403) {
-          state.status = 'invalid';
-          handleUnauthorized('expired');
-          return { valid: false, reason: 'expired' };
-        }
-        // 5xx / lainnya: jangan logout (server bermasalah, bukan session)
-        log('validate status tak terduga:', resp.status);
-        return { valid: state.status === 'valid', unknown: true };
-      })
-      .catch(function () {
-        // Network error / offline: JANGAN logout agar aplikasi tidak rusak.
-        log('validate gagal (network) — diulang pada interval berikutnya');
-        return { valid: state.status === 'valid', unknown: true };
-      })
-      .then(function (result) {
-        state.checking = false;
-        return result;
-      });
-  }
+  // 5) Notifikasi + redirect ke halaman login
+  const notify = opts.notify !== false;
+  const redirect = opts.redirect !== false;
+  const messageKey = REASON_TO_MESSAGE[reason] || 'LOGGED_OUT';
+  const message = (config?.MESSAGES?.[messageKey] || config?.MESSAGES?.LOGGED_OUT || 'Anda telah keluar.');
 
-  /* ------------------------- Pengamat 401 global -------------------------- */
-  function installHttpWatcher() {
-    if (!U.Interceptors || CFG.WATCH_401 === false) { return; }
-    U.Interceptors.addResponseHook(function (ctx) {
-      try {
-        if (!ctx.isSameOrigin) { return; }
-        if (ctx.status !== 401) { return; }
-        var path = U.normalizeUrl ? U.normalizeUrl(ctx.rawUrl || ctx.url) : ctx.url;
-        // Abaikan endpoint yang jelas bukan indikasi session mati
-        if (path && CFG.LOGIN_ENDPOINT && path.indexOf(U.normalizeUrl(CFG.LOGIN_ENDPOINT)) === 0) { return; }
-        if (path && CFG.SESSION_VALIDATE_ENDPOINT && path.indexOf(U.normalizeUrl(CFG.SESSION_VALIDATE_ENDPOINT)) === 0) { return; }
-        if (path && CFG.SESSION_LOGOUT_ENDPOINT && path.indexOf(U.normalizeUrl(CFG.SESSION_LOGOUT_ENDPOINT)) === 0) { return; }
-        if (state.status === 'valid' || state.status === 'unknown') {
-          log('HTTP 401 terdeteksi dari', path, '— session dianggap berakhir');
-          state.status = 'invalid';
-          handleUnauthorized('http401');
-        }
-      } catch (e) { log('401 watcher error:', e && e.message); }
+  if (notify) {
+    const tone = reason === 'SESSION_REVOKED' || reason === 'SESSION_EXPIRED' ? 'danger' : 'info';
+    showSecurityOverlay(message, {
+      title: 'Keamanan Sesi',
+      tone,
     });
   }
 
-  /* ------------------------------ Logout ---------------------------------- */
-  // Alur sesuai spesifikasi: validasi -> invalidasi server -> bersihkan
-  // credential aman -> logout -> redirect -> notifikasi.
-  function logout(options) {
-    options = options || {};
-    if (logoutInProgress) { return; }
-    logoutInProgress = true;
-    var reason = options.reason || 'user';           // 'user'|'inactivity'|'expired'|'revoked'|'remote'
-    var notice = options.notice || '';
-
-    try { audit(options.auditEvent || NS.AuditLog.EVENTS.LOGOUT, { reason: reason }, reason === 'inactivity' ? 'warn' : 'info'); } catch (e) { /* noop */ }
-
-    // 1) Invalidasi session di server (fire-and-forget, maks 3 detik)
-    if (CFG.SESSION_LOGOUT_ENDPOINT) {
+  if (redirect && config) {
+    const delay = opts.redirectDelay !== undefined ? opts.redirectDelay : config.REDIRECT_DELAY;
+    setTimeout(() => {
       try {
-        U.netFetch(CFG.SESSION_LOGOUT_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: reason })
-        }).catch(function () { /* best-effort */ });
-      } catch (e) { /* noop */ }
-    }
-
-    // 2) Bersihkan credential/token yang AMAN dihapus dari sisi browser
-    try {
-      (CFG.CLEAR_ON_LOGOUT_KEYS || []).forEach(function (key) {
-        U.storage && U.storage.remove(key);
-        U.storage && U.storage.sessionRemove(key);
-      });
-      if (CFG.AUTH_MODE === 'jwt' && CFG.JWT_STORAGE_KEY) {
-        U.storage && U.storage.remove(CFG.JWT_STORAGE_KEY);
-        U.storage && U.storage.sessionRemove(CFG.JWT_STORAGE_KEY);
+        const url = new URL(config.LOGIN_PAGE, location.origin);
+        url.searchParams.set('reason', reason.toLowerCase());
+        window.location.assign(url.toString());
+      } catch {
+        window.location.assign(config.LOGIN_PAGE);
       }
-    } catch (e) { /* noop */ }
-    clearInfo();
-
-    // 3) Perintahkan tab lain ikut logout (sinkron antar-tab)
-    try { NS.TabProtection && NS.TabProtection.broadcastLogout(notice); } catch (e) { /* noop */ }
-
-    // 4) Notifikasi ditampilkan di halaman tujuan
-    if (notice) { U.storage && U.storage.sessionSet(CFG.NOTICE_KEY, notice); }
-
-    // 5) Redirect ke halaman login (bawa URL asal agar bisa kembali)
-    var loginUrl = CFG.LOGIN_URL || '/';
-    if (U.isPublicPage && U.isPublicPage()) {
-      logoutInProgress = false;                      // sudah di halaman publik
-      if (notice) { U.toast(notice, 'warn'); }
-      return;
-    }
-    try {
-      var next = encodeURIComponent(global.location.pathname + global.location.search);
-      var sep = loginUrl.indexOf('?') === -1 ? '?' : '&';
-      global.location.href = loginUrl + sep + 'reason=' + encodeURIComponent(reason) + '&next=' + next;
-    } catch (e) {
-      global.location.href = loginUrl;
-    }
+    }, delay);
   }
+}
 
-  function applyRemoteLogout(notice) {
-    // Dipanggil dari tab lain (TabProtection) — server sudah/p akan
-    // menginvalidasi session; di sini cukup bersihkan & redirect.
-    if (logoutInProgress) { return; }
-    logoutInProgress = true;
-    clearInfo();
+// ------------------------------------------------------------
+// Verifikasi sesi ke server (opsional namun disarankan)
+// ------------------------------------------------------------
+
+/**
+ * Jika SERVER.heartbeatEndpoint diisi, client bertanya ke server
+ * secara berkala: "apakah sesi ini masih sah?" Server menjawab
+ * { valid: false, reason: 'SESSION_REVOKED' } jika login lebih
+ * baru telah menggantikan sesi ini (single session lintas
+ * perangkat yang SEBENARNYA).
+ */
+function startServerVerificationIfConfigured() {
+  if (serverVerifyTimer) return;
+  const endpoint = config?.SERVER?.heartbeatEndpoint;
+  if (!endpoint) return; // belum terintegrasi backend -> lewati diam-diam
+
+  serverVerifyTimer = setInterval(async () => {
+    const s = getActiveSession();
+    if (!s || !isSessionValid()) return;
     try {
-      (CFG.CLEAR_ON_LOGOUT_KEYS || []).forEach(function (key) {
-        U.storage && U.storage.remove(key);
-        U.storage && U.storage.sessionRemove(key);
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ sessionId: s.sessionId, userId: s.userId }),
       });
-    } catch (e) { /* noop */ }
-    if (notice) { U.storage && U.storage.sessionSet(CFG.NOTICE_KEY, notice); }
-    global.location.href = CFG.LOGIN_URL || '/';
-  }
-
-  /* --------------------- Penanganan tidak valid --------------------------- */
-  var REASON_NOTICES = {
-    expired: 'Sesi Anda telah berakhir. Silakan login kembali.',
-    token_expired: 'Sesi Anda telah berakhir. Silakan login kembali.',
-    http401: 'Sesi Anda tidak lagi valid. Silakan login kembali.',
-    revoked: 'Akun Anda digunakan di perangkat/browser lain. Sesi ini telah dicabut. Silakan login kembali.'
-  };
-  function handleUnauthorized(type) {
-    if (logoutInProgress) { return; }
-    var eventMap = {
-      expired: NS.AuditLog && NS.AuditLog.EVENTS.SESSION_EXPIRED,
-      token_expired: NS.AuditLog && NS.AuditLog.EVENTS.SESSION_EXPIRED,
-      http401: NS.AuditLog && NS.AuditLog.EVENTS.SESSION_EXPIRED,
-      revoked: NS.AuditLog && NS.AuditLog.EVENTS.SESSION_REVOKED
-    };
-    var notice = REASON_NOTICES[type] || REASON_NOTICES.expired;
-    logout({
-      reason: type === 'revoked' ? 'revoked' : 'expired',
-      notice: notice,
-      auditEvent: eventMap[type] || (NS.AuditLog && NS.AuditLog.EVENTS.SESSION_EXPIRED)
-    });
-  }
-
-  /* ------------------------------- Init ----------------------------------- */
-  function init() {
-    // Halaman protected: validasi awal + polling berkala
-    if (U.isProtectedPage && U.isProtectedPage()) {
-      // Info cache milik tab ini? bila ada, anggap valid sementara (hindari
-      // kedipan UI); server tetap menjadi hakim lewat polling.
-      var cached = loadInfo();
-      if (cached && cached.ts) { state.status = 'unknown'; }
-
-      if (CFG.SESSION_VALIDATION_ENABLED !== false) {
-        validate(true);
-        var intervalMs = Math.max(15, CFG.SESSION_CHECK_INTERVAL_SECONDS || 60) * 1000;
-        state.checkTimer = setInterval(function () { validate(true); }, intervalMs);
+      if (!res.ok) return; // server bermasalah: JANGAN logout karena error jaringan
+      const data = await res.json().catch(() => null);
+      if (data && data.valid === false) {
+        endSession(data.reason === 'SESSION_EXPIRED' ? 'SESSION_EXPIRED' : 'SESSION_REVOKED');
       }
-      installHttpWatcher();
-    }
-    log('session siap');
-  }
-
-  /* -------------------------------- API ----------------------------------- */
-  NS.Session = {
-    init: init,
-    validate: validate,
-    logout: logout,
-    applyRemoteLogout: applyRemoteLogout,
-    handleUnauthorized: handleUnauthorized,
-    isValid: function () { return state.status === 'valid'; },
-    getStatus: function () { return state.status; },
-    getUser: function () { return (state.info && state.info.user) || (loadInfo() || {}).user || null; },
-    getRoles: function () {
-      if (state.info && state.info.roles) { return state.info.roles; }
-      return (loadInfo() || {}).roles || [];
-    },
-    hasLocalMarker: function () { return !!loadInfo(); },
-    markLocalSession: function (info) {
-      // Dipakai halaman login (mis. demo) setelah login sukses; info nyata
-      // tetap dikonfirmasi server lewat validate().
-      saveInfo(Object.assign({ ts: Date.now() }, info || {}));
-      state.status = 'valid';
-    },
-    onSessionRotated: function (cb) {
-      if (typeof cb === 'function') { rotationListeners.push(cb); }
-    },
-    heartbeat: function () {
-      if (!CFG.SESSION_HEARTBEAT_ENDPOINT) { return Promise.resolve(false); }
-      return U.netFetch(CFG.SESSION_HEARTBEAT_ENDPOINT, { method: 'POST' })
-        .then(function (r) { return !!(r && r.ok); })
-        .catch(function () { return false; });
-    }
-  };
-})(window);
+    } catch { /* offline: abaikan */ }
+  }, config.SERVER.heartbeatInterval || 30 * 1000);
+}

@@ -3,237 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Demo Security Module — Login & Sandbox</title>
-
-<!-- =========================================================================
-  DEMO / SANDBOX — SECURITY MODULE
-  Halaman ini MENIRU aplikasi existing: file aplikasi utama TIDAK diubah,
-  cukup satu script tag security.js. Konfigurasi demo lewat
-  SECURITY_CONFIG_OVERRIDES (lihat config.js bagian bawah).
-
-  Password demo: demo123  (mock login lokal, bukan sistem nyata)
-========================================================================= -->
-
-<!-- OVERRIDE KONFIGURASI KHUSUS DEMO (harus SEBELUM security.js) -->
-<script>
-window.SECURITY_CONFIG_OVERRIDES = {
-  DEBUG: true,                              // lihat log internal di console
-  LOGIN_URL: './index.html',
-  HOME_URL: './app.html',
-  // Demo tanpa backend -> endpoint kosong (modul jalan mode degradasi)
-  LOGIN_ENDPOINT: 'mock-login',             // ditangkap mock di bawah
-  SESSION_VALIDATE_ENDPOINT: '',
-  SESSION_LOGOUT_ENDPOINT: '',
-  SESSION_HEARTBEAT_ENDPOINT: '',
-  CSRF_PROTECTION: false,
-  AUDIT_REMOTE_ENDPOINT: '',
-  // Auto-logout dipercepat agar mudah diuji: 1.5 menit, peringatan 1 menit
-  INACTIVITY_TIMEOUT_MINUTES: 1.5,
-  WARNING_BEFORE_MINUTES: 1,
-  // Halaman mana yang dianggap protected
-  PROTECTED_PATTERNS: ['**/app.html'],
-  PUBLIC_PATTERNS: ['**/index.html', '/'],
-  ROLE_RULES: [{ pattern: '**/app.html', roles: ['admin'] }]
-};
-</script>
-
-<!-- MOCK API KHUSUS DEMO (bukan bagian security module; menggantikan backend) -->
-<script>
-(function () {
-  var realFetch = window.fetch.bind(window);
-  window.fetch = function (input, init) {
-    var url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (url.indexOf('mock-login') !== -1) {
-      var body = {};
-      try { body = JSON.parse((init && init.body) || '{}'); } catch (e) { /* noop */ }
-      var ok = body.password === 'demo123' && body.username === 'demo';
-      // Set "session" tiruan agar access-control punya penanda lokal
-      if (ok) {
-        try {
-          window.sessionStorage.setItem('security_session_info',
-            JSON.stringify({ user: 'demo', roles: ['admin'], ts: Date.now() }));
-        } catch (e) { /* noop */ }
-      }
-      return Promise.resolve(new Response(
-        JSON.stringify({ success: ok, message: ok ? 'Login berhasil' : 'Username/password salah' }),
-        { status: ok ? 200 : 401, headers: { 'Content-Type': 'application/json' } }
-      ));
-    }
-    return realFetch(input, init);
-  };
-})();
-</script>
-
-<!-- ===================== SATU-SATUNYA SCRIPT SECURITY ==================== -->
-<script src="../security.js" defer></script>
-
+<title>Demo Login - Security Module</title>
 <style>
-  * { box-sizing: border-box; }
-  body { margin:0; font:15px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
-         background:#f2f5f9; color:#1c2733; }
-  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 60px; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { color:#5b6b7c; margin:0 0 24px; font-size:14px; }
-  .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(320px,1fr)); gap:18px; }
-  .card { background:#fff; border:1px solid #dbe3ec; border-radius:14px; padding:20px 22px;
-          box-shadow:0 2px 10px rgba(28,39,51,.05); }
-  .card h2 { font-size:15px; margin:0 0 12px; color:#0f4c81; text-transform:uppercase; letter-spacing:.4px; }
-  input, button { font:inherit; }
-  input { width:100%; padding:10px 12px; margin:4px 0 12px; border:1px solid #c9d4e0;
-          border-radius:8px; background:#fbfdff; }
-  button { padding:9px 16px; border:0; border-radius:8px; background:#0f4c81; color:#fff;
-           cursor:pointer; font-weight:600; }
-  button.ghost { background:#e7edf4; color:#1c2733; }
-  button:hover { filter:brightness(1.06); }
-  .note { font-size:13px; color:#5b6b7c; }
-  code, pre { font: 12.5px/1.6 ui-monospace,Consolas,monospace; }
-  pre { background:#0f1720; color:#cde3f7; padding:12px 14px; border-radius:10px; overflow:auto; }
-  table { width:100%; border-collapse:collapse; font-size:12.5px; }
-  td, th { border-bottom:1px solid #e6ecf3; padding:6px 8px; text-align:left; }
-  th { background:#f4f8fc; }
-  .ok { color:#137a43; font-weight:700; } .bad { color:#b3261e; font-weight:700; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: linear-gradient(135deg,#667eea,#764ba2); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: #fff; border-radius: 14px; padding: 36px 32px; width: 100%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  h1 { font-size: 20px; color: #333; margin-bottom: 6px; }
+  .sub { font-size: 13px; color: #888; margin-bottom: 24px; }
+  .warn { background: #fff8e1; border: 1px solid #f5a623; color: #8a5a00; font-size: 12px; border-radius: 8px; padding: 10px 12px; margin-bottom: 20px; line-height: 1.5; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #555; margin: 14px 0 6px; }
+  input { width: 100%; padding: 11px 14px; border: 1.5px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; }
+  input:focus { border-color: #667eea; }
+  button { width: 100%; margin-top: 22px; padding: 12px; border: none; border-radius: 8px; background: #5b5fd9; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
+  button:disabled { background: #b6b8e8; cursor: not-allowed; }
+  .msg { margin-top: 16px; font-size: 13px; padding: 10px 12px; border-radius: 8px; display: none; line-height: 1.5; }
+  .msg.err { display: block; background: #fdecea; color: #8a1a12; }
+  .msg.ok { display: block; background: #e6f4ea; color: #1e7e34; }
+  .msg.warn { display: block; background: #fff8e1; color: #8a5a00; }
+  .attempts { font-size: 12px; color: #999; margin-top: 12px; text-align: center; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>Demo Security Module</h1>
-  <p class="sub">Halaman publik (login). Seluruh modul berjalan dari folder <code>/security/</code> tanpa mengubah file aplikasi.</p>
+  <div class="card">
+    <h1>Demo: Modul Keamanan</h1>
+    <p class="sub">Halaman login dengan proteksi 3x gagal + cooldown 5 menit</p>
 
-  <div class="grid">
-
-    <!-- LOGIN -->
-    <div class="card">
-      <h2>1 · Login (uji proteksi 3x salah)</h2>
-      <form id="loginForm">
-        <label>Username</label>
-        <input name="username" value="demo" autocomplete="username">
-        <label>Password</label>
-        <input name="password" type="password" placeholder="demo123" autocomplete="current-password">
-        <button type="submit">Masuk</button>
-        <button type="button" class="ghost" id="btnFailLogin">Simulasikan Gagal</button>
-      </form>
-      <p class="note">Salah 3x → diblokir sementara (cooldown + eskalasi). Blokir nyata harus di server
-      (<code>loginGuard</code>); di demo ini hanya lapisan browser.</p>
+    <div class="warn">
+      <b>HALAMAN DEMO</b> — autentikasi di sini hanya SIMULASI lokal untuk
+      menguji UX keamanan. Password demo: <b>demo123</b> (admin: <b>admin</b> / user: <b>budi</b>).
+      Ini BUKAN bagian dari modul keamanan dan TIDAK boleh dipakai di produksi.
     </div>
 
-    <!-- AUTO LOGOUT -->
-    <div class="card">
-      <h2>2 · Auto Logout (dipercepat: 1.5 menit)</h2>
-      <p class="note">Biarkan halaman tanpa aktivitas.
-      Peringatan muncul <b>1 menit</b> sebelum logout, hitung mundur ditampilkan,
-      tombol <i>Tetap Masuk</i> mengulang timer.</p>
-      <p>Sisa waktu: <b id="al-remaining">–</b></p>
-    </div>
+    <form id="loginForm" novalidate>
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
 
-    <!-- XSS -->
-    <div class="card">
-      <h2>3 · Uji Sanitizer XSS</h2>
-      <input id="xss-input" value='Halo <img src=x onerror=alert(1)> <script>alert(2)<\/script> dunia'>
-      <button id="btnUnsafe" class="ghost" type="button">Render TANPA proteksi</button>
-      <button id="btnSafe" type="button">Render DENGAN sanitizeHtml</button>
-      <div id="xss-output" style="margin-top:10px;padding:10px;border:1px dashed #c9d4e0;border-radius:8px;min-height:40px"></div>
-    </div>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
 
-    <!-- AUDIT -->
-    <div class="card">
-      <h2>4 · Audit Log (lokal)</h2>
-      <button id="btnAuditRefresh" class="ghost" type="button">Muat Ulang 10 Event Terakhir</button>
-      <table id="audit-table" style="margin-top:10px"><thead>
-        <tr><th>Waktu</th><th>Event</th><th>Sev</th></tr>
-      </thead><tbody></tbody></table>
-    </div>
+      <button id="submitBtn" type="submit">Masuk</button>
+    </form>
 
-    <!-- INFO -->
-    <div class="card">
-      <h2>5 · Status Module</h2>
-      <pre id="status-box">memuat…</pre>
-      <p class="note">Device ID bersifat acak-lokal (bukan fingerprint). API:
-      <code>AppSecurity.*</code> — buka console untuk log DEBUG.</p>
-    </div>
-
+    <div id="msg" class="msg"></div>
+    <div id="attempts" class="attempts"></div>
   </div>
-</div>
 
-<script>
-// Panel demo — membaca status modul (semua via API publik AppSecurity)
-document.addEventListener('DOMContentLoaded', function () {
-  var $ = function (id) { return document.getElementById(id); };
+  <script>
+    // Pelacak error khusus demo (membantu debugging integrasi)
+    window.__secErrors = [];
+    window.addEventListener('error', (e) => window.__secErrors.push('window.onerror: ' + e.message));
+    window.addEventListener('unhandledrejection', (e) => window.__secErrors.push('unhandledrejection: ' + (e.reason && e.reason.message)));
+  </script>
+  <script type="module">
+    import { initSecurity } from '../security.js';
 
-  // --- Login form (fetch mock ditangkap interceptor security) ---
-  $('loginForm').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var f = e.target;
-    window.fetch('mock-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: f.username.value, password: f.password.value })
-    }).then(function (r) { return r.json(); }).then(function (data) {
-      if (data.success) {
-        AppSecurity.audit('LOGIN_SUCCESS', { user: f.username.value });
-        window.location.href = './app.html';
-      } else {
-        AppSecurity.toast(data.message, 'error');
+    // Inisialisasi modul dari folder /security (satu pintu).
+    const sec = initSecurity({
+      LOGIN_PAGE: '/security/demo/index.html',
+      PROTECTED_ROUTES: ['/security/demo/dashboard.html', '/security/demo/admin.html'],
+      ADMIN_ROUTES: ['/security/demo/admin.html'],
+    });
+
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('submitBtn');
+    const msg = document.getElementById('msg');
+    const attemptsEl = document.getElementById('attempts');
+
+    // ---------- Tampilkan pesan berdasarkan ?reason= ----------
+    const params = new URLSearchParams(location.search);
+    const reason = params.get('reason');
+    if (reason && sec.enabled) {
+      const M = sec.config.MESSAGES;
+      const map = {
+        auto_logout: M.SESSION_TIMEOUT,
+        session_revoked: M.SESSION_REVOKED,
+        session_expired: M.SESSION_EXPIRED,
+        login_required: 'Silakan login terlebih dahulu untuk membuka halaman tersebut.',
+        logout: M.LOGGED_OUT,
+      };
+      const text = map[reason];
+      if (text) {
+        msg.className = reason === 'logout' ? 'msg ok' : 'msg warn';
+        // Ganti placeholder (mis. {minutes} -> 15) sesuai konfigurasi aktif
+        const minutes = Math.max(1, Math.round(sec.config.INACTIVITY_TIMEOUT / 60000));
+        msg.textContent = text.replace('{minutes}', String(minutes)); // textContent = aman dari XSS
       }
-    });
-  });
-  // Tombol simulasi gagal (memicu counter proteksi login yang sama)
-  $('btnFailLogin').addEventListener('click', function () {
-    window.fetch('mock-login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'demo', password: 'pasti-salah' })
-    });
-  });
-
-  // --- Auto logout countdown ---
-  setInterval(function () {
-    var el = $('al-remaining');
-    if (window.AppSecurity && AppSecurity.AutoLogout) {
-      var ms = AppSecurity.AutoLogout.getRemainingMs();
-      el.textContent = Math.floor(ms / 60000) + 'm ' + Math.round((ms % 60000) / 1000) + 's';
     }
-  }, 500);
 
-  // --- XSS playground ---
-  $('btnUnsafe').addEventListener('click', function () {
-    // DEMO sengaja menampilkan pola berbahaya — JANGAN lakukan ini di aplikasi nyata
-    $('xss-output').innerHTML = $('xss-input').value;
-  });
-  $('btnSafe').addEventListener('click', function () {
-    AppSecurity.XSS.safeHtml($('xss-output'), $('xss-input').value);
-  });
-
-  // --- Audit viewer ---
-  function renderAudit() {
-    var tb = $('audit-table').querySelector('tbody');
-    tb.innerHTML = '';
-    (AppSecurity.AuditLog.recent(10) || []).slice().reverse().forEach(function (ev) {
-      var tr = document.createElement('tr');
-      var td1 = document.createElement('td'); td1.textContent = new Date(ev.ts).toLocaleTimeString();
-      var td2 = document.createElement('td'); td2.textContent = ev.event;
-      var td3 = document.createElement('td'); td3.textContent = ev.severity;
-      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
-      tb.appendChild(tr);
-    });
-  }
-  $('btnAuditRefresh').addEventListener('click', renderAudit);
-  setInterval(renderAudit, 5000);
-
-  // --- Status ---
-  setTimeout(function () {
-    if (!window.AppSecurity) { $('status-box').textContent = 'security module tidak termuat!'; return; }
-    $('status-box').textContent = JSON.stringify({
-      version: AppSecurity.version,
-      page: 'public (login)',
-      deviceId: AppSecurity.BrowserSession.getDeviceId(),
-      loginBlocked: AppSecurity.LoginProtection.isBlocked(),
-      config: {
-        INACTIVITY_TIMEOUT_MINUTES: AppSecurity.config.INACTIVITY_TIMEOUT_MINUTES,
-        MAX_LOGIN_ATTEMPTS: AppSecurity.config.MAX_LOGIN_ATTEMPTS,
-        TAB_POLICY: AppSecurity.config.TAB_POLICY
+    // ---------- Status blokir saat halaman dibuka ----------
+    function refreshStatus() {
+      const st = sec.login.getStatus();
+      if (st.blocked) {
+        btn.disabled = true;
+        const s = Math.ceil(st.retryAfterMs / 1000);
+        msg.className = 'msg err';
+        msg.textContent = sec.login.getBlockedMessage();
+        attemptsEl.textContent = `Coba lagi dalam ${Math.floor(s / 60)} menit ${s % 60} detik`;
+        setTimeout(refreshStatus, 1000);
+      } else {
+        btn.disabled = false;
+        attemptsEl.textContent = `Sisa percobaan: ${st.remainingAttempts} dari ${st.maxAttempts}`;
       }
-    }, null, 2);
-  }, 600);
-});
-</script>
+    }
+    refreshStatus();
+
+    // ---------- Submit: proteksi dulu, baru simulasi auth ----------
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      msg.className = 'msg';
+
+      const check = sec.login.checkAllowed();
+      if (!check.allowed) { refreshStatus(); return; }
+
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      // ====== SIMULASI AUTENTIKASI LOKAL (DEMO SAJA) ======
+      // Di aplikasi nyata: panggil API server Anda di sini, lalu:
+      //   - gagal  -> sec.login.recordFailure()
+      //   - sukses -> sec.session.create({userId, role})
+      const valid = password === 'demo123';
+      const role = username.toLowerCase() === 'admin' ? 'admin' : 'user';
+
+      if (!valid) {
+        const after = sec.login.recordFailure();
+        if (after.blocked) {
+          msg.className = 'msg err';
+          msg.textContent = sec.login.getBlockedMessage();
+          refreshStatus();
+        } else {
+          msg.className = 'msg err';
+          msg.textContent = `Password salah. Sisa percobaan: ${after.remainingAttempts}.`;
+        }
+        return;
+      }
+
+      // ====== LOGIN SUKSES: buat sesi lewat modul keamanan ======
+      sec.session.create({ userId: username, role });
+
+      msg.className = 'msg ok';
+      msg.textContent = 'Login berhasil. Mengalihkan ke dashboard...';
+
+      const next = params.get('next');
+      setTimeout(() => {
+        location.assign(next && next.startsWith('/') ? next : '/security/demo/dashboard.html');
+      }, 600);
+    });
+  </script>
 </body>
 </html>

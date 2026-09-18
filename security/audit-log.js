@@ -1,182 +1,236 @@
-/* ============================================================================
- * /security/audit-log.js — AUDIT LOG
- * ----------------------------------------------------------------------------
- * Mencatat event keamanan penting:
- *   LOGIN_SUCCESS, LOGIN_FAILED, LOGIN_BLOCKED, LOGOUT, AUTO_LOGOUT,
- *   SESSION_EXPIRED, SESSION_REVOKED, PASSWORD_CHANGED, ROLE_CHANGED,
- *   SENSITIVE_ACTION
+/**
+ * ============================================================
+ * SECURITY MODULE - audit-log.js
+ * ============================================================
+ * Audit log terpusat dengan REDAKSI OTOMATIS:
+ * field sensitif (password, token, secret, dll.) DIHAPUS
+ * sebelum disimpan/dikirim. TIDAK ADA pengecualian.
  *
- * KEBIJAKAN DATA:
- *  - TIDAK PERNAH mencatat: password, access token, refresh token, secret
- *    key, API secret, database password. Setiap field pada `details`
- *    otomatis DIREDAKSI bila namanya terindikasi sensitif.
- *  - Penyimpanan: ring buffer localStorage (maks AUDIT_LOCAL_MAX entri,
- *    kedaluwarsa AUDIT_LOCAL_RETENTION_DAYS hari) + pengiriman batch ke
- *    AUDIT_REMOTE_ENDPOINT bila tersedia (best-effort, tidak pernah
- *    memblokir aplikasi).
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * Penyimpanan: memori + cache localStorage (kedaluwarsa 7 hari,
+ * maksimum 500 entri) + kirim batch ke server jika endpoint
+ * dikonfigurasi (AUDIT.endpoint).
+ * ============================================================
+ */
 
-  var NS = global.AppSecurity = global.AppSecurity || {};
-  var CFG = global.SECURITY_CONFIG || {};
-  var U = NS.utils || {};
-  var log = NS.log || function () {};
+import { KEYS, jsonGet, jsonSet, generateId, isBrowser } from './utils.js';
 
-  var EVENTS = {
-    LOGIN_SUCCESS: 'LOGIN_SUCCESS',
-    LOGIN_FAILED: 'LOGIN_FAILED',
-    LOGIN_BLOCKED: 'LOGIN_BLOCKED',
-    LOGOUT: 'LOGOUT',
-    AUTO_LOGOUT: 'AUTO_LOGOUT',
-    SESSION_EXPIRED: 'SESSION_EXPIRED',
-    SESSION_REVOKED: 'SESSION_REVOKED',
-    PASSWORD_CHANGED: 'PASSWORD_CHANGED',
-    ROLE_CHANGED: 'ROLE_CHANGED',
-    SENSITIVE_ACTION: 'SENSITIVE_ACTION'
-  };
+/** Daftar event audit standar (sesuai spesifikasi). */
+export const AUDIT_EVENTS = Object.freeze({
+  LOGIN_SUCCESS: 'LOGIN_SUCCESS',
+  LOGIN_FAILED: 'LOGIN_FAILED',
+  LOGIN_BLOCKED: 'LOGIN_BLOCKED',
+  LOGOUT: 'LOGOUT',
+  AUTO_LOGOUT: 'AUTO_LOGOUT',
+  SESSION_EXPIRED: 'SESSION_EXPIRED',
+  SESSION_REVOKED: 'SESSION_REVOKED',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  ROLE_CHANGED: 'ROLE_CHANGED',
+  SENSITIVE_ACTION: 'SENSITIVE_ACTION',
+});
 
-  var LS_KEY = 'security_audit_buffer';
-  var buffer = [];
-  var flushTimer = null;
-  var sending = false;
+/**
+ * Pola nama field yang DILARANG dicatat. Pencocokan dilakukan
+ * pada nama field yang sudah dinormalisasi (huruf kecil, tanpa
+ * pemisah), sehingga "database_password", "dbPassword",
+ * "accessToken", "api_secret", dll. semuanya tertangkap.
+ */
+const FORBIDDEN_PATTERNS = [
+  'password', 'passwd', 'pwd', 'passphrase',
+  'accesstoken', 'refreshtoken', 'idtoken', 'token',
+  'secret', 'secretkey', 'apisecret', 'clientsecret',
+  'apikey', 'credential', 'authorization', 'cookie',
+  'databasepassword', 'dbpassword', 'connectionstring',
+  'privatekey', 'creditcard', 'cvv', 'ssn',
+];
 
-  /* ------------------------- Redaksi data sensitif ----------------------- */
-  var SENSITIVE_KEY_RE = /pass(word)?|pwd|token|secret|authorization|auth|credential|api[_-]?key|apikey|db[_-]?pass(word)?|private[_-]?key|session[_-]?id|cookie/i;
+function isForbiddenKey(normalizedName) {
+  return FORBIDDEN_PATTERNS.some((p) =>
+    normalizedName === p || normalizedName.includes(p)
+  );
+}
 
-  function scrub(value, depth) {
-    depth = depth || 0;
-    if (depth > 6) { return '[DEEP]'; }
-    if (value === null || value === undefined) { return value; }
-    if (typeof value === 'string') { return value.length > 300 ? value.slice(0, 300) + '…' : value; }
-    if (typeof value === 'number' || typeof value === 'boolean') { return value; }
-    if (value instanceof Error) { return { name: value.name, message: String(value.message).slice(0, 200) }; }
-    if (Array.isArray(value)) {
-      return value.slice(0, 20).map(function (item) { return scrub(item, depth + 1); });
-    }
-    if (typeof value === 'object') {
-      var clean = {};
-      try {
-        Object.keys(value).forEach(function (key) {
-          if (SENSITIVE_KEY_RE.test(key)) {
-            clean[key] = '[REDACTED]';            // JANGAN PERNAH mencatat nilainya
-          } else {
-            clean[key] = scrub(value[key], depth + 1);
-          }
-        });
-      } catch (e) { return '[UNSERIALIZABLE]'; }
-      return clean;
-    }
-    return String(value);
+function normalizeKeyName(key) {
+  return String(key).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** Marker redaksi */
+export const REDACTED = '[REDACTED]';
+
+/**
+ * Bersihkan objek dari field sensitif (rekursif, aman sirkular).
+ * @param {*} value
+ * @param {number} depth - batas kedalaman rekursi
+ */
+export function scrub(value, depth = 0) {
+  if (depth > 6) return '[TRUNCATED]';
+  if (value === null || value === undefined) return value;
+
+  if (Array.isArray(value)) {
+    return value.slice(0, 50).map((v) => scrub(v, depth + 1));
   }
 
-  /* ------------------------------ Buffer --------------------------------- */
-  function loadBuffer() {
-    var stored = U.storage ? U.storage.getJson(LS_KEY, []) : [];
-    buffer = Array.isArray(stored) ? stored : [];
-    purgeExpired();
-  }
-
-  function purgeExpired() {
-    var cutoff = Date.now() - (CFG.AUDIT_LOCAL_RETENTION_DAYS || 7) * 86400000;
-    var kept = [];
-    for (var i = 0; i < buffer.length; i++) {
-      var ts = Date.parse(buffer[i].ts);
-      if (isNaN(ts) || ts >= cutoff) { kept.push(buffer[i]); }
-    }
-    buffer = kept;
-  }
-
-  function persist() {
-    try {
-      if (buffer.length > (CFG.AUDIT_LOCAL_MAX || 200)) {
-        buffer = buffer.slice(buffer.length - (CFG.AUDIT_LOCAL_MAX || 200));
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (isForbiddenKey(normalizeKeyName(key))) {
+        out[key] = REDACTED; // JANGAN PERNAH mencatat nilai aslinya
+      } else {
+        out[key] = scrub(val, depth + 1);
       }
-      U.storage && U.storage.setJson(LS_KEY, buffer);
-    } catch (e) { log('audit persist gagal:', e && e.message); }
+    }
+    return out;
   }
 
-  /* ------------------------------ Kirim ---------------------------------- */
-  function sendBeacon(entries) {
-    try {
-      if (!CFG.AUDIT_REMOTE_ENDPOINT) { return false; }
-      var url = CFG.AUDIT_REMOTE_ENDPOINT;
-      if (global.navigator && typeof global.navigator.sendBeacon === 'function') {
-        var blob = new global.Blob([JSON.stringify(entries)], { type: 'application/json' });
-        if (global.navigator.sendBeacon(url, blob)) { return true; }
-      }
-      U.netFetch(url, {
+  if (typeof value === 'string') {
+    // String panjang dikunci agar log tidak membengkak / bocor isinya
+    return value.length > 300 ? value.slice(0, 300) + '…' : value;
+  }
+
+  return value;
+}
+
+// ------------------------------------------------------------
+// Status modul
+// ------------------------------------------------------------
+let config = null;
+let entries = [];      // ring buffer memori
+let outbox = [];       // antrean kirim batch ke server
+let flushTimer = null;
+let initialized = false;
+
+const MAX_DETAIL_SIZE = 4000; // batas ukuran JSON detail (byte kasar)
+
+/** Muat cache dari localStorage, buang yang kedaluwarsa & kelebihan kapasitas. */
+function loadFromCache() {
+  const cached = jsonGet(KEYS.AUDIT_LOG, []);
+  const now = Date.now();
+  entries = Array.isArray(cached)
+    ? cached.filter((e) => e && typeof e.ts === 'number' && (now - e.ts) < config.AUDIT.ttlMs)
+    : [];
+  if (entries.length > config.AUDIT.maxEntries) {
+    entries = entries.slice(entries.length - config.AUDIT.maxEntries);
+  }
+}
+
+function persistToCache() {
+  // Simpan versi ringkas tanpa field besar
+  jsonSet(KEYS.AUDIT_LOG, entries.slice(entries.length - config.AUDIT.maxEntries));
+}
+
+/**
+ * Inisialisasi modul audit (dipanggil oleh security.js).
+ * @param {object} cfg - konfigurasi final hasil configure()
+ */
+export function initAuditLog(cfg) {
+  if (initialized) return;
+  initialized = true;
+  config = cfg;
+  loadFromCache();
+
+  if (config.AUDIT.endpoint && isBrowser()) {
+    flushTimer = setInterval(() => flushAudit(false), config.AUDIT.flushIntervalMs);
+    // Kirim sisa log saat halaman ditutup (tanpa menunda navigasi)
+    window.addEventListener('pagehide', () => flushAudit(true));
+  }
+}
+
+/**
+ * Catat satu event audit.
+ * @param {string} event  - salah satu AUDIT_EVENTS
+ * @param {object} detail - detail tambahan (otomatis dibersihkan dari field sensitif)
+ * @param {object} meta   - opsional: { userId, role } (juga dibersihkan)
+ */
+export function audit(event, detail = {}, meta = {}) {
+  if (!config || !config.AUDIT.enabled) return;
+
+  let entry;
+  try {
+    const cleanDetail = scrub(detail);
+    const cleanMeta = scrub(meta);
+    const serialized = JSON.stringify(cleanDetail || {});
+    if (serialized && serialized.length > MAX_DETAIL_SIZE) {
+      cleanDetail._note = 'detail too large, truncated';
+    }
+    entry = {
+      id: generateId(12),
+      ts: Date.now(),
+      iso: new Date().toISOString(),
+      event: String(event),
+      url: isBrowser() ? location.pathname : '-',
+      userAgent: isBrowser() ? navigator.userAgent : '-',
+      detail: cleanDetail,
+      meta: cleanMeta,
+    };
+  } catch (err) {
+    entry = { id: generateId(12), ts: Date.now(), iso: new Date().toISOString(), event: String(event), detail: { _error: 'serialization failed' } };
+  }
+
+  entries.push(entry);
+  if (entries.length > config.AUDIT.maxEntries) {
+    entries = entries.slice(entries.length - config.AUDIT.maxEntries);
+  }
+  persistToCache();
+
+  if (config.AUDIT.consoleMirror) {
+    console.info('[security][audit]', entry.event, entry.detail);
+  }
+
+  // Event kritis dikirim segera, selebihnya menunggu batch
+  const critical = [
+    AUDIT_EVENTS.LOGIN_BLOCKED,
+    AUDIT_EVENTS.SESSION_REVOKED,
+    AUDIT_EVENTS.ROLE_CHANGED,
+    AUDIT_EVENTS.PASSWORD_CHANGED,
+  ].includes(entry.event);
+
+  if (config.AUDIT.endpoint) {
+    outbox.push(entry);
+    if (critical || outbox.length >= config.AUDIT.batchSize) {
+      flushAudit(false);
+    }
+  }
+}
+
+/** Ambil salinan log (terbaru di akhir). Bisa difilter per event. */
+export function getAuditLogs(filterEvent = null) {
+  return entries
+    .filter((e) => !filterEvent || e.event === filterEvent)
+    .map((e) => ({ ...e }));
+}
+
+/** Hitung jumlah log tersimpan. */
+export function countAuditLogs() {
+  return entries.length;
+}
+
+/** Hapus semua log lokal (server tidak terpengaruh). */
+export function clearAuditLogs() {
+  entries = [];
+  outbox = [];
+  persistToCache();
+}
+
+/**
+ * Kirim antrean log ke server (jika endpoint dikonfigurasi).
+ * @param {boolean} useBeacon - true = navigator.sendBeacon (untuk pagehide)
+ */
+export function flushAudit(useBeacon = false) {
+  if (!config || !config.AUDIT.endpoint || outbox.length === 0) return;
+  const batch = outbox.splice(0, outbox.length);
+  try {
+    if (useBeacon && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([JSON.stringify({ logs: batch })], { type: 'application/json' });
+      navigator.sendBeacon(config.AUDIT.endpoint, blob);
+    } else {
+      fetch(config.AUDIT.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(entries),
-        keepalive: true
-      }).catch(function () { /* best-effort */ });
-      return true;
-    } catch (e) { return false; }
+        body: JSON.stringify({ logs: batch }),
+        credentials: 'same-origin',
+        keepalive: true,
+      }).catch(() => { /* jaringan gagal: biarkan, log tetap ada di cache lokal */ });
+    }
+  } catch {
+    // Gagal kirim tidak boleh mengganggu aplikasi.
   }
-
-  function flush(force) {
-    if (!CFG.AUDIT_REMOTE_ENDPOINT || sending) { return; }
-    if (!buffer.length) { return; }
-    if (!force && buffer.length < 10) { return; }
-    sending = true;
-    var batch = buffer.slice(0, 50);
-    var rest = buffer.slice(batch.length);
-    U.netFetch(CFG.AUDIT_REMOTE_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(batch)
-    }).then(function (resp) {
-      sending = false;
-      if (resp && resp.ok) {
-        buffer = rest;
-        persist();
-      }
-      // gagal (4xx/5xx/offline): biarkan di buffer, dicoba lagi nanti
-    }).catch(function () {
-      sending = false; // offline — coba lagi pada interval berikutnya
-    });
-  }
-
-  /* ------------------------------ API ------------------------------------ */
-  // severity: 'info' | 'warn' | 'critical'
-  function audit(event, details, severity) {
-    if (CFG.AUDIT_LOG === false) { return null; }
-    var entry = {
-      ts: U.nowIso ? U.nowIso() : String(Date.now()),
-      event: String(event || 'UNKNOWN'),
-      severity: severity || 'info',
-      page: (global.location && global.location.pathname) || '',
-      device: NS.BrowserSession ? NS.BrowserSession.getDeviceId() : '',
-      details: scrub(details || {})
-    };
-    buffer.push(entry);
-    persist();
-    log('audit:', entry.event);
-    flush(false);
-    return entry;
-  }
-
-  function init() {
-    loadBuffer();
-    try {
-      global.addEventListener('pagehide', function () {
-        if (buffer.length) { sendBeacon(buffer.slice(-50)); }
-      });
-    } catch (e) { /* noop */ }
-    var interval = Math.max(5, CFG.AUDIT_FLUSH_INTERVAL_SECONDS || 30) * 1000;
-    flushTimer = setInterval(function () { flush(true); }, interval);
-    log('audit-log siap');
-  }
-
-  NS.audit = audit;
-  NS.AuditLog = {
-    EVENTS: EVENTS,
-    init: init,
-    audit: audit,
-    flush: function () { flush(true); },
-    // Untuk debugging/admin saja — JANGAN ditampilkan ke pengguna umum
-    recent: function (n) { return buffer.slice(-(n || 20)); },
-    clearLocal: function () { buffer = []; persist(); }
-  };
-})(window);
+}

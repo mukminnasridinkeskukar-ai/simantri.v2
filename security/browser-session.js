@@ -1,73 +1,126 @@
-/* ============================================================================
- * /security/browser-session.js — BROWSER / DEVICE SESSION
- * ----------------------------------------------------------------------------
- * Membedakan "tab baru dalam session yang sama" vs "session baru yang tidak
- * sah" — dengan bantuan ID perangkat + keputusan SERVER (server adalah hakim).
+/**
+ * ============================================================
+ * SECURITY MODULE - browser-session.js
+ * ============================================================
+ * FITUR 5: Kebijakan sesi per browser/perangkat.
  *
- * PERILAKU (sesuai konfigurasi):
- *  - ALLOW_MULTIPLE_SESSIONS = false  -> login baru di perangkat lain BOLEH
- *    menyebabkan session lama dicabut server. Browser lama akan menerima
- *    status 409 dari endpoint validasi -> ditampilkan pesan ramah dan
- *    diarahkan ke login. Browser baru TIDAK dianggap serangan.
- *  - ALLOW_MULTIPLE_SESSIONS = true   -> session boleh berjalan paralel
- *    sesuai batasan yang ditegakkan server.
+ * SINGLE_SESSION_MODE = true, ALLOW_MULTIPLE_SESSIONS = false:
+ * - Login BARU (tab mana pun / browser mana pun pada akun yang
+ *   sama secara logika) menggantikan sesi lama -> tab yang
+ *   memegang sesi LAMA dicabut (SESSION_REVOKED).
+ * - Browser berbeda memiliki storage terpisah: penegakan
+ *   lintas-perangkat yang SEBENARNYA memerlukan server
+ *   (SERVER.heartbeatEndpoint + server/security-server.js).
  *
- * ID perangkat adalah nilai acak lokal (BUKAN fingerprint invasif), dikirim
- * sebagai header X-Device-Id pada request login & validasi agar backend
- * dapat mengikat session ke perangkat. Jangan jadikan satu-satunya dasar
- * keputusan keamanan — gunakan bersama cookie session di server.
- * ==========================================================================*/
-(function (global) {
-  'use strict';
+ * GARIS BATAS yang dijamin modul ini:
+ * - Tab BARU pada sesi yang sama TIDAK PERnah di-logout
+ *   (sessionId sama -> diabaikan).
+ * ============================================================
+ */
 
-  var NS = global.AppSecurity = global.AppSecurity || {};
-  var CFG = global.SECURITY_CONFIG || {};
-  var U = NS.utils || {};
-  var log = NS.log || function () {};
+import {
+  KEYS, SECURITY_EVENTS, on, isBrowser, jsonGet,
+} from './utils.js';
+import {
+  getActiveSession, isSessionValid, endSession,
+} from './session.js';
 
-  var DEVICE_KEY = CFG.DEVICE_ID_STORAGE_KEY || 'security_device_id';
+let config = null;
+let bound = false;
+let watchTimer = null;
 
-  function getDeviceId() {
-    var id = U.storage ? U.storage.get(DEVICE_KEY) : null;
-    if (!id) {
-      id = 'dev-' + (U.randomId ? U.randomId(16) : String(Date.now()));
-      U.storage && U.storage.set(DEVICE_KEY, id);
+export function initBrowserSession(cfg) {
+  if (!isBrowser() || bound) return;
+  bound = true;
+  config = cfg;
+
+  // 1) Reaksi cepat: perubahan localStorage di tab lain
+  window.addEventListener('storage', handleStorageChange);
+
+  // 2) Jaring pengaman: pemeriksaan berkala (event storage
+  //    kadang tidak terkirim di beberapa skenario)
+  watchTimer = setInterval(periodicCheck, config.HEARTBEAT_INTERVAL || 10 * 1000);
+
+  // 3) Sesi kedaluwarsa berdasarkan waktu juga dicek berkala
+  on(SECURITY_EVENTS.SESSION_CREATED, () => periodicCheck());
+}
+
+/**
+ * Handler event 'storage': dipicu di tab LAIN saat key berubah.
+ */
+function handleStorageChange(ev) {
+  if (ev.key !== KEYS.SESSION) return;
+
+  const oldSession = safeParse(ev.oldValue);
+  const newSession = safeParse(ev.newValue);
+
+  // Kasus A: sesi dihapus di tab lain (logout manual)
+  if (!ev.newValue) {
+    if (oldSession && isThisOurSession(oldSession)) {
+      endSessionWithoutDoubleAudit('LOGOUT');
     }
-    return id;
+    return;
   }
 
-  /* --------------- Header X-Device-Id untuk login & validasi -------------- */
-  function installRequestHook() {
-    if (!U.Interceptors || CFG.SEND_DEVICE_ID_HEADER === false) { return; }
-    var interesting = [];
-    try {
-      if (CFG.LOGIN_ENDPOINT) { interesting.push(U.normalizeUrl(CFG.LOGIN_ENDPOINT)); }
-      if (CFG.SESSION_VALIDATE_ENDPOINT) { interesting.push(U.normalizeUrl(CFG.SESSION_VALIDATE_ENDPOINT)); }
-      if (CFG.SESSION_LOGOUT_ENDPOINT) { interesting.push(U.normalizeUrl(CFG.SESSION_LOGOUT_ENDPOINT)); }
-    } catch (e) { /* noop */ }
+  // Kasus B: rekaman sesi DIGANTI.
+  // Keputusan memakai TIKET (bukan sessionId):
+  // - tiket SAMA   = sesi "keluarga" yang sama (mis. rotasi sessionId)
+  //                  -> tab saudara TIDAK di-logout.
+  // - tiket BEDA   = login BARU menggantikan sesi lama
+  //                  -> tab yang memegang tiket lama dicabut.
+  const myTicket = sessionStorage.getItem(KEYS.TAB_TICKET);
+  if (
+    config.SINGLE_SESSION_MODE &&
+    !config.ALLOW_MULTIPLE_SESSIONS &&
+    myTicket &&
+    newSession &&
+    newSession.ticket &&
+    newSession.ticket !== myTicket
+  ) {
+    endSessionWithoutDoubleAudit('SESSION_REVOKED');
+  }
+  // Kasus C: tiket sama (sesi sama) -> BUKAN alasan logout.
+  // Tab baru dalam sesi sama tidak pernah terdampak.
+}
 
-    U.Interceptors.addRequestHook(function (ctx) {
-      try {
-        if (!ctx.isSameOrigin) { return; }
-        var path = U.normalizeUrl ? U.normalizeUrl(ctx.url) : ctx.url;
-        for (var i = 0; i < interesting.length; i++) {
-          if (path && path.indexOf(interesting[i]) === 0) {
-            ctx.setHeader(CFG.DEVICE_ID_HEADER || 'X-Device-Id', getDeviceId());
-            return;
-          }
-        }
-      } catch (e) { log('device hook error:', e && e.message); }
-    });
+/** Pemeriksaan berkala di tab ini. */
+function periodicCheck() {
+  const session = getActiveSession();
+
+  // Sesi ada tapi sudah kedaluwarsa -> akhiri
+  if (session && !isSessionValid()) {
+    endSession('SESSION_EXPIRED');
+    return;
   }
 
-  function init() {
-    getDeviceId();                      // pastikan ID ada sejak awal
-    installRequestHook();
-    log('browser-session siap (multi-session: ' + (CFG.ALLOW_MULTIPLE_SESSIONS ? 'diizinkan' : 'tidak') + ')');
-  }
+  // Tidak ada sesi & tidak ada yang perlu dilakukan
+  if (!session) return;
 
-  NS.BrowserSession = {
-    init: init,
-    getDeviceId: getDeviceId
-  };
-})(window);
+  // Tiket tab tidak cocok dengan sesi global -> sesi diganti login baru
+  const myTicket = sessionStorage.getItem(KEYS.TAB_TICKET);
+  if (myTicket && myTicket !== session.ticket) {
+    if (config.SINGLE_SESSION_MODE && !config.ALLOW_MULTIPLE_SESSIONS) {
+      endSessionWithoutDoubleAudit('SESSION_REVOKED');
+    }
+  }
+}
+
+// ---- internal ----
+
+function isThisOurSession(oldSession) {
+  // Event storage hanya relevan jika tab ini sempat memakai sesi itu
+  const current = getActiveSession();
+  return !!current && current.sessionId === oldSession.sessionId;
+}
+
+function endSessionWithoutDoubleAudit(reason) {
+  // endSession() menghapus localStorage (sudah kosong) dan tetap
+  // mencatat audit + menampilkan notifikasi. Itulah yang kita mau:
+  // tab pasif ikut diarahkan ke login dengan pesan yang benar.
+  endSession(reason);
+}
+
+function safeParse(raw) {
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}

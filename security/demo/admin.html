@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin Demo - Security Module</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #1f2333; color: #e8eaf2; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: #2a2f45; border-radius: 14px; padding: 36px; max-width: 460px; width: 100%; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  h1 { font-size: 20px; margin-bottom: 10px; }
+  p { font-size: 13px; color: #aab; line-height: 1.7; }
+  .ok { color: #6ee7a0; font-weight: 600; }
+  a { color: #9aa4ff; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Halaman Admin (Role-Protected)</h1>
+    <p id="content" style="margin:16px 0">
+      Memeriksa sesi & role...
+    </p>
+    <p style="margin-top:18px">
+      <a href="/security/demo/dashboard.html">← Kembali ke Dashboard</a>
+    </p>
+  </div>
+
+  <script type="module">
+    import { initSecurity } from '../security.js';
+
+    const sec = initSecurity({
+      LOGIN_PAGE: '/security/demo/index.html',
+      PROTECTED_ROUTES: ['/security/demo/dashboard.html', '/security/demo/admin.html'],
+      ADMIN_ROUTES: ['/security/demo/admin.html'],
+    });
+
+    const content = document.getElementById('content');
+
+    // Access control sudah berjalan otomatis via initSecurity:
+    // - tanpa sesi valid -> redirect ke login (?next= halaman ini)
+    // - sesi valid tapi bukan role 'admin' -> overlay "Akses ditolak"
+    const session = sec.session.get();
+    if (sec.session.isValid() && session.role === 'admin') {
+      content.innerHTML = '';
+      const line1 = document.createElement('div');
+      line1.className = 'ok';
+      line1.textContent = '✓ Akses diberikan';
+      const line2 = document.createElement('div');
+      line2.style.marginTop = '8px';
+      line2.textContent = `Halo admin "${session.userId}". Anda memegang role admin — halaman ini hanya terbuka untuk role admin.`;
+      content.append(line1, line2);
+
+      // Contoh audit aksi sensitif khas halaman admin
+      sec.audit.log(sec.audit.events.SENSITIVE_ACTION, { action: 'ADMIN_PAGE_VIEWED' }, { userId: session.userId });
+    }
+  </script>
+</body>
+</html>
