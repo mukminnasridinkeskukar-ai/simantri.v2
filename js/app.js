@@ -7,9 +7,11 @@
  * operator. Keamanan ditegakkan RLS di sisi database.
  * v1.6.0: Bagian 3 — Perizinan wajib login & hanya untuk
  * Admin + Operator (sidebar, router, tombol aksi & RLS).
+ * v1.7.0: Cek Hasil Verifikasi bersumber dari verval izin
+ * praktik & verval fasyankes + saran nama (autocomplete).
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.6.0';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.7.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -712,7 +714,7 @@ async function mountDashboard(target = '#page-content') {
     $('#quick-panel').innerHTML = `
       ${item('#verifikasi-faskes', 'verif', 'Verifikasi Fasyankes', `${fpend} pengajuan menunggu`, 'bg-teal-50 text-teal-600')}
       ${item('#verifikasi-praktik', 'shield', 'Verifikasi Praktik Mandiri', `${ppend} pengajuan menunggu`, 'bg-amber-50 text-amber-600')}
-      ${item('#cek-verifikasi', 'cek', 'Cek Hasil Verifikasi', 'Cari status data &amp; verifikasi', 'bg-emerald-50 text-emerald-600')}
+      ${item('#cek-verifikasi', 'cek', 'Cek Hasil Verifikasi', 'Cari hasil verval praktik &amp; faskes', 'bg-emerald-50 text-emerald-600')}
       ${item('#expired', 'clock', 'Notifikasi Expired', 'SIP/STR H-30 & expired', 'bg-rose-50 text-rose-600')}
       ${item('#monev', 'monev', 'Isi Monev Izin', 'Kunjungan, temuan, tindak lanjut', 'bg-sky-50 text-sky-600')}`;
   } catch (e) {
@@ -2536,7 +2538,16 @@ function openEditVervalFaskes(row, onSaved = null) {
 }
 
 /* =========================================================
- * 14. HALAMAN: CEK HASIL VERIFIKASI (search Nama)
+ * 14. HALAMAN: CEK HASIL VERIFIKASI
+ *     Menu: Bagian 1 → Cek Hasil Verifikasi + Panel Admin →
+ *     tab Cek Verifikasi.
+ *     v1.7.0: sumber data = tabel verval_izin_praktik &
+ *     verval_fasyankes (bukan lagi tenaga_medis/kesehatan/
+ *     fasyankes/praktik_mandiri). Kolom pencarian dilengkapi
+ *     saran nama (autocomplete) dari data yang sudah ada,
+ *     dikelompokkan "Izin Praktik" & "Fasyankes" lengkap
+ *     dengan badge status; bisa diklik untuk mengisi & cari,
+ *     didukung navigasi keyboard (panah/Enter/Escape).
  * ========================================================= */
 
 function mountCekVerifikasi(target = '#page-content') {
@@ -2545,55 +2556,152 @@ function mountCekVerifikasi(target = '#page-content') {
     <div class="max-w-3xl mx-auto">
       <div class="card p-4 sm:p-5 mb-4">
         <p class="text-sm font-extrabold text-slate-800 mb-1">Cek Hasil Verifikasi</p>
-        <p class="text-xs text-slate-400 mb-3">Masukkan <b>Nama</b> untuk melihat status data &amp; verifikasi praktik.</p>
-        <div class="flex gap-2">
-          <div class="search-box flex-1 !max-w-none">${icon('search', 'w-4 h-4 text-slate-400')}
-            <input id="cek-input" placeholder="cth: nama: dr. Ahmad"></div>
-          <button id="cek-btn" class="btn btn-primary">${icon('cek', 'w-4 h-4')} Cari</button>
+        <p class="text-xs text-slate-400 mb-3">Cari hasil verval <b>Izin Praktik</b> &amp; <b>Fasyankes</b> — ketik nama / kode verifikasi, atau pilih dari saran data yang sudah ada.</p>
+        <div class="relative">
+          <div class="flex gap-2">
+            <div class="search-box flex-1 !max-w-none">${icon('search', 'w-4 h-4 text-slate-400')}
+              <input id="cek-input" placeholder="cth: dr. Ahmad / Klinik Sehat / VP-2026…" autocomplete="off"></div>
+            <button id="cek-btn" class="btn btn-primary">${icon('cek', 'w-4 h-4')} Cari</button>
+          </div>
+          <div id="cek-saran" class="hidden absolute left-0 right-0 top-full mt-1.5 z-30"></div>
         </div>
+        <p id="cek-meta" class="text-[.66rem] text-slate-400 mt-2">Sumber data: tabel <b>verval_izin_praktik</b> &amp; <b>verval_fasyankes</b>.</p>
       </div>
-      <div id="cek-result">${emptyState('Masukkan nama, lalu tekan Cari.')}</div>
+      <div id="cek-result">${emptyState('Ketik nama atau pilih dari saran, lalu tekan Cari.')}</div>
     </div>`;
 
   if (!SUPABASE_TERKONFIGURASI) return;
-  const input = $('#cek-input');
-  const btn = $('#cek-btn');
-  btn.addEventListener('click', cari);
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') cari(); });
 
+  const input = $('#cek-input'), btn = $('#cek-btn'), box = $('#cek-saran');
+  let saranP = [], saranF = [], aktif = -1, daftar = [];
+
+  /* ---- Muat daftar nama untuk saran (dari data verval yang sudah ada) ---- */
+  (async () => {
+    const meta = $('#cek-meta');
+    if (!meta) return;
+    try {
+      const [p, f] = await Promise.all([
+        fetchRows('verval_izin_praktik', { select: 'id, nama_lengkap, unit_kerja, kecamatan, status_sip', orderBy: 'nama_lengkap', asc: true, limit: 500 }),
+        fetchRows('verval_fasyankes', { select: 'id, nama_fasyankes, jenis_fasyankes, kecamatan, status_verifikasi', orderBy: 'nama_fasyankes', asc: true, limit: 500 }),
+      ]);
+      const unik = (rows, k) => { const s = new Set(); return rows.filter((r) => (s.has(r[k]) ? false : (s.add(r[k]), true))); };
+      saranP = unik(p, 'nama_lengkap');
+      saranF = unik(f, 'nama_fasyankes');
+      meta.innerHTML = `Sumber data: <b>verval_izin_praktik</b> (${saranP.length} nama) &amp; <b>verval_fasyankes</b> (${saranF.length} nama) &bull; klik kolom pencarian untuk memilih nama.`;
+    } catch (e) {
+      meta.innerHTML = `Sumber data: <b>verval_izin_praktik</b> &amp; <b>verval_fasyankes</b> <span class="text-rose-500">(saran nama gagal dimuat: ${esc(friendlyError(e))})</span>.`;
+    }
+  })();
+
+  /* ---- Dropdown saran nama ---- */
+  const bdgSip = (v) => `<span class="badge ${VERVAL_SIP_BADGE[v] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">SIP ${esc(v || '-')}</span>`;
+  const bdgFas = (v) => `<span class="badge ${VERVAL_FAS_BADGE[v] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">${esc(v || '-')}</span>`;
+  const tutupSaran = () => { box.classList.add('hidden'); box.innerHTML = ''; aktif = -1; daftar = []; };
+
+  function renderSaran() {
+    const q = input.value.trim().toLowerCase();
+    const cocok = (s) => String(s || '').toLowerCase().includes(q);
+    const P = saranP.filter((r) => cocok(r.nama_lengkap) || cocok(r.unit_kerja)).slice(0, 8);
+    const F = saranF.filter((r) => cocok(r.nama_fasyankes)).slice(0, 8);
+    if (!P.length && !F.length) {
+      daftar = []; aktif = -1;
+      box.innerHTML = !q || (!saranP.length && !saranF.length) ? '' :
+        `<div class="rounded-xl border border-slate-200 bg-white shadow-lg px-3.5 py-3 text-xs text-slate-400">Tidak ada saran nama — tekan <b>Cari</b> untuk mencari &ldquo;${esc(input.value.trim())}&rdquo;.</div>`;
+      if (box.innerHTML) box.classList.remove('hidden'); else box.classList.add('hidden');
+      return;
+    }
+    const itP = P.map((r) => ({ tipe: 'p', r })), itF = F.map((r) => ({ tipe: 'f', r }));
+    daftar = [...itP, ...itF];
+    const item = ({ tipe, r }, i) => `
+      <button type="button" class="saran-item w-full text-left px-3 py-2 flex items-center gap-2.5 hover:bg-teal-50 ${i === aktif ? 'bg-teal-50' : ''}" data-i="${i}">
+        <div class="w-7 h-7 rounded-lg ${tipe === 'p' ? 'bg-sky-50 text-sky-600' : 'bg-teal-50 text-teal-600'} grid place-items-center flex-none">${icon(tipe === 'p' ? 'verif' : 'faskes', 'w-3.5 h-3.5')}</div>
+        <div class="flex-1 min-w-0">
+          <p class="text-xs font-bold text-slate-700 truncate">${esc(tipe === 'p' ? r.nama_lengkap : r.nama_fasyankes)}</p>
+          <p class="text-[.66rem] text-slate-400 truncate">${tipe === 'p'
+            ? `${esc(r.unit_kerja || '—')}${r.kecamatan ? ' • ' + esc(r.kecamatan) : ''}`
+            : `${esc(r.jenis_fasyankes || '—')}${r.kecamatan ? ' • ' + esc(r.kecamatan) : ''}`}</p>
+        </div>
+        ${tipe === 'p' ? bdgSip(r.status_sip) : bdgFas(r.status_verifikasi)}
+      </button>`;
+    box.innerHTML = `<div class="rounded-xl border border-slate-200 bg-white shadow-lg py-1 max-h-72 overflow-y-auto">
+      ${P.length ? `<p class="px-3 pt-1.5 pb-1 text-[.62rem] font-bold uppercase tracking-wider text-slate-400">Izin Praktik</p>${itP.map(item).join('')}` : ''}
+      ${F.length ? `<p class="px-3 pt-1.5 pb-1 text-[.62rem] font-bold uppercase tracking-wider text-slate-400">Fasyankes</p>${itF.map((o, j) => item(o, P.length + j)).join('')}` : ''}
+    </div>`;
+    box.classList.remove('hidden');
+    $$('#cek-saran .saran-item').forEach((b) => b.addEventListener('click', () => pilihSaran(daftar[Number(b.dataset.i)])));
+  }
+
+  function pilihSaran(it) {
+    if (!it) return;
+    input.value = it.tipe === 'p' ? it.r.nama_lengkap : it.r.nama_fasyankes;
+    tutupSaran();
+    cari();
+  }
+
+  input.addEventListener('focus', renderSaran);
+  input.addEventListener('input', () => { aktif = -1; renderSaran(); });
+  input.addEventListener('keydown', (e) => {
+    if (box.classList.contains('hidden') || !daftar.length) { if (e.key === 'Enter') cari(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); aktif = (aktif + 1) % daftar.length; renderSaran(); box.querySelector(`[data-i="${aktif}"]`)?.scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); aktif = (aktif - 1 + daftar.length) % daftar.length; renderSaran(); box.querySelector(`[data-i="${aktif}"]`)?.scrollIntoView({ block: 'nearest' }); }
+    else if (e.key === 'Enter') { e.preventDefault(); aktif >= 0 ? pilihSaran(daftar[aktif]) : cari(); }
+    else if (e.key === 'Escape') tutupSaran();
+  });
+  btn.addEventListener('click', cari);
+  const klikLuar = (e) => {
+    if (!$('#cek-input')) { document.removeEventListener('click', klikLuar); return; }
+    if (!e.target.closest('#cek-saran') && !e.target.closest('#cek-input')) tutupSaran();
+  };
+  document.addEventListener('click', klikLuar);
+
+  /* ---- Pencarian ke dua tabel verval ---- */
   async function cari() {
     const q = input.value.trim().replace(/[,()%]/g, ' ');
+    tutupSaran();
     if (q.length < 2) { toast('Masukkan minimal 2 karakter untuk mencari.', 'info'); return; }
     $('#cek-result').innerHTML = skeletonRows(4);
     try {
-      const [tm, tk, f, p] = await Promise.all([
-        fetchRows('tenaga_medis', { search: q, searchCols: ['nama_lengkap'] }),
-        fetchRows('tenaga_kesehatan', { search: q, searchCols: ['nama_lengkap'] }),
-        fetchRows('fasyankes', { search: q, searchCols: ['nama_fasyankes'] }),
-        fetchRows('praktik_mandiri', { search: q, searchCols: ['nama_praktik', 'pemilik'] }),
+      const [vp, vf] = await Promise.all([
+        fetchRows('verval_izin_praktik', { search: q, searchCols: ['nama_lengkap', 'unit_kerja', 'kode_verifikasi'], limit: 100 }),
+        fetchRows('verval_fasyankes', { search: q, searchCols: ['nama_fasyankes', 'nomor_unit', 'kecamatan', 'kode_verval'], limit: 100 }),
       ]);
-      const kartu = (ic, warna, judul, sub, meta, bdg, catatan) => `
-        <div class="card p-3.5 flex items-start gap-3">
-          <div class="w-9 h-9 rounded-lg ${warna} grid place-items-center flex-none">${icon(ic, 'w-4 h-4')}</div>
+      const kartuPraktik = (r) => `
+        <div class="rv-row card p-3.5 flex flex-col sm:flex-row sm:items-center gap-3 cursor-pointer" data-tipe="p" data-id="${r.id}" title="Klik untuk detail lengkap">
+          <div class="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 grid place-items-center flex-none">${icon('verif', 'w-5 h-5')}</div>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center gap-2 flex-wrap"><p class="font-bold text-[.84rem] text-slate-700">${esc(judul)}</p>${bdg}</div>
-            <p class="text-xs text-slate-500">${esc(sub)}</p>
-            <p class="text-[.68rem] text-slate-400">${meta}</p>
-            ${catatan ? `<p class="text-[.7rem] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-1.5">Catatan: ${trunc(catatan, 120)}</p>` : ''}
+            <p class="font-bold text-[.84rem] text-slate-700">${esc(r.nama_lengkap)}</p>
+            <p class="text-xs text-slate-500 truncate">${esc(r.unit_kerja || '—')}${r.kecamatan ? ' • ' + esc(r.kecamatan) : ''}</p>
+            <p class="text-[.66rem] text-slate-400 mt-0.5">Verval: ${fmtDateTime(r.created_at)}${r.verifikator ? ' • oleh ' + esc(r.verifikator) : ''}</p>
+          </div>
+          <div class="flex items-center gap-2 flex-none flex-wrap">
+            <span class="badge ${VERVAL_SIP_BADGE[r.status_sip] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">SIP ${esc(r.status_sip || '-')}</span>
+            <span class="kode-chip">${esc(trunc(r.kode_verifikasi || '-', 26))}</span>
           </div>
         </div>`;
-      const sections = [];
-      if (tm.length) sections.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 mb-2 mt-1">Tenaga Medis (${tm.length})</p>` + tm.map((r) =>
-        kartu('medis', 'bg-teal-50 text-teal-600', r.nama_lengkap, `${r.spesialisasi || 'Dokter'} • ${r.tempat_praktik || '—'}`, `Masa berlaku SIP: ${fmtDate(r.masa_berlaku_sip)}`, badge(r.status), null)).join(''));
-      if (tk.length) sections.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 mb-2 mt-1">Tenaga Kesehatan (${tk.length})</p>` + tk.map((r) =>
-        kartu('kes', 'bg-sky-50 text-sky-600', r.nama_lengkap, `${r.profesi || '—'} • ${r.tempat_praktik || '—'}`, `Masa berlaku SIP: ${fmtDate(r.masa_berlaku_sip)}`, badge(r.status), null)).join(''));
-      if (f.length) sections.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 mb-2 mt-1">Fasyankes (${f.length})</p>` + f.map((r) =>
-        kartu('faskes', 'bg-indigo-50 text-indigo-600', r.nama_fasyankes, `${r.jenis || '—'} • ${r.alamat || '—'}`, `${esc(r.kecamatan || '—')} • Diverifikasi: ${esc(r.verified_by || 'belum')}`, badge(r.status_verifikasi), r.catatan_verifikasi)).join(''));
-      if (p.length) sections.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 mb-2 mt-1">Praktik Mandiri (${p.length})</p>` + p.map((r) =>
-        kartu('praktik', 'bg-amber-50 text-amber-600', r.nama_praktik, `${r.jenis_praktik || '—'} • ${r.alamat || '—'}`, `Pemilik: ${esc(r.pemilik || '—')} • Diverifikasi: ${esc(r.verified_by || 'belum')}`, badge(r.status_verifikasi), r.catatan_verifikasi)).join(''));
-      $('#cek-result').innerHTML = sections.length
-        ? `<div class="space-y-2">${sections.join('')}</div>`
-        : emptyState('Tidak ditemukan data dengan kata kunci tersebut.');
+      const kartuFaskes = (r) => `
+        <div class="rv-row card p-3.5 flex flex-col sm:flex-row sm:items-center gap-3 cursor-pointer" data-tipe="f" data-id="${r.id}" title="Klik untuk detail lengkap">
+          <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 grid place-items-center flex-none">${icon('faskes', 'w-5 h-5')}</div>
+          <div class="flex-1 min-w-0">
+            <p class="font-bold text-[.84rem] text-slate-700">${esc(r.nama_fasyankes)}</p>
+            <p class="text-xs text-slate-500 truncate">${esc(r.jenis_fasyankes || '—')} &bull; ${esc(r.kelurahan || '—')}, ${esc(r.kecamatan || '—')} &bull; PJ: ${esc(r.penanggung_jawab || '—')}</p>
+            <p class="text-[.66rem] text-slate-400 mt-0.5">${esc(r.kode_verval || '-')} &bull; ${fmtDate(r.tanggal_verval)}${r.verifikator ? ' • verifikator: ' + esc(r.verifikator) : ''}</p>
+          </div>
+          <div class="flex items-center gap-2 flex-none flex-wrap">
+            <span class="badge ${VERVAL_FAS_BADGE[r.status_verifikasi] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">${esc(r.status_verifikasi || '-')}</span>
+          </div>
+        </div>`;
+      const bagian = [];
+      if (vp.length) bagian.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 ${bagian.length ? 'mt-4 ' : ''}mb-2">Izin Praktik (${vp.length})</p><div class="space-y-2.5">${vp.map(kartuPraktik).join('')}</div>`);
+      if (vf.length) bagian.push(`<p class="text-[.7rem] font-bold uppercase tracking-wider text-slate-400 ${bagian.length ? 'mt-4 ' : ''}mb-2">Fasyankes (${vf.length})</p><div class="space-y-2.5">${vf.map(kartuFaskes).join('')}</div>`);
+      $('#cek-result').innerHTML = bagian.length
+        ? `<p class="text-[.7rem] text-slate-400 mb-3">Menampilkan <b>${vp.length}</b> hasil izin praktik &amp; <b>${vf.length}</b> hasil fasyankes untuk &ldquo;${esc(q)}&rdquo;. Klik baris untuk detail lengkap.</p><div>${bagian.join('')}</div>`
+        : emptyState(`Tidak ditemukan hasil verval untuk &ldquo;${esc(q)}&rdquo;.`);
+      $$('#cek-result [data-id]').forEach((el) => el.addEventListener('click', () => {
+        const rows = el.dataset.tipe === 'p' ? vp : vf;
+        const r = rows.find((x) => String(x.id) === el.dataset.id);
+        if (!r) return;
+        if (el.dataset.tipe === 'p') detailVervalModal(r, cari); else detailVfModal(r, cari);
+      }));
     } catch (e) {
       $('#cek-result').innerHTML = errorBlock(e);
     }
@@ -3020,13 +3128,13 @@ const ROUTES = {
   'praktik-mandiri': { t: 'Data Praktik Mandiri', s: 'Kelola data pengajuan praktik mandiri', render: () => mountCrud('praktik-mandiri') },
   'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan — wajib login Admin/Operator', render: mountVervalPraktik, perizinan: true },
   'verifikasi-faskes': { t: 'Verifikasi Faskes', s: 'Formulir verval fasyankes, riwayat & persetujuan pengajuan — wajib login Admin/Operator', render: mountVervalFaskes, perizinan: true },
-  'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Pencarian status berdasarkan Nama', render: mountCekVerifikasi },
+  'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Cari hasil verval izin praktik & fasyankes — pilih nama dari saran data', render: mountCekVerifikasi },
   'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto — wajib login Admin/Operator', render: mountMonev, perizinan: true },
   'panel-admin': { t: 'Panel Admin', s: 'Seluruh menu dalam tab pada satu konten + CRUD per baris (khusus admin)', render: mountPanelAdmin, adminOnly: true },
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.6.0';
+const VERSI_SIMANTRI = '1.7.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,
