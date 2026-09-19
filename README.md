@@ -23,8 +23,8 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 ├── assets/
 │   └── logo.svg        # Logo SIMANTRI
 ├── sql/
-│   ├── schema.sql           # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru) — selaras menu v1.5.1
-│   ├── migrasi_v1.5.0.sql   # PERBAIKAN database lama/berubah: membuat tabel & kolom yang hilang, menyelaraskan RLS — data lama dijaga
+│   ├── schema.sql           # SEMUA tabel + RLS + trigger + bucket (WAJIB untuk database baru) — selaras menu v1.6.0
+│   ├── migrasi_v1.6.0.sql   # PERBAIKAN database lama/berubah: membuat tabel & kolom yang hilang, menyelaraskan RLS + aturan akses Perizinan — data lama dijaga
 │   └── seed.sql             # Data demo opsional (fasyankes/praktik Kab. Kutai Kartanegara + koordinat, tanpa NIK)
 └── README.md
 ```
@@ -42,7 +42,7 @@ Aplikasi web ringan (HTML + Tailwind CSS CDN + Vanilla JS) dengan backend **Supa
 2. Salin seluruh isi `sql/schema.sql` → klik **Run**.
 3. (Opsional) Salin isi `sql/seed.sql` → **Run** untuk data demo (RSUD Tenggarong, Puskesmas, praktik bidan, dll. — lengkap dengan koordinat agar peta langsung tampil).
 
-> **Database sudah berjalan dari versi lama, atau pernah berubah (tabel/kolom terhapus, tidak sinkron)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_v1.5.0.sql` sekali. Script ini MEMERIKSA seluruh struktur yang dibutuhkan aplikasi v1.5.1 (9 tabel, seluruh kolom, fungsi, trigger, index, RLS, bucket storage), MEMBUAT yang hilang, dan MENYELARASKAN yang berbeda — tanpa menghapus data apa pun. Idempotent: aman dijalankan berulang.
+> **Database sudah berjalan dari versi lama, atau pernah berubah (tabel/kolom terhapus, tidak sinkron)?** Tidak perlu menjalankan ulang `schema.sql` — cukup jalankan `sql/migrasi_v1.6.0.sql` sekali. Script ini MEMERIKSA seluruh struktur yang dibutuhkan aplikasi v1.6.0 (9 tabel, seluruh kolom, fungsi, trigger, index, RLS termasuk **aturan akses Perizinan terbaru**), MEMBUAT yang hilang, dan MENYELARASKAN yang berbeda — tanpa menghapus data apa pun. Idempotent: aman dijalankan berulang. Wajib dijalankan agar **Bagian 3 — Perizinan** berfungsi untuk akun Admin/Operator (policy verval & monev diperbarui).
 
 ### 3. Konfigurasi Auth
 1. Buka **Authentication → Sign In / Providers → Email**.
@@ -102,19 +102,23 @@ python3 -m http.server 8080
 
 | Aksi | Admin | Verifikator | Operator |
 |---|:---:|:---:|:---:|
-| Melihat dashboard, peta, tabel, cek verifikasi | ✅ | ✅ | ✅ |
-| Menambah data (Bagian 2) & monev | ✅ | — | ✅ |
-| Mengedit data | ✅ | hanya status verifikasi | ✅ |
-| Mengedit catatan verval (praktik & faskes) | ✅ | ✅ | — |
+| Melihat dashboard, peta, tabel, cek verifikasi (Bagian 1–2) | ✅ | ✅ | ✅ |
+| **Membuka menu Bagian 3 — Perizinan (v1.6.0, wajib login)** | ✅ | — | ✅ |
+| Menambah data (Bagian 2) | ✅ | — | ✅ |
+| Mengedit data (Bagian 2) | ✅ | hanya status verifikasi* | ✅ |
+| Mengedit catatan verval (praktik & faskes) | ✅ | — | ✅ |
 | Menghapus data | ✅ | — | — |
-| Setujui / Tolak pengajuan (Bagian 3) | ✅ | ✅ | — |
-| Mengisi & mengirim Formulir Verval Izin Praktik | ✅ | ✅ | — |
-| Mengisi & mengirim Formulir Verval Fasyankes | ✅ | ✅ | — |
-| Melihat riwayat & detail verval (praktik & faskes) | ✅ | ✅ | ✅ |
+| Setujui / Tolak pengajuan (Bagian 3) | ✅ | — | ✅ |
+| Mengisi & mengirim Formulir Verval Izin Praktik | ✅ | — | ✅ |
+| Mengisi & mengirim Formulir Verval Fasyankes | ✅ | — | ✅ |
+| Melihat riwayat & detail verval (praktik & faskes) | ✅ | — | ✅ |
 | Menghapus catatan verval (praktik & faskes) | ✅ | — | — |
+| Menambah & mengedit catatan Monev Izin | ✅ | — | ✅ |
 | Kelola pengguna & assign role (Bagian 4) | ✅ | — | — |
 
-> Polisi `SELECT` saat ini **publik** agar dashboard/peta dapat dibuka tanpa login (sesuai alur landing → `#beranda`). Untuk menutupnya, ubah `using (true)` pada policy select menjadi `using (auth.uid() is not null)` di `sql/schema.sql`.
+\* hak edit lama di policy Bagian 2 dipertahankan demi data lama, namun sejak v1.6.0 halaman Perizinan tidak dapat dibuka oleh verifikator (kartu "Akses Ditolak").
+
+> **Aturan akses v1.6.0:** seluruh menu **Bagian 3 — Perizinan** (Verifikasi Praktik, Verifikasi Faskes, Monev Izin) **wajib login** dan hanya untuk **Admin & Operator** — ditegakkan di sidebar, router (kartu Wajib Masuk / Akses Ditolak), tombol aksi, dan policy RLS `can_input()`. Policy `SELECT` tetap publik agar **Dashboard/Peta/Cek Hasil Verifikasi** (Bagian 1) dapat dibuka tanpa login — pengunjung umum tetap dapat mengecek hasil verifikasi tanpa melihat menu Perizinan.
 
 ---
 
@@ -124,7 +128,7 @@ python3 -m http.server 8080
 - **Layout**: sidebar kiri fixed 280px (collapsible di mobile) + topbar + content.
 - **Bagian 1 — Overview**: Dashboard (5 kartu statistik pop-up + grafik bar sebaran per kecamatan), Petunjuk Penggunaan (dua tab: **Buku Petunjuk Pembaca** — flipbook baca-saja tanpa unduh — dan **Ringkasan Cepat** accordion), Peta Sebaran Praktik (Leaflet, pusat Tenggarong −0.4419, 117.0861), Notifikasi Expired SIP/STR (badge merah/kuning/hijau, H-30), **Cek Hasil Verifikasi** (pencarian status berdasarkan nama). Nomor STR otomatis **disembunyikan dari pengunjung yang belum masuk** (privasi pembaca; penuh hanya untuk pengguna login).
 - **Bagian 2 — Manajemen Data**: CRUD penuh Fasyankes & Praktik Mandiri — form tambah/edit via modal, klik baris → modal detail. Data **Tenaga Medis & Tenaga Kesehatan dikelola melalui Panel Admin** (Bagian 4, tab Tenaga Medis & Tenaga Kesehatan).
-- **Bagian 3 — Perizinan**: **Verifikasi Praktik** (3 tab: *Formulir Verval* 27 field — tanpa data NIK, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan), **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject) dan Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage).
+- **Bagian 3 — Perizinan (WAJIB LOGIN — hanya Admin & Operator sejak v1.6.0)**: menu tidak tampil bagi pengunjung/verifikator; akses langsung via URL menampilkan kartu **Wajib Masuk**/**Akses Ditolak**. **Verifikasi Praktik** (3 tab: *Formulir Verval* 27 field — tanpa data NIK, draf tersimpan otomatis ke tabel `verval_draft` per pengguna, preview sebelum kirim, kode verifikasi unik; *Riwayat Verval* — daftar + detail lengkap + pencarian, hapus khusus admin; *Pengajuan Praktik* — approve/reject + catatan), **Verifikasi Faskes** (3 tab: *Formulir Verval Fasyankes* — ID verval otomatis `VF-YYYYMMDD-XXXXX`, data fasilitas + alamat/kontak + **SDM Kesehatan dinamis sesuai jenis fasyankes** (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, draf otomatis; *Riwayat Verval* + detail & hapus admin; *Pengajuan Faskes* — approve/reject) dan Monev Izin (kunjungan, temuan, tindak lanjut, upload foto ke Supabase Storage). Masyarakat tetap dapat mengecek status melalui **Cek Hasil Verifikasi** (Bagian 1) tanpa login.
 - **Bagian 4 — Panel Admin**: hanya admin — **seluruh menu aplikasi tersedia sebagai tab terpisah dalam satu konten** (ringkasan, tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri, verval praktik & faskes, cek verifikasi, monev, izin expired, peta, petunjuk, **petunjuk admin**, pengguna) + **kolom Aksi berisi tombol Edit/Hapus pada setiap baris** semua tabel yang berfungsi lengkap ke Supabase, termasuk **edit catatan verval izin praktik & verval fasyankes** (SDM kesehatan dinamis ikut dapat diedit). Tab **Petunjuk Admin** menyajikan Buku 2 (PDF) yang dapat dibaca langsung maupun diunduh.
 - Semua kartu statistik & baris tabel membuka **modal detail live** dari Supabase (bukan alert).
 
@@ -132,6 +136,7 @@ python3 -m http.server 8080
 
 ## Riwayat Versi
 
+- **v1.6.0** — **Penguatan akses Bagian 3 — Perizinan**: seluruh menu perizinan (Verifikasi Praktik, Verifikasi Faskes, Monev Izin) kini **wajib login dan hanya untuk Admin & Operator** — tidak diperkenankan bagi pengunjung umum maupun role lain. Ditegakkan berlapis: (1) sidebar — Bagian 3 disembunyikan bagi yang tidak berhak; (2) router — akses langsung via URL menampilkan kartu **Wajib Masuk** (belum login, tombol masuk tersedia) atau **Akses Ditolak** (login tapi bukan Admin/Operator); (3) tombol aksi — kirim verval, edit catatan verval, setujui/tolak pengajuan, tambah/edit monev kini memakai gerbang Admin/Operator; (4) **RLS database** — policy INSERT/UPDATE `verval_izin_praktik`, `verval_fasyankes` & `monev_izin` (schema.sql + `migrasi_v1.6.0.sql`) kini memakai `can_input()` (admin+operator); `SELECT` tetap publik agar Cek Hasil Verifikasi (Bagian 1) tetap berfungsi tanpa login. `migrasi_v1.5.0.sql` digabung ke `migrasi_v1.6.0.sql` (sekali jalan, idempotent, data dijaga). Petunjuk dalam aplikasi & README disesuaikan.
 - **v1.5.1** — **Pembangunan ulang folder `sql/` agar selaras dengan struktur menu terbaru (v1.5.1)**: (1) `schema.sql` ditulis ulang — dokumentasi akses per Bagian menu (Bagian 1 publik baca 7 tabel data; Bagian 2–3 CRUD sesuai role; Bagian 4 Panel Admin), 9 tabel lengkap dengan fungsi bantu, trigger, index, RLS & bucket storage, tetap idempotent; (2) `sql/migrasi_v1.5.0.sql` baru — **satu script perbaikan** untuk database lama/berubah: membuat tabel & kolom yang hilang (`add column if not exists`), memastikan PK komposit draf, menyelaraskan RLS — tanpa menghapus data (menggantikan `migrasi_verval.sql` + `migrasi_hapus_nik.sql` yang diarsipkan); (3) **Perbaikan bug `seed.sql`**: baris demo verval praktik no. 2 memuat `sdmk_admin='Belum'` yang melanggar CHECK constraint (`'Ada'/'Tidak Ada'`) sehingga seed GAGAL dijalankan — kini `'Tidak Ada'`; seluruh 47 nilai enum seed tervalidasi otomatis terhadap constraint schema. Konsistensi SQL ↔ aplikasi diverifikasi silang (tabel/kolom `.from()` app.js, konstanta `PROFESI_TK`/`JENIS_FASKES`/`JENIS_PRAKTIK` vs CHECK, 9× RLS, bucket monev).
 
 - **v1.5.0** — **Dua buku petunjuk PDF terpisah**: (1) **Buku 1 — Petunjuk untuk Pembaca** (10 halaman): tersaji sebagai **flipbook baca-saja** pada menu Petunjuk Penggunaan — halaman disajikan sebagai gambar dan **tidak ada berkas PDF di hosting sehingga tidak dapat diunduh** (klik kanan & seret dinonaktifkan, navigasi tombol/panah/lompat halaman); (2) **Buku 2 — Petunjuk untuk Admin** (14 halaman): tersedia di **Panel Admin → tab Petunjuk Admin** dengan pratinjau tersemat + tombol **Unduh PDF** (berkas di `docs/petunjuk-admin-simantri.pdf`). Kedua buku memakai sampul & palet teal resmi (Penyusun: Mukmin Nasri, S.Kep) dan sudah disesuaikan dengan struktur menu v1.4.0.

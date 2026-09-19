@@ -1,5 +1,5 @@
 -- =========================================================
--- SIMANTRI — SEED DATA (OPSIONAL, khusus DEMO) — v1.5.1
+-- SIMANTRI — SEED DATA (OPSIONAL, khusus DEMO) — v1.6.0
 -- ---------------------------------------------------------
 -- Jalankan HANYA bila ingin mengisi contoh data untuk
 -- melihat dashboard, grafik, dan peta. Data ini MASUK ke

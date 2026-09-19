@@ -5,9 +5,11 @@
  * Semua data diambil LIVE dari Supabase (tanpa mock data,
  * tanpa localStorage untuk data). Role: admin / verifikator /
  * operator. Keamanan ditegakkan RLS di sisi database.
+ * v1.6.0: Bagian 3 — Perizinan wajib login & hanya untuk
+ * Admin + Operator (sidebar, router, tombol aksi & RLS).
  * ========================================================= */
 
-import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.5.1';
+import { supabase, SUPABASE_TERKONFIGURASI } from './supabase.js?v=1.6.0';
 
 /* =========================================================
  * 1. KONSTANTA & STATE
@@ -289,6 +291,15 @@ const isAdmin = () => state.profile?.role === 'admin';
 const isVerifikator = () => state.profile?.role === 'verifikator';
 const isOperator = () => state.profile?.role === 'operator';
 const canInput = () => isAdmin() || isOperator();
+
+/* Gerbang Bagian 3 — Perizinan (v1.6.0): WAJIB login, hanya Admin
+ * dan Operator. Verifikator & pengunjung umum tidak diperkenankan.
+ * Seluruh aksi di halaman Perizinan (verval, setujui/tolak, monev)
+ * juga memakai gerbang ini — selaras policy RLS can_input(). */
+const canPerizinan = () => isAdmin() || isOperator();
+
+/* Dipertahankan hanya untuk kompatibilitas role lama; sejak v1.6.0
+ * tidak lagi dipakai sebagai gerbang akses (lihat canPerizinan). */
 const canVerify = () => isAdmin() || isVerifikator();
 
 async function loadProfile(userId) {
@@ -390,6 +401,7 @@ const NAV_SECTIONS = [
   },
   {
     label: 'Bagian 3 — Perizinan',
+    perizinan: true, // v1.6.0: wajib login, hanya Admin & Operator
     items: [
       { id: 'verifikasi-praktik', label: 'Verifikasi Praktik', icon: 'verif' },
       { id: 'verifikasi-faskes', label: 'Verifikasi Faskes', icon: 'shield' },
@@ -411,6 +423,7 @@ function buildNav() {
   let html = '';
   for (const sec of NAV_SECTIONS) {
     if (sec.adminOnly && !isAdmin()) continue; // Bagian 4 hanya untuk admin login
+    if (sec.perizinan && !canPerizinan()) continue; // Bagian 3 wajib login Admin/Operator (v1.6.0)
     html += `<div class="nav-section"><p class="nav-section-title">${esc(sec.label)}</p>`;
     for (const it of sec.items) {
       html += `<a class="nav-link" data-route="${it.id}" href="#${it.id}">${icon(it.icon)}<span>${esc(it.label)}</span></a>`;
@@ -429,6 +442,25 @@ function forbiddenCard() {
     <div class="w-14 h-14 rounded-2xl bg-rose-50 text-rose-500 grid place-items-center mx-auto mb-3">${icon('shield', 'w-7 h-7')}</div>
     <h3 class="font-extrabold text-slate-800 mb-1">Akses Ditolak</h3>
     <p class="text-sm text-slate-500 leading-relaxed">Halaman ini hanya untuk <b>Admin</b>. Masuk dengan akun admin untuk mengelola pengguna.</p>
+    <a href="#beranda" class="btn btn-soft mt-4">Kembali ke Dashboard</a></div>`;
+}
+
+/* Kartu pembatas Bagian 3 — Perizinan (v1.6.0):
+ * belum login → ajakan masuk; login tapi bukan Admin/Operator → ditolak. */
+function perizinanCard() {
+  if (!state.user) {
+    return `<div class="card p-8 text-center max-w-md mx-auto mt-10">
+      <div class="w-14 h-14 rounded-2xl bg-teal-50 text-teal-600 grid place-items-center mx-auto mb-3">${icon('login', 'w-7 h-7')}</div>
+      <h3 class="font-extrabold text-slate-800 mb-1">Wajib Masuk</h3>
+      <p class="text-sm text-slate-500 leading-relaxed">Seluruh menu <b>Bagian 3 — Perizinan</b> wajib login untuk melihat dan mengakses data.
+      Gunakan tombol <b>Masuk</b> di kanan atas atau tombol berikut.</p>
+      <button id="btn-masuk-perizinan" class="btn btn-primary mt-4">${icon('login', 'w-4 h-4')} Masuk SIMANTRI</button></div>`;
+  }
+  return `<div class="card p-8 text-center max-w-md mx-auto mt-10">
+    <div class="w-14 h-14 rounded-2xl bg-rose-50 text-rose-500 grid place-items-center mx-auto mb-3">${icon('shield', 'w-7 h-7')}</div>
+    <h3 class="font-extrabold text-slate-800 mb-1">Akses Ditolak</h3>
+    <p class="text-sm text-slate-500 leading-relaxed">Bagian <b>Perizinan</b> tidak diperkenankan diakses selain oleh
+    <b>Admin</b> dan <b>Operator</b>. Role akun Anda: <b>${esc(state.profile?.role || '—')}</b>.</p>
     <a href="#beranda" class="btn btn-soft mt-4">Kembali ke Dashboard</a></div>`;
 }
 
@@ -457,6 +489,14 @@ function router() {
     $('#page-title').textContent = r.t;
     $('#page-sub').textContent = r.s || '';
     $('#page-content').innerHTML = forbiddenCard();
+    return;
+  }
+  if (r.perizinan && !canPerizinan()) { // v1.6.0: Bagian 3 wajib login Admin/Operator
+    state.route = id;
+    $('#page-title').textContent = r.t;
+    $('#page-sub').textContent = r.s || '';
+    $('#page-content').innerHTML = perizinanCard();
+    $('#btn-masuk-perizinan')?.addEventListener('click', openLoginModal);
     return;
   }
 
@@ -886,12 +926,12 @@ function renderPetunjukAcc(target = '#page-content') {
       c: `<p>Menu data pada Bagian 2: <b>Data Fasyankes</b> dan <b>Data Praktik Mandiri</b> — keduanya mendukung CRUD penuh: klik <b>Tambah</b> untuk input baru, klik baris tabel untuk melihat <b>detail lengkap</b>, lalu gunakan tombol <b>Edit</b> atau <b>Hapus</b>.</p><p>Data <b>Tenaga Medis</b> &amp; <b>Tenaga Kesehatan</b> kini dikelola melalui <b>Panel Admin</b> (Bagian 4) pada tab <b>Tenaga Medis</b> &amp; <b>Tenaga Kesehatan</b>. Operator &amp; admin dapat menambah/mengubah data; hanya admin yang dapat menghapus. Nomor STR disembunyikan dari pengunjung yang belum masuk (privasi pembaca).</p>`,
     },
     {
-      t: '5. Verifikasi Perizinan (Bagian 3)',
-      c: `<p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 27 field verifikasi &amp; validasi izin praktik dengan <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> juga tiga tab: <b>Formulir Verval Fasyankes</b> — ID verval otomatis (VF-tanggal-kode), data fasilitas, alamat &amp; kontak, daftar <b>SDM Kesehatan dinamis</b> mengikuti jenis fasyankes (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, plus draf otomatis; <b>Riwayat Verval</b> (detail lengkap, hapus khusus admin); dan <b>Pengajuan Faskes</b> (setujui/tolak). Masyarakat/petugas dapat mengecek status melalui menu <b>Cek Hasil Verifikasi</b> (Bagian 1 — Overview) dengan memasukkan nama.</p>`,
+      t: '5. Verifikasi Perizinan (Bagian 3) — Wajib Login',
+      c: `<p><b>Aturan akses (v1.6.0):</b> seluruh menu Bagian 3 — Perizinan <b>wajib login</b> untuk melihat dan mengakses data, dan tidak diperkenankan selain <b>Admin</b> dan <b>Operator</b>. Pengunjung umum maupun akun lain yang membuka halaman ini akan ditampilkan kartu <b>Wajib Masuk</b>/<b>Akses Ditolak</b>, dan menu Perizinan tidak tampil pada sidebar mereka. Masyarakat tetap dapat mengecek hasil verifikasi lewat menu <b>Cek Hasil Verifikasi</b> (Bagian 1 — Overview) tanpa login.</p><p>Menu <b>Verifikasi Praktik</b> memiliki tiga tab: <b>Formulir Verval</b> — 27 field verifikasi &amp; validasi izin praktik dengan <b>draf otomatis</b> yang tersinkron ke database per pengguna; <b>Riwayat Verval</b> — seluruh hasil verval, klik baris untuk detail lengkap (admin dapat menghapus); dan <b>Pengajuan Praktik</b> — setujui/tolak pengajuan beserta catatan.</p><p>Menu <b>Verifikasi Faskes</b> juga tiga tab: <b>Formulir Verval Fasyankes</b> — ID verval otomatis (VF-tanggal-kode), data fasilitas, alamat &amp; kontak, daftar <b>SDM Kesehatan dinamis</b> mengikuti jenis fasyankes (RS, Puskesmas, Klinik, Apotik, Toko Obat, Optik, PBF, Praktik Mandiri), hasil verifikasi Layak/Tidak Layak/Perbaikan/Pending/Tidak Valid, plus draf otomatis; <b>Riwayat Verval</b> (detail lengkap, hapus khusus admin); dan <b>Pengajuan Faskes</b> (setujui/tolak).</p>`,
     },
     {
       t: '6. Monev Izin & Upload Foto',
-      c: `<p>Menu <b>Monev Izin</b> merekam hasil monitoring &amp; evaluasi: tanggal kunjungan, sasaran, petugas, temuan, tindak lanjut, dan <b>foto dokumentasi</b> yang terunggah ke Supabase Storage (bucket <b>monev</b>). Klik baris untuk melihat detail lengkap termasuk foto.</p>`,
+      c: `<p>Menu <b>Monev Izin</b> (Bagian 3 — wajib login Admin/Operator) merekam hasil monitoring &amp; evaluasi: tanggal kunjungan, sasaran, petugas, temuan, tindak lanjut, dan <b>foto dokumentasi</b> yang terunggah ke Supabase Storage (bucket <b>monev</b>). Klik baris untuk melihat detail lengkap termasuk foto.</p>`,
     },
     {
       t: '7. Peta & Notifikasi Expired',
@@ -903,7 +943,7 @@ function renderPetunjukAcc(target = '#page-content') {
     },
     {
       t: '9. Panel Admin (Bagian 4)',
-      c: `<p>Bagian 4 pada sidebar dikhususkan untuk admin. Menu <b>Panel Admin</b> menempatkan <b>seluruh menu aplikasi</b> — ringkasan, data (tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri), verval praktik &amp; faskes, cek verifikasi, monev, izin expired, peta, petunjuk, hingga pengguna — dalam <b>tab terpisah pada satu konten</b>, tanpa perlu berpindah halaman.</p><p>Setiap tabel diakhiri kolom <b>Aksi</b>: tombol <b>Edit</b> dan <b>Hapus</b> langsung pada setiap baris yang berfungsi penuh (CRUD lengkap). Tambah data tetap melalui tombol <b>Tambah</b> pada tiap tab. Edit data memerlukan Operator/Admin, edit catatan verval Verifikator/Admin, dan hapus selalu khusus Admin — ditegakkan pula oleh RLS di database.</p>`,
+      c: `<p>Bagian 4 pada sidebar dikhususkan untuk admin. Menu <b>Panel Admin</b> menempatkan <b>seluruh menu aplikasi</b> — ringkasan, data (tenaga medis, tenaga kesehatan, fasyankes, praktik mandiri), verval praktik &amp; faskes, cek verifikasi, monev, izin expired, peta, petunjuk, hingga pengguna — dalam <b>tab terpisah pada satu konten</b>, tanpa perlu berpindah halaman.</p><p>Setiap tabel diakhiri kolom <b>Aksi</b>: tombol <b>Edit</b> dan <b>Hapus</b> langsung pada setiap baris yang berfungsi penuh (CRUD lengkap). Tambah data tetap melalui tombol <b>Tambah</b> pada tiap tab. Edit data memerlukan Operator/Admin, edit catatan verval Admin/Operator (Bagian 3 wajib login sejak v1.6.0), dan hapus selalu khusus Admin — ditegakkan pula oleh RLS di database.</p>`,
     },
   ];
   const accItem = (it, i) => `
@@ -1372,9 +1412,9 @@ async function mountVerifikasi(kind, target = '#page-content') {
         </div>
         <div class="flex flex-wrap gap-2" id="vf-tabs"></div>
       </div>
-      ${canVerify() ? '' : `<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-xs text-sky-800 flex gap-2.5 items-start mb-3.5">
+      ${canPerizinan() ? '' : `<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-xs text-sky-800 flex gap-2.5 items-start mb-3.5">
         ${icon('info', 'w-4 h-4 mt-0.5 flex-none')}
-        <span>Verifikasi memerlukan akun <b>Verifikator</b> atau <b>Admin</b>. Gunakan tombol <b>Masuk</b> di kanan atas.</span></div>`}
+        <span>Bagian Perizinan hanya untuk <b>Admin</b> dan <b>Operator</b>. Gunakan tombol <b>Masuk</b> di kanan atas.</span></div>`}
       <div id="vf-list">${skeletonRows(5)}</div>
     </div>`;
 
@@ -1409,7 +1449,7 @@ async function mountVerifikasi(kind, target = '#page-content') {
         </div>
         <div class="flex items-center gap-2 flex-none flex-wrap">
           ${badge(r.status_verifikasi)}
-          ${canVerify() && r.status_verifikasi === 'pending' ? `
+          ${canPerizinan() && r.status_verifikasi === 'pending' ? `
             <button class="btn btn-success !py-1.5 !px-2.5" data-act="disetujui">${icon('check', 'w-3.5 h-3.5')} Setujui</button>
             <button class="btn btn-danger !py-1.5 !px-2.5" data-act="ditolak">${icon('x', 'w-3.5 h-3.5')} Tolak</button>` : ''}
           ${canInput() ? `<button class="row-act" data-act="edit" title="Edit data pengajuan">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
@@ -1487,9 +1527,8 @@ function setDraftStatus(html, mode = 'ok') {
 function vervalLoginNotice() {
   return `<div class="rounded-xl bg-sky-50 border border-sky-200 p-3.5 text-xs text-sky-800 flex gap-2.5 items-start mb-4">
     ${icon('info', 'w-4 h-4 mt-0.5 flex-none')}
-    <span>Formulir ini untuk kegiatan <b>verifikasi &amp; validasi</b> oleh petugas berwenang. Masuk dengan akun
-    <b>Verifikator</b> atau <b>Admin</b> (tombol <b>Masuk</b> di kanan atas) untuk mengirim data.
-    Riwayat &amp; detail verval tetap dapat dilihat tanpa masuk.</span></div>`;
+    <span>Formulir ini untuk kegiatan <b>verifikasi &amp; validasi</b> oleh petugas berwenang. Bagian Perizinan wajib login —
+    masuk dengan akun <b>Admin</b> atau <b>Operator</b> (tombol <b>Masuk</b> di kanan atas) untuk mengirim data.</span></div>`;
 }
 
 /* ---------- Halaman Verifikasi Praktik (3 tab) ---------- */
@@ -1526,7 +1565,7 @@ function renderVpTab() {
 function renderVervalForm() {
   const now = new Date().toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'short' });
   $('#vp-content').innerHTML = `
-    ${canVerify() ? '' : vervalLoginNotice()}
+    ${canPerizinan() ? '' : vervalLoginNotice()}
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div class="flex items-start gap-3 min-w-0">
@@ -1594,7 +1633,7 @@ function renderVervalForm() {
 
         <div class="verval-actions">
           <button type="button" class="btn btn-ghost" id="btn-verval-preview">${icon('eye', 'w-4 h-4')} Preview Data</button>
-          <button type="submit" class="btn btn-primary btn-submit" ${canVerify() ? '' : 'disabled title="Masuk sebagai Verifikator/Admin dulu"'}>${icon('send', 'w-4 h-4')} Simpan &amp; Kirim Verval</button>
+          <button type="submit" class="btn btn-primary btn-submit" ${canPerizinan() ? '' : 'disabled title="Masuk sebagai Admin/Operator dulu"'}>${icon('send', 'w-4 h-4')} Simpan &amp; Kirim Verval</button>
           <button type="button" class="btn btn-ghost" id="btn-verval-reset">${icon('undo', 'w-4 h-4')} Reset</button>
         </div>
       </form>
@@ -1651,7 +1690,7 @@ async function simpanDraftVerval() {
 
 async function muatDraftVerval() {
   if (!SUPABASE_TERKONFIGURASI || !state.user) {
-    setDraftStatus(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai verifikator/admin untuk mengaktifkan draf otomatis`, 'warn');
+    setDraftStatus(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai admin/operator untuk mengaktifkan draf otomatis`, 'warn');
     return;
   }
   try {
@@ -1744,7 +1783,7 @@ async function submitVerval() {
   if (!d.nomor_str) { toast('Nomor STR wajib diisi.', 'error'); return; }
   if (!d.unit_kerja) { toast('Unit Kerja / Fasyankes wajib diisi.', 'error'); return; }
   if (!SUPABASE_TERKONFIGURASI) { toast('Supabase belum dikonfigurasi — isi js/config.js.', 'error'); return; }
-  if (!canVerify()) { toast('Hanya Verifikator/Admin yang dapat mengirim verval. Silakan masuk dahulu.', 'error'); return; }
+  if (!canPerizinan()) { toast('Bagian Perizinan hanya untuk Admin/Operator. Silakan masuk dahulu.', 'error'); return; }
 
   const btns = $$('#verval-form button');
   btns.forEach((b) => { b.disabled = true; });
@@ -1826,7 +1865,7 @@ async function muatRiwayatVerval(q) {
         <div class="flex items-center gap-2 flex-none flex-wrap">
           <span class="badge ${VERVAL_SIP_BADGE[r.status_sip] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">SIP ${esc(r.status_sip || '-')}</span>
           <span class="kode-chip">${esc(trunc(r.kode_verifikasi || '-', 26))}</span>
-          ${canVerify() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
+          ${canPerizinan() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
           ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan verval">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
@@ -1869,7 +1908,7 @@ function detailVervalModal(r, onSaved = null) {
     title: `Detail Verval: ${esc(r.nama_lengkap)}`, size: 'xl',
     body: `<div class="detail-grid">${rows}</div>`,
     footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-verval">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
-             ${canVerify() ? `<button class="btn btn-soft" id="btn-edit-verval">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
+             ${canPerizinan() ? `<button class="btn btn-soft" id="btn-edit-verval">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
              <button class="btn btn-ghost" data-close="1">Tutup</button>`,
     onOpen: (root) => {
       root.querySelector('#btn-edit-verval')?.addEventListener('click', () => {
@@ -1891,7 +1930,7 @@ function detailVervalModal(r, onSaved = null) {
   });
 }
 
-/* ---------- Edit catatan verval izin praktik (Update, verifikator/admin) ---------- */
+/* ---------- Edit catatan verval izin praktik (Update, admin/operator — v1.6.0) ---------- */
 
 const EDIT_VERVAL_PRAKTIK = [
   { k: 'nama_lengkap', label: 'Nama Lengkap', required: true, wide: true },
@@ -1921,7 +1960,7 @@ const EDIT_VERVAL_PRAKTIK = [
 ];
 
 function openEditVervalPraktik(row, onSaved = null) {
-  if (!canVerify()) { toast('Edit verval memerlukan akun Verifikator atau Admin.', 'info'); return; }
+  if (!canPerizinan()) { toast('Edit verval memerlukan akun Admin atau Operator.', 'info'); return; }
   openModal({
     title: `Edit Verval: ${esc(row.nama_lengkap || '')}`,
     size: 'lg',
@@ -2052,7 +2091,7 @@ function renderVfForm() {
   const tglPanjang = now.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const verifikatorAwal = esc(state.profile?.nama || state.user?.email || '');
   $('#vfc-content').innerHTML = `
-    ${canVerify() ? '' : vervalLoginNotice()}
+    ${canPerizinan() ? '' : vervalLoginNotice()}
     <div class="card p-5 sm:p-7">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div class="flex items-start gap-3 min-w-0">
@@ -2129,7 +2168,7 @@ function renderVfForm() {
         <input type="hidden" id="vf-tanggal" value="${todayISO()}">
 
         <div class="verval-actions">
-          <button type="submit" class="btn btn-primary btn-submit" ${canVerify() ? '' : 'disabled title="Masuk sebagai Verifikator/Admin dulu"'}>${icon('save', 'w-4 h-4')} Simpan &amp; Kirim Verval Fasyankes</button>
+          <button type="submit" class="btn btn-primary btn-submit" ${canPerizinan() ? '' : 'disabled title="Masuk sebagai Admin/Operator dulu"'}>${icon('save', 'w-4 h-4')} Simpan &amp; Kirim Verval Fasyankes</button>
           <button type="button" class="btn btn-ghost" id="btn-vf-reset">${icon('undo', 'w-4 h-4')} Reset Formulir</button>
         </div>
       </form>
@@ -2195,7 +2234,7 @@ async function simpanDraftVf() {
 
 async function muatDraftVf() {
   if (!SUPABASE_TERKONFIGURASI || !state.user) {
-    setDraftStatusVf(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai verifikator/admin untuk mengaktifkan draf otomatis`, 'warn');
+    setDraftStatusVf(`${icon('info', 'w-3.5 h-3.5')} Masuk sebagai admin/operator untuk mengaktifkan draf otomatis`, 'warn');
     return;
   }
   try {
@@ -2275,7 +2314,7 @@ async function submitVfForm() {
   if (!d.verifikator) errors.push('Nama Verifikator wajib diisi');
   if (errors.length) { toast(errors.join(' • '), 'error'); return; }
   if (!SUPABASE_TERKONFIGURASI) { toast('Supabase belum dikonfigurasi — isi js/config.js.', 'error'); return; }
-  if (!canVerify()) { toast('Hanya Verifikator/Admin yang dapat mengirim verval. Silakan masuk dahulu.', 'error'); return; }
+  if (!canPerizinan()) { toast('Bagian Perizinan hanya untuk Admin/Operator. Silakan masuk dahulu.', 'error'); return; }
 
   const btns = $$('#vf-form button');
   btns.forEach((b) => { b.disabled = true; });
@@ -2354,7 +2393,7 @@ async function muatRiwayatVf(q) {
         </div>
         <div class="flex items-center gap-2 flex-none flex-wrap">
           <span class="badge ${VERVAL_FAS_BADGE[r.status_verifikasi] || 'bg-slate-100 text-slate-600 ring-1 ring-slate-200'}">${esc(r.status_verifikasi || '-')}</span>
-          ${canVerify() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
+          ${canPerizinan() ? `<button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan verval">${icon('pencil', 'w-3.5 h-3.5')}</button>` : ''}
           ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan verval">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
         </div>
       </div>`).join('')}</div>`;
@@ -2398,7 +2437,7 @@ function detailVfModal(r, onSaved = null) {
     title: `Detail Verval: ${esc(r.nama_fasyankes)}`, size: 'xl',
     body: `<div class="detail-grid">${rows}</div>`,
     footer: `${isAdmin() ? `<button class="btn btn-danger" id="btn-del-vf">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
-             ${canVerify() ? `<button class="btn btn-soft" id="btn-edit-vf">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
+             ${canPerizinan() ? `<button class="btn btn-soft" id="btn-edit-vf">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
              <button class="btn btn-ghost" data-close="1">Tutup</button>`,
     onOpen: (root) => {
       root.querySelector('#btn-edit-vf')?.addEventListener('click', () => {
@@ -2420,7 +2459,7 @@ function detailVfModal(r, onSaved = null) {
   });
 }
 
-/* ---------- Edit catatan verval fasyankes (Update, verifikator/admin) ---------- */
+/* ---------- Edit catatan verval fasyankes (Update, admin/operator — v1.6.0) ---------- */
 
 const EDIT_VERVAL_FASKES = [
   { k: 'nomor_unit', label: 'Nomor Unit', required: true },
@@ -2439,7 +2478,7 @@ const EDIT_VERVAL_FASKES = [
 ];
 
 function openEditVervalFaskes(row, onSaved = null) {
-  if (!canVerify()) { toast('Edit verval memerlukan akun Verifikator atau Admin.', 'info'); return; }
+  if (!canPerizinan()) { toast('Edit verval memerlukan akun Admin atau Operator.', 'info'); return; }
   openModal({
     title: `Edit Verval: ${esc(row.nama_fasyankes || '')}`,
     size: 'lg',
@@ -2581,7 +2620,7 @@ async function mountMonev(target = '#page-content') {
         <p class="text-sm font-extrabold text-slate-800">Monev Izin</p>
         <p class="text-xs text-slate-400">Monitoring &amp; evaluasi praktik: kunjungan, temuan, tindak lanjut, dokumentasi foto</p>
       </div>
-      ${state.user ? `<button id="btn-add-monev" class="btn btn-primary">${icon('plus', 'w-4 h-4')} Tambah Kunjungan</button>` : '<span class="text-[.68rem] text-slate-400">Masuk untuk mengisi monev</span>'}
+      ${canPerizinan() ? `<button id="btn-add-monev" class="btn btn-primary">${icon('plus', 'w-4 h-4')} Tambah Kunjungan</button>` : '<span class="text-[.68rem] text-slate-400">Masuk sebagai Admin/Operator untuk mengisi monev</span>'}
     </div>
     <div class="card p-4 sm:p-5">
       <div class="flex flex-wrap items-center gap-2.5 mb-3.5">
@@ -2605,7 +2644,7 @@ async function mountMonev(target = '#page-content') {
       $('#monev-count').textContent = `${rows.length} catatan`;
       if (!rows.length) { $('#monev-list').innerHTML = emptyState(q ? 'Tidak ada catatan yang cocok.' : 'Belum ada catatan monev. Klik "Tambah Kunjungan".'); return; }
       $('#monev-list').innerHTML = `<div class="table-wrap"><table class="sim-table">
-        <thead><tr><th>Tanggal</th><th>Sasaran</th><th>Petugas</th><th>Temuan</th><th>Tindak Lanjut</th><th>Foto</th>${state.user ? '<th class="text-right">Aksi</th>' : ''}</tr></thead>
+        <thead><tr><th>Tanggal</th><th>Sasaran</th><th>Petugas</th><th>Temuan</th><th>Tindak Lanjut</th><th>Foto</th>${canPerizinan() ? '<th class="text-right">Aksi</th>' : ''}</tr></thead>
         <tbody>${rows.map((r) => `<tr data-id="${r.id}" title="Klik untuk detail">
           <td class="whitespace-nowrap">${fmtDate(r.tanggal_kunjungan)}</td>
           <td><span class="font-semibold text-slate-700">${esc(r.sasaran_nama)}</span><br><span class="text-[.68rem] text-slate-400">${esc(r.sasaran_jenis)}</span></td>
@@ -2613,7 +2652,7 @@ async function mountMonev(target = '#page-content') {
           <td class="max-w-[200px]">${trunc(r.temuan, 70) || '—'}</td>
           <td class="max-w-[200px]">${trunc(r.tindak_lanjut, 70) || '—'}</td>
           <td>${r.foto_url ? `<img src="${esc(r.foto_url)}" alt="Foto monev" class="thumb" loading="lazy">` : '<span class="text-slate-300 text-xs">—</span>'}</td>
-          ${state.user ? `<td class="text-right whitespace-nowrap">
+          ${canPerizinan() ? `<td class="text-right whitespace-nowrap">
             <button class="row-act" data-act="edit" data-id="${r.id}" title="Edit catatan">${icon('pencil', 'w-3.5 h-3.5')}</button>
             ${isAdmin() ? `<button class="row-act row-act-danger" data-act="del" data-id="${r.id}" title="Hapus catatan">${icon('trash', 'w-3.5 h-3.5')}</button>` : ''}
           </td>` : ''}
@@ -2660,7 +2699,7 @@ async function mountMonev(target = '#page-content') {
       </div>`,
       footer: `
         ${isAdmin() ? `<button class="btn btn-danger mr-auto" id="btn-monev-del">${icon('trash', 'w-4 h-4')} Hapus</button>` : ''}
-        ${state.user ? `<button class="btn btn-soft" id="btn-monev-edit">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
+        ${canPerizinan() ? `<button class="btn btn-soft" id="btn-monev-edit">${icon('pencil', 'w-4 h-4')} Edit</button>` : ''}
         <button class="btn btn-primary" data-close="1">Tutup</button>`,
       onOpen: (root) => {
         root.querySelector('#btn-monev-edit')?.addEventListener('click', () => { closeModal(); openFormMonev(r); });
@@ -2979,15 +3018,15 @@ const ROUTES = {
   'expired': { t: 'Notifikasi Expired', s: 'SIP/STR yang expired dan menuju H-30', render: mountExpired },
   'fasyankes': { t: 'Data Fasyankes', s: 'Kelola data RS, Puskesmas & Klinik', render: () => mountCrud('fasyankes') },
   'praktik-mandiri': { t: 'Data Praktik Mandiri', s: 'Kelola data pengajuan praktik mandiri', render: () => mountCrud('praktik-mandiri') },
-  'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan', render: mountVervalPraktik },
-  'verifikasi-faskes': { t: 'Verifikasi Faskes', s: 'Formulir verval fasyankes, riwayat & persetujuan pengajuan', render: mountVervalFaskes },
+  'verifikasi-praktik': { t: 'Verifikasi Praktik', s: 'Formulir verval izin praktik, riwayat & persetujuan pengajuan — wajib login Admin/Operator', render: mountVervalPraktik, perizinan: true },
+  'verifikasi-faskes': { t: 'Verifikasi Faskes', s: 'Formulir verval fasyankes, riwayat & persetujuan pengajuan — wajib login Admin/Operator', render: mountVervalFaskes, perizinan: true },
   'cek-verifikasi': { t: 'Cek Hasil Verifikasi', s: 'Pencarian status berdasarkan Nama', render: mountCekVerifikasi },
-  'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto', render: mountMonev },
+  'monev': { t: 'Monev Izin', s: 'Monitoring & evaluasi dengan dokumentasi foto — wajib login Admin/Operator', render: mountMonev, perizinan: true },
   'panel-admin': { t: 'Panel Admin', s: 'Seluruh menu dalam tab pada satu konten + CRUD per baris (khusus admin)', render: mountPanelAdmin, adminOnly: true },
   'pengguna': { t: 'Manajemen Pengguna', s: 'Kelola akun & role (khusus admin)', render: mountPengguna, adminOnly: true },
 };
 
-const VERSI_SIMANTRI = '1.5.1';
+const VERSI_SIMANTRI = '1.6.0';
 
 async function boot() {
   // Penanda versi: bila baris ini TIDAK muncul di console,
